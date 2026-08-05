@@ -2,10 +2,13 @@ import { useEffect, useId, useRef } from 'react'
 import { useT } from '../i18n/index.js'
 import { CloseIcon } from './icons.jsx'
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
 /**
  * Bottom sheet on phones, centred dialog on wider screens (the CSS decides
- * which). Handles Escape, backdrop dismissal, background scroll locking, and
- * moving focus into the panel on open.
+ * which). Handles Escape, backdrop dismissal, background scroll locking, focus
+ * trapping, and moving focus into the panel on open.
  */
 export function BottomSheet({ title, onClose, children, footer }) {
   const { t } = useT()
@@ -13,23 +16,49 @@ export function BottomSheet({ title, onClose, children, footer }) {
   const titleId = useId()
 
   useEffect(() => {
+    const node = panel.current
+
     const onKeyDown = (event) => {
-      if (event.key === 'Escape') onClose()
+      if (event.key === 'Escape') {
+        onClose()
+        return
+      }
+      if (event.key !== 'Tab' || !node) return
+      // Queried per keypress, not once on mount: the split slider and the
+      // preset chips appear and disappear, so a captured list goes stale and
+      // the trap starts letting Tab past the panel again.
+      const stops = node.querySelectorAll(FOCUSABLE)
+      if (!stops.length) return
+      const first = stops[0]
+      const last = stops[stops.length - 1]
+      const inside = node.contains(document.activeElement)
+      if (event.shiftKey && (!inside || document.activeElement === first)) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && (!inside || document.activeElement === last)) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     document.addEventListener('keydown', onKeyDown)
+
+    // iOS raises the keyboard over the sheet without scrolling anything, so a
+    // lower field — or the footer's Save button — stays behind it. Optional
+    // call: there is no DOM under the static-markup render tests.
+    const onFocusIn = (event) => event.target.scrollIntoView?.({ block: 'nearest' })
+    node?.addEventListener('focusin', onFocusIn)
 
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
     // Focus the first control rather than the panel, so a phone keyboard
     // comes straight up for the amount field.
-    const focusable = panel.current?.querySelector(
-      'input, select, textarea, button:not([data-dismiss])',
-    )
+    const focusable = node?.querySelector('input, select, textarea, button:not([data-dismiss])')
     focusable?.focus({ preventScroll: true })
 
     return () => {
       document.removeEventListener('keydown', onKeyDown)
+      node?.removeEventListener('focusin', onFocusIn)
       document.body.style.overflow = previousOverflow
     }
   }, [onClose])
@@ -51,7 +80,7 @@ export function BottomSheet({ title, onClose, children, footer }) {
           </h2>
           <button
             type="button"
-            className="btn btn--icon btn--ghost"
+            className="btn btn--icon"
             onClick={onClose}
             aria-label={t('common.close')}
             data-dismiss

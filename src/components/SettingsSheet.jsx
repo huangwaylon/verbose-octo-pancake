@@ -5,6 +5,7 @@ import { defaultSplitFor } from '../lib/identity.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
 import { LOCALE_LABELS, SUPPORTED } from '../i18n/catalogs.js'
+import { ACCENTS, setAccent, useAccent } from '../lib/theme.js'
 
 export function SettingsSheet({
   config,
@@ -21,6 +22,7 @@ export function SettingsSheet({
   const { t, locale, setLocale } = useT()
   const tn = useTNodes()
   const { name } = usePeopleLabels(config, me)
+  const accent = useAccent()
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState(null)
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheet.id}`
@@ -87,6 +89,29 @@ export function SettingsSheet({
             ))}
           </div>
           <p className="field__hint">{t('settings.languageHint')}</p>
+        </div>
+
+        <div className="field">
+          <span className="field__label">{t('settings.accent')}</span>
+          <div className="swatches" role="radiogroup" aria-label={t('settings.accent')}>
+            {ACCENTS.map((preset) => (
+              <label className="swatch" key={preset}>
+                <input
+                  type="radio"
+                  name="accent"
+                  value={preset}
+                  checked={accent === preset}
+                  onChange={() => setAccent(preset)}
+                />
+                {/* The disc has to paint the color it selects, and a custom
+                    property cannot be indexed by an attribute value, so the
+                    preset's own accent is scoped here and read by the disc. */}
+                <span className="swatch__disc" data-accent={preset} aria-hidden="true" />
+                <span className="visually-hidden">{t(`accent.${preset}`)}</span>
+              </label>
+            ))}
+          </div>
+          <p className="field__hint">{t('settings.accentHint')}</p>
         </div>
 
         <div className="field">

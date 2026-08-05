@@ -115,6 +115,25 @@ describe('toasts render', () => {
     expect(markup.match(/toast--error/g)).toHaveLength(1)
     expect(markup).not.toContain('toast--success')
   })
+
+  it('interrupts for a failure and waits its turn for anything else', () => {
+    // A write failure has to be spoken now; an Undo offer must not cut across
+    // whatever the person is reading.
+    const markup = renderToStaticMarkup(
+      <Toasts
+        toasts={[
+          { id: 'a', message: 'Deleted', action: { label: 'Undo', onClick: noop } },
+          { id: 'b', message: 'Could not save', tone: 'error' },
+        ]}
+        onDismiss={noop}
+      />,
+    )
+    expect(markup).toContain('role="status" aria-live="polite"')
+    expect(markup).toContain('role="alert" aria-live="assertive"')
+    // The urgency belongs to the individual toast, not the stack: one shared
+    // region cannot be polite and assertive at once.
+    expect(markup).toMatch(/<div class="toast-stack">/)
+  })
 })
 
 describe('balance card renders', () => {

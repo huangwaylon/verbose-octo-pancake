@@ -28,7 +28,7 @@ import {
   rowRange,
   rowToEntry,
 } from '../schema.js'
-import { getAccessToken, reissueToken } from './googleAuth.js'
+import { getAccessToken, signIn } from './googleAuth.js'
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
 const RAW = 'RAW'
@@ -122,7 +122,7 @@ async function request(path, { method = 'GET', params, body, allowRetry = true }
   if (response.ok) return response.json().catch(() => ({}))
 
   if (response.status === 401 && allowRetry) {
-    await reissueToken()
+    await signIn({ silent: true })
     return request(path, { method, params, body, allowRetry: false })
   }
 

@@ -3,15 +3,22 @@
 /* =========================================================================
    Surfaces
    =========================================================================
-   A card is a white plane on a warm ground plus one hairline. No shadow: the
-   temperature difference between --surface and --bg is the elevation. See the
-   exhaustive shadow list in tokens.css before adding one here. */
+   One recipe, written once: a white plane on the warm ground plus one hairline.
+   No shadow — the temperature difference between --surface and --bg is the
+   elevation. See the exhaustive shadow list in tokens.css before adding one.
 
+   `.surface` is the bare plane (the entry list and the empty state, which
+   supply their own padding); `.card` is the same plane with card padding. */
+
+.surface,
 .card {
-  padding: var(--space-5);
   background-color: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
+}
+
+.card {
+  padding: var(--space-5);
 }
 
 @media (min-width: 48rem) {
@@ -42,6 +49,12 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+}
+
+/* Separates a destructive action from the primary cluster in a right-aligned
+   footer, so Delete never ends up a thumb's width from Save. */
+.push-end {
+  margin-right: auto;
 }
 
 /* =========================================================================
@@ -100,18 +113,28 @@
 }
 
 .btn--danger:hover:not([disabled]) {
-  /* Explicit, not filter: brightness() — a filter also dims the label. */
-  background-color: #8d3025;
+  background-color: var(--danger-hover);
 }
 
-/* Icon-only buttons stay borderless: the glyph at --ink-2 is itself the 3:1
-   graphic, so a box around it is noise. */
+/* The one button that sits ON --danger (the reconnect banner). An accent fill
+   there measures 1.20:1 against the banner and reads as a hole; white does the
+   job at 6.56:1, and so does its focus ring. */
+.btn--on-danger {
+  background-color: var(--danger-text);
+  color: var(--danger);
+}
+
+.btn--on-danger:focus-visible {
+  outline-color: var(--danger-text);
+}
+
+/* Icon-only buttons are borderless: the glyph at --ink-2 is itself the 3:1
+   graphic, so a box around it is noise. Deliberately NOT combined with
+   --ghost — the two disagree about the border. */
 .btn--icon {
   width: var(--tap-target);
   min-width: var(--tap-target);
   padding: 0;
-  border-color: transparent;
-  border-radius: var(--radius-md);
   color: var(--ink-2);
 }
 
@@ -124,8 +147,10 @@
   width: 100%;
 }
 
+/* Chips and secondary row actions. --tap-target-sm rather than the full 44px,
+   which is what lets three split presets sit on one phone line. */
 .btn--sm {
-  min-height: 2rem;
+  min-height: var(--tap-target-sm);
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   font-size: var(--fs-caption);
@@ -167,8 +192,7 @@
 }
 
 .input,
-.select,
-.textarea {
+.select {
   width: 100%;
   min-height: var(--tap-target);
   padding: var(--space-2) var(--space-3);
@@ -183,8 +207,7 @@
 }
 
 .input:focus,
-.select:focus,
-.textarea:focus {
+.select:focus {
   border-color: var(--accent);
   /* The one inset ring in the app, and the one place box-shadow is
      transitioned — a focus ring has to appear instantly to be useful. */
@@ -192,9 +215,18 @@
   outline: none;
 }
 
+/* The form already announces the problem in words; this is the matching visual
+   state, without which the control that failed is unmarked. */
+.input[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.input[aria-invalid="true"]:focus {
+  box-shadow: 0 0 0 3px var(--danger-ring);
+}
+
 .input[disabled],
-.select[disabled],
-.textarea[disabled] {
+.select[disabled] {
   background-color: var(--sunken);
   color: var(--ink-4);
 }
@@ -203,12 +235,6 @@
    asset to maintain and the platform picker is better on a phone. */
 .select {
   padding-right: var(--space-2);
-}
-
-.textarea {
-  min-height: 5rem;
-  padding: var(--space-3);
-  line-height: var(--lh-body);
 }
 
 /* =========================================================================
@@ -229,7 +255,7 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  min-height: 2.25rem;
+  min-height: var(--tap-target-sm);
   padding: 0 var(--space-2);
   border-radius: var(--radius-sm);
   color: var(--ink-2);
@@ -265,13 +291,66 @@
 }
 
 /* =========================================================================
+   Swatches — the accent picker
+   ========================================================================= */
+
+.swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* A tap target of --tap-target with a smaller visible disc inside it, so the
+   row of colors stays light while every one of them is comfortably tappable. */
+.swatch {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tap-target);
+  height: var(--tap-target);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+}
+
+.swatch input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.swatch__disc {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-full);
+  /* Set inline from the preset's own accent: a CSS var cannot be indexed by an
+     attribute value, and each disc must show the color it selects. */
+  background-color: var(--accent);
+  transition: box-shadow var(--transition-fast);
+}
+
+/* A ring in the page ground, not a checkmark: the disc is small and a glyph on
+   top of it would fail contrast on the darker presets. */
+.swatch:has(input:checked) .swatch__disc {
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--ink);
+}
+
+.swatch:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+/* =========================================================================
    Pills
    ========================================================================= */
 
 .pill {
   display: inline-flex;
   align-items: center;
-  padding: 0.1875rem var(--space-2);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-full);
   font-size: var(--fs-caption);
   font-weight: 500;
@@ -333,7 +412,7 @@
 .sheet__title {
   font-size: var(--fs-lg);
   font-weight: 600;
-  line-height: var(--lh-heading);
+  line-height: var(--lh-tight);
 }
 
 .sheet__body {
@@ -341,6 +420,9 @@
   overflow-y: auto;
   padding: var(--space-2) var(--space-5) var(--space-5);
   -webkit-overflow-scrolling: touch;
+  /* The body's overflow:hidden lock does not stop iOS chaining the scroll to
+     the page behind the sheet once this list hits its end. */
+  overscroll-behavior: contain;
 }
 
 .sheet__footer {
@@ -354,7 +436,7 @@
 }
 
 /* Sheet becomes a centred dialog once there is room for one. */
-@media (min-width: 45rem) {
+@media (min-width: 48rem) {
   .sheet {
     align-items: center;
     padding: var(--space-5);
@@ -396,7 +478,7 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
   background-color: var(--ink);
   color: var(--bg);
   border-radius: var(--radius-lg);
@@ -405,23 +487,32 @@
   box-shadow: var(--shadow-overlay);
 }
 
-/* A plain border, not an inset shadow, so box-shadow stays reserved. */
+/* A plain border, not an inset shadow, so box-shadow stays reserved. --danger
+   on --ink is only 2.65:1, so this is a locator, never the message: the text
+   always says what happened. */
 .toast--error {
   border-left: 3px solid var(--danger);
 }
 
-.toast--success {
-  border-left: 3px solid var(--accent);
-}
-
+/* Undo is the reason a delete needs no confirm dialog, so it gets a full tap
+   target and a ring that is actually visible on the dark toast (--accent
+   measures 2.20:1 there; --bg measures 17.4:1). */
 .toast__action {
   flex: none;
-  padding: var(--space-1) var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap-target);
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
   color: var(--bg);
   font-size: var(--fs-label);
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 0.15em;
+}
+
+.toast__action:focus-visible {
+  outline-color: var(--bg);
 }
 
 .spinner {
@@ -451,9 +542,6 @@
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-8) var(--space-5);
-  background-color: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
   text-align: center;
 }
 
@@ -472,7 +560,7 @@
 .empty__title {
   font-size: var(--fs-lg);
   font-weight: 600;
-  line-height: var(--lh-heading);
+  line-height: var(--lh-tight);
 }
 
 .empty__text {
@@ -549,7 +637,7 @@
     animation: toast-rise var(--transition-base);
   }
 
-  @media (min-width: 45rem) {
+  @media (min-width: 48rem) {
     .sheet__panel {
       animation: sheet-zoom-in var(--transition-base);
     }

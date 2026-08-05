@@ -168,7 +168,7 @@ export default function App() {
       <span>{t('auth.expiredBanner')}</span>
       <button
         type="button"
-        className="btn btn--sm btn--primary"
+        className="btn btn--sm btn--on-danger"
         onClick={reconnect}
         disabled={reconnecting}
       >
@@ -232,7 +232,7 @@ export default function App() {
       <main className="layout">
         <aside className="layout__aside">
           {mixedCurrencies && (
-            <p className="settings__warning" role="status">
+            <p className="notice" role="status">
               {t('warning.mixedCurrencies')}
             </p>
           )}

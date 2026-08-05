@@ -60,9 +60,7 @@ h5,
 h6 {
   font-size: inherit;
   font-weight: 600;
-  /* 1.45, not 1.22: CJK glyphs fill the em box and a tight heading is
-     unreadable in Japanese. */
-  line-height: var(--lh-heading);
+  line-height: var(--lh-tight);
   text-wrap: balance;
 }
 
@@ -97,7 +95,6 @@ svg {
 button,
 input,
 select,
-textarea,
 optgroup {
   margin: 0;
   font: inherit;
@@ -110,8 +107,7 @@ optgroup {
    focused input's font-size is under 16px, and there is no way to zoom back
    out — a very common and very annoying bug. Do not lower this. */
 input,
-select,
-textarea {
+select {
   font-size: max(1rem, var(--fs-body));
 }
 
@@ -127,10 +123,6 @@ button {
 
 button[disabled] {
   cursor: default;
-}
-
-textarea {
-  resize: vertical;
 }
 
 a {
@@ -156,7 +148,9 @@ kbd,
 samp,
 pre {
   font-family: var(--font-mono);
-  font-size: 0.9375em;
+  /* Relative, but floored: 0.9375em inside a 13px hint is 12.19px, and 12px
+     kanji is mush. Every <code> in this app sits inside caption-sized text. */
+  font-size: max(var(--fs-caption), 0.9375em);
 }
 
 [hidden] {
@@ -254,10 +248,6 @@ pre {
     animation-iteration-count: 1;
     transition-duration: 0.01ms;
     transition-delay: 0s;
-    scroll-behavior: auto;
-  }
-
-  html {
     scroll-behavior: auto;
   }
 }

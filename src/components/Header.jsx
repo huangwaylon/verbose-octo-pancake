@@ -9,14 +9,14 @@ export function Header({ config, me, status, onRefresh, onOpenSettings }) {
 
   return (
     <header className="app__header">
-      <div>
+      <div className="brand">
         <h1 className="brand__title">{t('app.name')}</h1>
         <p className="brand__subtitle">{PEOPLE.map(label).join(t('common.peopleSeparator'))}</p>
       </div>
       <div className="header-actions">
         <button
           type="button"
-          className="btn btn--icon btn--ghost"
+          className="btn btn--icon"
           onClick={onRefresh}
           disabled={busy}
           aria-label={t('header.refresh')}
@@ -25,7 +25,7 @@ export function Header({ config, me, status, onRefresh, onOpenSettings }) {
         </button>
         <button
           type="button"
-          className="btn btn--icon btn--ghost"
+          className="btn btn--icon"
           onClick={onOpenSettings}
           aria-label={t('header.settings')}
         >

@@ -22,7 +22,7 @@ export function EntryList({ groups, config, me, currency, status, onEdit, onDele
 
   if (!groups.length) {
     return (
-      <div className="empty">
+      <div className="card empty">
         <span className="empty__icon">
           <WalletIcon width={28} height={28} />
         </span>
@@ -47,7 +47,7 @@ export function EntryList({ groups, config, me, currency, status, onEdit, onDele
               {money(group.totalCents, { trimZeroCents: true })}
             </span>
           </header>
-          <ul className="entry-list">
+          <ul className="surface">
             {group.entries.map((entry) => (
               <EntryRow
                 key={entry.id}

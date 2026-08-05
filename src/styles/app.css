@@ -33,17 +33,32 @@
   }
 }
 
+/* The reconnect banner already paints into the top inset, so the header must
+   not pad for it a second time — two insets stack into a ~47px empty band. */
+.app:has(> .reconnect-banner) .app__header {
+  padding-top: 0;
+}
+
+/* min-width: 0 is load-bearing: without it two long names push the header past
+   --header-height, and the sticky aside below offsets by that fixed number. */
+.brand {
+  min-width: 0;
+}
+
 .brand__title {
   font-size: var(--fs-lg);
   font-weight: 600;
-  line-height: var(--lh-heading);
+  line-height: var(--lh-tight);
 }
 
 .brand__subtitle {
   margin: 0;
+  overflow: hidden;
   color: var(--ink-3);
   font-size: var(--fs-caption);
   line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-actions {
@@ -60,14 +75,19 @@
    through. 62rem: two columns.
 
    The DOM order is aside-then-main, which is already the right reading order on
-   a phone (balance, summary, then the list), so no `order` is needed anywhere. */
+   a phone (balance, summary, then the list), so no `order` is needed anywhere.
+
+   The bottom padding keeps the FAB's footprint clear of the last row at EVERY
+   width. Dropping it in the two-column block once put the button on top of the
+   bottom expense's amount and delete control. */
 
 .layout {
+  --layout-bottom: calc(var(--space-7) + var(--fab-size) + var(--safe-bottom));
+
   display: grid;
   gap: var(--space-6);
   width: 100%;
-  padding: var(--space-5) var(--space-4)
-    calc(var(--space-9) + var(--tap-target) + var(--safe-bottom));
+  padding: var(--space-5) var(--space-4) var(--layout-bottom);
 }
 
 .layout__aside {
@@ -96,7 +116,8 @@
     max-width: var(--shell-max);
     grid-template-columns: minmax(18rem, var(--aside-w)) minmax(0, 1fr);
     gap: var(--space-7);
-    padding: var(--space-7) var(--space-7) calc(var(--space-7) + var(--safe-bottom));
+    padding-top: var(--space-7);
+    padding-inline: var(--space-7);
   }
 
   .layout__aside {
@@ -140,19 +161,19 @@
   line-height: var(--lh-tight);
 }
 
-/* Container-relative, not viewport-relative: the same component renders at
-   288px on a phone and inside a 352px aside on a 1440px monitor, where a
-   vw-keyed clamp would overflow. */
+/* --fs-display is container-relative, not viewport-relative: the same component
+   renders at 288px on a phone and inside a 352px aside on a 1440px monitor,
+   where a vw-keyed clamp would overflow. */
 .balance__amount {
   display: flex;
   align-items: baseline;
   gap: 0.06em;
   margin: var(--space-3) 0 0;
   color: var(--ink);
-  font-size: clamp(2.5rem, 14cqi, 4rem);
+  font-size: var(--fs-display);
   font-weight: 600;
   /* The one place a line-height below 1.5 is allowed: digits only, no CJK. */
-  line-height: 1;
+  line-height: var(--lh-flat);
   /* Likewise the one place letter-spacing is allowed, for the same reason. */
   letter-spacing: -0.022em;
   font-feature-settings: "tnum" 1, "palt" 1;
@@ -258,8 +279,12 @@
   border-radius: var(--radius-full);
 }
 
+/* The wash is 1.04:1 against the track, i.e. invisible, which made the bar read
+   as "p1 paid everything". The hairline is what carries the boundary — the same
+   treatment the legend swatch below already had. */
 .summary__meter-fill--other {
   background-color: var(--accent-wash);
+  box-shadow: inset 0 0 0 1px var(--line-input);
 }
 
 .summary__people {
@@ -311,7 +336,10 @@
   gap: var(--space-4);
 }
 
-@container (min-width: 22rem) {
+/* 26rem, not 22rem: at 22rem the switch landed mid-phone, so a 430px handset
+   got the side-by-side form with ~98px of legend and truncated every category
+   name while a 390px one showed them in full. Now every phone stacks. */
+@container (min-width: 26rem) {
   .chart {
     flex-direction: row;
     align-items: center;
@@ -388,7 +416,7 @@
 .month-nav__label {
   font-size: var(--fs-lg);
   font-weight: 600;
-  line-height: var(--lh-heading);
+  line-height: var(--lh-tight);
 }
 
 /* =========================================================================
@@ -429,12 +457,6 @@
   font-weight: 400;
 }
 
-.entry-list {
-  background-color: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-}
-
 .entry {
   position: relative;
   display: grid;
@@ -458,13 +480,13 @@
   background-color: var(--accent-wash);
 }
 
-.entry:first-child,
-.entry:first-child.entry--settlement {
+/* The row inherits the list's corners so the tinted settlement background does
+   not square them off. */
+.entry:first-child {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
-.entry:last-child,
-.entry:last-child.entry--settlement {
+.entry:last-child {
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
@@ -483,10 +505,11 @@
   text-align: left;
 }
 
+/* Deliberately not a flex container. text-overflow only paints on a block box
+   overflowing with inline content, so as a flex box this clipped the
+   description mid-glyph with no ellipsis while the meta line right below it
+   truncated correctly. The settlement icon is inline instead. */
 .entry__desc {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
   overflow: hidden;
   color: var(--ink);
   font-size: var(--fs-label);
@@ -494,6 +517,11 @@
   line-height: var(--lh-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.entry__desc svg {
+  vertical-align: -0.15em;
+  margin-right: var(--space-1);
 }
 
 .entry__meta {
@@ -505,6 +533,12 @@
   white-space: nowrap;
 }
 
+/* --ink-3 on the settlement row's wash measures 4.46:1 and misses AA at 13px;
+   --ink-2 lands at 6.78:1 and holds for every accent preset. */
+.entry--settlement .entry__meta {
+  color: var(--ink-2);
+}
+
 .entry__amount {
   color: var(--ink);
   font-size: var(--fs-label);
@@ -512,10 +546,10 @@
 }
 
 .entry__delete {
-  width: 2.25rem;
-  min-width: 2.25rem;
-  height: 2.25rem;
-  min-height: 2.25rem;
+  width: var(--tap-target-sm);
+  min-width: var(--tap-target-sm);
+  height: var(--tap-target-sm);
+  min-height: var(--tap-target-sm);
   color: var(--ink-3);
 }
 
@@ -536,21 +570,35 @@
   border-radius: var(--radius-md);
 }
 
+/* --ink-3 on --sunken is 4.30:1, under AA at 13px. */
+.split-control .field__hint {
+  color: var(--ink-2);
+}
+
 .split-control__presets {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
 }
 
+/* The label goes on its own line rather than sharing one with the slider: in
+   Japanese it wraps per character, and in a flex row it collapsed into a narrow
+   column and dragged the range width down with it. */
 .split-control__slider {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2) var(--space-3);
+}
+
+.split-control__slider .field__hint {
+  grid-column: 1 / -1;
 }
 
 .split-control__slider input {
-  flex: 1 1 auto;
   min-width: 0;
+  /* A bare range is ~20px tall on iOS; this gives the thumb a real target. */
+  min-height: var(--tap-target-sm);
   accent-color: var(--accent);
 }
 
@@ -575,14 +623,14 @@
 
 .fab {
   position: fixed;
-  right: var(--space-5);
+  right: calc(var(--space-5) + var(--safe-right));
   bottom: calc(var(--space-5) + var(--safe-bottom));
   z-index: var(--z-fab);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 3.5rem;
-  height: 3.5rem;
+  width: var(--fab-size);
+  height: var(--fab-size);
   background-color: var(--accent);
   color: var(--accent-text);
   border-radius: var(--radius-full);
@@ -598,7 +646,10 @@
    27" monitor is half a metre from the content. */
 @media (min-width: 62rem) {
   .fab {
-    right: max(var(--space-7), calc(50vw - var(--shell-max) / 2 + var(--space-7)));
+    right: max(
+      calc(var(--space-7) + var(--safe-right)),
+      calc(50vw - var(--shell-max) / 2 + var(--space-7))
+    );
   }
 }
 
@@ -625,7 +676,9 @@
   line-height: var(--lh-tight);
 }
 
-.settings__warning {
+/* An inline caution above the content. Not a toast: it states a standing
+   condition rather than the result of an action, so it must not time out. */
+.notice {
   margin: 0;
   padding: var(--space-3) var(--space-4);
   background-color: var(--sunken);
@@ -647,7 +700,8 @@
   justify-content: center;
   gap: var(--space-4);
   min-height: 100dvh;
-  padding: var(--space-6) var(--space-4);
+  padding: calc(var(--space-6) + var(--safe-top)) var(--space-4)
+    calc(var(--space-6) + var(--safe-bottom));
 }
 
 .gate__panel {

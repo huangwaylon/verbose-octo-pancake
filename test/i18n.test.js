@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { CATALOGS, DEFAULT_LOCALE, LOCALE_LABELS, SUPPORTED } from '../src/i18n/catalogs.js'
 import { getLocale, interpolate, setLocale, t, translate } from '../src/i18n/index.js'
 import { ENTRY_ERROR } from '../src/schema.js'
+import { ACCENTS } from '../src/lib/theme.js'
 
 /**
  * The catalogs are data maintained by hand, so the interesting failures are
@@ -113,8 +114,9 @@ function sourceFiles(dir, found = []) {
 }
 
 describe('catalog usage', () => {
-  /** Keys built at runtime from a code, e.g. t(`error.${code}`). */
-  const DYNAMIC_PREFIXES = ['error.']
+  /** Keys built at runtime from a code, e.g. t(`error.${code}`). Each family
+      has its own coverage test below, since this scan cannot see them. */
+  const DYNAMIC_PREFIXES = ['error.', 'accent.']
 
   const referenced = new Set()
   for (const file of sourceFiles('src')) {
@@ -147,6 +149,18 @@ describe('catalog usage', () => {
 
   it('finds a meaningful number of keys, so the scan itself cannot silently break', () => {
     expect(referenced.size).toBeGreaterThan(60)
+  })
+
+  it('names every accent preset, in every locale', () => {
+    // Same blind spot as the codes below: t(`accent.${preset}`) is built from
+    // the ACCENTS list, so an added preset would show an empty swatch label.
+    const untranslated = []
+    for (const preset of ACCENTS) {
+      for (const tag of SUPPORTED) {
+        if (!(`accent.${preset}` in CATALOGS[tag])) untranslated.push(`${tag}: accent.${preset}`)
+      }
+    }
+    expect(untranslated).toEqual([])
   })
 
   it('translates every validation code, in every locale', () => {

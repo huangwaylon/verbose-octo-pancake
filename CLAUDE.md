@@ -1,19 +1,8 @@
 # CLAUDE.md
 
-Guidance for Claude Code working in this repository.
-
-## What this is
-
-A static React app for two people to track shared grocery/food expenses. A
-single Google Sheet is the database. The browser talks straight to the Sheets
-API with a short-lived OAuth token; there is no backend and no secret anywhere.
-The interface is English or Japanese, and the default currency is JPY — both of
-which shape the type system and the money layer, so read the i18n and money
-invariants before touching either. Deployed to GitHub Pages by
-`.github/workflows/deploy.yml` on push to `main`.
-
-For the data model, security reasoning, and cost breakdown, see `README.md`.
-For the Google Cloud walkthrough, see `SETUP.md`. Do not restate either here.
+Guidance for Claude Code working in this repository. For the data model,
+security reasoning and cost, see `README.md`; for the Google Cloud walkthrough,
+see `SETUP.md`. Do not restate either here.
 
 ## Commands
 
@@ -30,59 +19,62 @@ These are the rules that prevent silent data corruption. Breaking one does not
 throw — it quietly writes the wrong thing to someone's spreadsheet.
 
 **`src/schema.js` is the only file that knows the sheet layout.** Column names,
-order, ranges, and row↔entry mapping live there and nowhere else. Never hardcode
-a range like `'expenses_p1!A2:K'` or a column index in another file.
+order, ranges, and row↔entry mapping live there. Never hardcode a range like
+`'expenses_p1!A2:K'` or a column index elsewhere — use `columnLetter` /
+`columnIndex`.
 
 **Each person has their own expenses tab (`expenses_p1`, `expenses_p2`).**
-Which tab a row lives in *is* the payer, so there is no `payer` column to keep
-in sync — `rowToEntry` takes the person as an explicit argument instead of
-reading it from a cell. Every function that touches expense rows
-(`appendEntry`, `findRowNumber`, `updateEntry`, `softDeleteEntry`,
-`restoreEntry`, `compact`) is keyed on a person for the same reason. Editing an
-entry to change who paid must move the row to the other person's tab —
-`updateEntry` does this by appending to the new tab and tombstoning the old
-row, never by overwriting a `payer` cell that no longer exists.
+Which tab a row lives in *is* the payer, so there is no `payer` column to keep in
+sync: `rowToEntry` takes the person as an argument instead of reading a cell, and
+every function that touches expense rows is keyed on a person. Editing an entry
+to change who paid must move the row to the other tab — `updateEntry` appends to
+the new tab and tombstones the old row, in that order, so a failure between the
+two leaves the entry visible rather than gone.
 
 **Every write uses `valueInputOption: RAW`.** Never `USER_ENTERED`. A note of
 `=SUM(A:A)` must be stored as literal text, and dates must not be reformatted to
 the sheet's locale.
 
 **Never trust a cached `rowNumber`.** Row positions shift whenever anyone edits
-the sheet directly in the Sheets UI. `updateEntry` and `softDeleteEntry` must
-re-resolve id → row via `findRowNumber`, scoped to the right person's tab,
-immediately before writing. The `rowNumber` on an entry is advisory only.
+the sheet directly in the Sheets UI, so `updateEntry` and `setDeletedAt`
+re-resolve id → row immediately before writing. The `rowNumber` on an entry is
+advisory only.
 
-**Deletes are soft.** Write a `deleted_at` timestamp and filter client-side, so
-rows never change position. `compact()` is the only hard delete; it reads each
-person's tab independently and must issue its `deleteDimension` requests in
-**descending** row order within each tab, or earlier deletions shift the
-indices of later ones.
+**Deletes are soft.** `setDeletedAt` writes a timestamp and the client filters,
+so rows never change position and undo is one cell write. `compact()` is the only
+hard delete; it reads each person's tab independently and must issue its
+`deleteDimension` requests in **descending** row order within each tab, or
+earlier deletions shift the indices of later ones.
 
-**Money is integer minor units.** One integer per amount, in that currency's
-smallest unit — cents for USD, **whole yen for JPY**, fils for KWD.
-`minorDigits(currency)` is the only place the exponent is decided, and it is a
-hardcoded ISO 4217 table, never derived from `Intl`, because it decides what gets
-written to the sheet and must be identical on every device forever. Parse at the
-boundary with `parseAmountToCents(input, currency)` and never do float arithmetic
-on an amount. `splitCents` and `sumCents` are scale-agnostic and need no currency;
-`splitCents` must conserve every unit: `payerCents + otherCents === cents`.
+**Money is integer minor units** — cents for USD, **whole yen for JPY**, fils for
+KWD. `minorDigits(currency)` is the only place the exponent is decided, and it is
+a hardcoded ISO 4217 table, never derived from `Intl`, because it decides what
+gets written to the sheet and must be identical on every device forever.
 
-**Decode a row's currency BEFORE its amount.** The stored string `"1250"` is
-¥1250 or $12.50 depending entirely on that row's `currency` cell. Getting the
-order wrong in `rowToEntry` is a silent 100x corruption, and
-`test/currency.test.js` pins it. A blank currency cell means USD — that fallback
-is what migrates every pre-existing sheet for free, so never point it at
-`DEFAULT_CONFIG.currency`. `entryToRow` writes each row at its *own* scale, never
-the config's.
+**Every money function takes the currency explicitly; none defaults it.** The
+string `"1250"` is ¥1250 or $12.50 depending only on the currency it is decoded
+with, so a default is a silent 100x error rather than a convenience. `entryToRow`
+throws without one and `validateEntryCodes` reports `MISSING_CURRENCY`, because
+the alternative is a ¥1250 expense landing in the sheet as `"12.50"`.
+
+**Decode a row's currency BEFORE its amount.** `rowToEntry` takes the sheet's
+currency and uses it only when a row's own currency cell is blank — a row
+somebody added by hand. `loadAll` therefore resolves the config *before* mapping
+rows. `test/currency.test.js` pins both scales. `entryToRow` writes each row at
+its *own* currency's scale, never the config's.
+
+**`splitCents` must conserve every unit:** `payerCents + otherCents === cents`.
+It and `sumCents` are scale-agnostic and need no currency.
 
 **Nothing written to the sheet is ever localized.** Config defaults, column
 names, timestamps, and amount strings are locale-independent by design: two
 people sharing a sheet may be reading the UI in different languages, and the
 stored data must not depend on whose device seeded it.
 
-**The locale is per-device, the currency is per-sheet.** Locale lives in
-`localStorage` (like identity); currency lives in the sheet's `config` tab and on
-every entry row.
+**Per-device vs per-sheet.** The locale and the accent colour live in
+`localStorage` (like identity); the currency lives in the sheet's `config` tab
+and on every entry row. Neither preference may ever be written to the sheet —
+neither person gets to restyle the other's phone.
 
 **Settlements are not a separate code path.** A settlement is an entry with
 `payer_share: 0`, which makes the balance a single sum over every row. It counts
@@ -97,39 +89,38 @@ Use the helpers in `src/lib/dates.js`, which build dates from explicit parts.
 **The access token is cached in `localStorage`, and cleared only on explicit
 sign-out.** Anything malformed or expired is discarded on load rather than
 trusted. This is a deliberate trade-off against XSS, not an oversight — the
-reasoning is in `README.md`, and the ceiling is Google's: the token lasts about an
-hour and the browser flow issues no refresh token, so no cache can make a session
-outlive it.
+reasoning is in `README.md`, and the ceiling is Google's: the token lasts about
+an hour and the browser flow issues no refresh token, so no cache can make a
+session outlive it.
 
 **Never request a token outside a user gesture.** `requestAccessToken` always
 opens a popup, even with `prompt: ''`, and a popup with no click behind it is
 blocked. `requestToken` therefore clears the token and notifies listeners on
 failure, so the UI drops back to the sign-in screen instead of failing writes in
-the background. `useAuth` distinguishes that collapse from a deliberate sign-out
-and explains itself; a silent bounce to the sign-in screen is indistinguishable
-from the app logging you out at random.
+the background. `useAuth` distinguishes that collapse from a deliberate sign-out:
+a silent bounce to the sign-in screen is indistinguishable from the app logging
+you out at random.
 
 **The OAuth scope grants no file access beyond `drive.file`.** The other two,
-`openid` and `userinfo.email`, only identify which of the two people is signed in.
-Never widen the Drive scope to `spreadsheets` — that would expose every sheet in
-the account. This is why the Picker exists.
+`openid` and `userinfo.email`, only identify which of the two people is signed
+in. Never widen the Drive scope to `spreadsheets` — that would expose every sheet
+in the account. This is why the Picker exists.
 
 **The Picker needs `setAppId` and `setOrigin`.** `setAppId` (the Cloud project
 number, derived from the client ID prefix) is what makes Drive grant the picked
 file to this app under `drive.file`. `setOrigin` is required because Pages serves
-the app from a sub-path and the Picker otherwise infers the wrong origin. Omitting
-either produces an opaque "invalid API key". Both live in `src/lib/picker.js`.
+the app from a sub-path and the Picker otherwise infers the wrong origin.
+Omitting either produces an opaque "invalid API key".
 
 **Only `createSheet` may build structure; the picker path must never write.**
-`ensureStructure` adds the `expenses_p1`, `expenses_p2`, and `config` tabs, so
+`ensureStructure` adds the `expenses_p1`, `expenses_p2` and `config` tabs, so
 calling it on an arbitrary picked file scribbles three tabs into somebody's
-unrelated spreadsheet — not something undo can reach. `chooseSheet` therefore
-calls the read-only `readStructure` first and refuses anything where `isLedger`
-is false. If you add another path that adopts an existing spreadsheet, it needs
-the same guard.
+unrelated spreadsheet — not something undo can reach. `chooseSheet` calls the
+read-only `readStructure` first and refuses anything where `isLedger` is false.
+Any other path that adopts an existing spreadsheet needs the same guard.
 
 **Config values are not all strings.** `CONFIG_FIELDS` in `src/lib/sheets.js`
-carries a kind per key — `text`, `list`, or `fraction` — and `parseConfigRows`
+carries a kind per key — `text`, `list` or `fraction` — and `parseConfigRows`
 omits a key whose value is blank or unparseable so the caller's defaults win. An
 empty list must never be returned in place of a default, or the category picker
 ends up empty. `default_split_p1` / `default_split_p2` accept a percentage or a
@@ -142,14 +133,16 @@ values are independent and need not sum to 1 — only the payer's is ever read, 
 never mirror one from the other. A new entry carries `payerShare: null` meaning
 "follow the payer's default", and `EntryFormSheet` re-derives it when the payer
 control changes; an entry being edited carries its stored share and must keep it,
-because a saved row records a decision someone already made. The superseded
-universal `default_split` key is still read and mapped to both people, so sheets
-created before the change keep working; it is never written.
+because a saved row records a decision someone already made.
 
 **Refreshes on focus are throttled.** Two people share one sheet with no push
 channel, so `useLedger` re-reads on `focus` and `visibilitychange`. Window
 switching is constant and every refresh spends per-user quota, hence the 30s
 floor — do not remove it.
+
+**There is no migration code, and no users to need it.** Anything justified only
+by "keeps an existing sheet working" has been removed. Do not add a
+back-compatibility branch for a shape this app never shipped.
 
 ## Conventions
 
@@ -163,7 +156,12 @@ floor — do not remove it.
 - **Never put a real secret in a `VITE_` variable.** Vite inlines them into the
   shipped bundle. Both existing variables are public by design.
 - **Comments explain *why*, not *what*.** Match the existing density — the
-  non-obvious constraint gets a comment; the obvious line does not.
+  non-obvious constraint gets a comment; the obvious line does not. Do not
+  narrate the history of a refactor in a comment.
+- **One helper, one home.** `readStored`/`writeStored` in `src/config.js` are the
+  only `localStorage` touches; `cellText` and `columnIndex` live in `schema.js`;
+  `PEOPLE` is the only `[p1, p2]` literal; `usePeopleLabels` is the only place a
+  component turns a person into a name.
 
 ### i18n
 
@@ -172,24 +170,25 @@ the two catalogs (`en.js`, `ja.js`), the registry (`catalogs.js`), and the
 node-returning variant for strings with inline markup (`nodes.jsx`).
 
 - **Never hardcode a user-facing string in a component.** That includes every
-  `aria-label`, `title`, and `placeholder`. `test/i18n.test.js` statically scans
-  `src/` and fails on a catalog key that nothing references *and* on a referenced
-  key that no catalog has.
+  `aria-label`, `title` and `placeholder`. `test/i18n.test.js` scans `src/` and
+  fails on a catalog key nothing references, a referenced key no catalog has, and
+  a bare string literal in one of those three attributes.
+- **A key built at runtime needs its own coverage test.** The scan cannot see
+  `` t(`error.${code}`) `` or `` t(`accent.${preset}`) ``, so each family is
+  asserted against its source list (`ENTRY_ERROR`, `ACCENTS`) instead.
 - **It is a module singleton, not a context.** `render.test.jsx` renders
   components bare, and non-React modules (`useLedger`) need the same `t`. A
   provider would break the first and be unreachable from the second.
 - **`useT()` uses `useSyncExternalStore` with the third argument.** Omitting
   `getServerSnapshot` throws under `renderToStaticMarkup`, which is how every
-  render test runs.
+  render test runs. `useAccent()` has the same requirement.
 - **Plurals go through `Intl.PluralRules`, never a `count === 1` ternary.** A
   pluralised value is an object keyed by CLDR category, and it is the only case
   where a catalog value is not a string. `en` supplies `one`/`other`; `ja`
-  supplies `other` alone, because that is what `Intl.PluralRules('ja')` reports —
-  a test asserts the catalogs match the engine exactly.
+  supplies `other` alone, because that is what `Intl.PluralRules('ja')` reports.
 - **The pure layers stay pure.** `money.js`, `dates.js`, `balance.js`,
-  `schema.js`, and `identity.js` never read the singleton; locale and localized
-  strings arrive as arguments with English defaults. That is what keeps their
-  single-argument behaviour, and their tests, unchanged.
+  `schema.js` and `identity.js` never read the singleton; locale and localized
+  strings arrive as arguments with English defaults.
 - **A test that calls `setLocale` must restore it** in `afterEach`, or the state
   leaks into other files.
 
@@ -202,7 +201,8 @@ circumference is exactly 100, making a dash length a percentage).
 - **The `--series-N` order is the colorblindness-safety mechanism, not
   cosmetic.** It was validated with the dataviz palette validator against the
   white card surface, including the ring's wrap-around pair. Never reorder, never
-  cycle past slot 6 — a 7th category folds into "Other" via `foldTail`.
+  cycle past slot 6 — a 7th category folds into "Other" via `foldTail`. Accent
+  presets deliberately do not touch these.
 - **Set the slice stroke inline, never in CSS.** `var()` is invalid in an SVG
   presentation attribute, and a CSS rule on `.chart__slice` overrides the
   attribute and paints every slice one color. This shipped once as an invisible
@@ -210,8 +210,9 @@ circumference is exactly 100, making a dash length a percentage).
 - **The legend always carries name, value and share.** Three series colors sit
   below 3:1 against white, so text is the required relief — identity must never
   be communicated by color alone.
-- **Two values is not a pie.** The who-paid split is a meter bar. A two-slice pie
-  is the canonical chart anti-pattern.
+- **Two values is not a pie.** The who-paid split is a meter bar, and its second
+  segment carries a hairline: the accent wash is 1.04:1 against the track, so
+  without it the bar reads as "one person paid everything".
 
 ### CSS
 
@@ -221,37 +222,55 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
 
 - **Light theme only.** There is no dark block and no `--success`/`--warning`:
   state is stated in words, and money direction is never encoded in hue.
-- **Use the tokens.** In particular, use `var(--transition-fast|base)` rather
-  than a hardcoded duration — the tokens collapse to ~0ms under
+- **An accent preset is three custom properties**, redefined under
+  `[data-accent]` in `tokens.css`. `--accent-ring` and `--accent-shadow` derive
+  from `--accent` with `color-mix`, so a preset never restates the accent's
+  channels. Every preset keeps white text ≥7.5:1 on the accent and ≥6.8:1 against
+  `--bg`; measured values sit next to the values. The selector is attribute-based
+  rather than `:root`-scoped so a settings swatch can paint its own colour.
+- **Use the tokens.** In particular use `var(--transition-fast|base)` rather than
+  a hardcoded duration — the tokens collapse to ~0ms under
   `prefers-reduced-motion`, so hardcoding silently opts out of that support.
 - **`letter-spacing: 0` and no `text-transform`, anywhere text can be Japanese.**
   Tracking inserts a gap between every kana (「このつき」 becomes 「こ の つ き」) and
   `uppercase` is a no-op on kana. The lone carve-out is `.balance__amount`, which
   renders digits exclusively.
 - **No line-height below 1.5** on anything that can hold Japanese; CJK glyphs
-  fill the em box. Same carve-out, same reason.
-- **Nothing below 13px**, and weights are `400|500|600|700` only — `550` is
-  unreliable outside SF Pro and Hiragino ships W3/W6 with nothing between.
+  fill the em box. `--lh-flat: 1` is the single carve-out, same element, same
+  reason. There is no `--lh-heading`: headings use `--lh-tight`, which *is* 1.5.
+- **Nothing below 13px**, `<code>` included — hence
+  `max(var(--fs-caption), 0.9375em)`, since every `<code>` in the app sits inside
+  caption-sized text. Weights are `400|500|600` only.
 - **Shadows appear in exactly four places** (sheet panel, toast, FAB, segmented
   thumb) and never on hover. Cards are a white plane plus one hairline; the
-  temperature step from `--bg` to `--surface` is the elevation.
+  temperature step from `--bg` to `--surface` is the elevation. The focus ring is
+  also drawn with `box-shadow`, which is a ring, not an elevation.
 - **`--line-input` is deliberately darker than `--line`.** WCAG 1.4.11 wants 3:1
   for the boundary identifying a control; `--line` on white is 1.34:1 and fails.
-  Do not "tidy" the two together.
+- **`--ink-3` may not sit on `--accent-wash` or `--sunken`** (4.46:1 and 4.30:1,
+  both under AA at 13px). Those two surfaces take `--ink-2`.
+- **`.btn--icon` is not combined with `.btn--ghost`.** They disagree about the
+  border, and the icon glyph at `--ink-2` is itself the 3:1 graphic.
 - **Never drop a form control below 16px.** Mobile Safari zooms on focus below
   that and will not zoom back out.
 - Mobile-first. One column, capped at `--column-max` from `48rem`, two columns at
-  `62rem`. Tap targets are at least `var(--tap-target)` (44px).
+  `62rem`; the sheet becomes a centred dialog at `48rem` too — there is no third
+  breakpoint. Tap targets are `var(--tap-target)` (44px), or
+  `var(--tap-target-sm)` (36px) for chips and the segmented thumb.
+- **Every layout keeps `--fab-size` of clearance below its content.** Dropping
+  that reservation in the two-column block once put the FAB on top of the last
+  expense row's amount and delete button.
 - Keep specificity flat: single class selectors, no IDs, no `!important`.
 
 ## Testing
 
-Specs live in `test/**/*.test.{js,jsx}`. Eight files: `money`, `currency`,
-`balance`, `schema`, `i18n`, `render`, `ui`, and `lockfile`.
+Specs live in `test/**/*.test.{js,jsx}`. Nine files: `money`, `currency`,
+`balance`, `schema`, `config`, `i18n`, `render`, `ui` and `lockfile`.
 
 `render.test.jsx` and `ui.test.jsx` render components to static markup with
 `renderToStaticMarkup` — no DOM, no browser. They catch components that throw on
-a real prop shape or silently drop data, which a build cannot.
+a real prop shape or silently drop data, which a build cannot. A focus trap or a
+`scrollIntoView` call cannot be tested this way; do not fake a DOM to try.
 
 When fixing a bug, add the regression test. When changing balance or money
 arithmetic, the test that matters most is the end-to-end one: a settlement of
@@ -259,49 +278,47 @@ exactly the outstanding balance must drive the net to zero, with odd-unit
 amounts so rounding is genuinely exercised.
 
 **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders
-the signed-in surface to static HTML in both locales with the real stylesheets:
+the signed-in surface to static HTML in both locales and every accent, with the
+real stylesheets:
 
 ```sh
-npx vite-node scripts/preview.jsx     # writes scripts/preview-{en,ja}.html
+npx vite-node scripts/preview.jsx     # writes scripts/preview-*.html (gitignored)
 ```
 
-Open those, or load them in `<iframe>`s at 390/768/1440 and screenshot — an
-iframe gets its own viewport, so media queries resolve honestly, which
-`--window-size` on headless Chrome does not reliably do. The whole suite passed
-green while the donut chart rendered white-on-white and invisible.
+Load those in `<iframe>`s at 320/390/430/768/1440 and screenshot. **Use iframes,
+not a resized window** — an iframe gets its own viewport so container and media
+queries resolve honestly, while headless Chrome quietly reports a different width
+than you asked for and every breakpoint reads wrong. The whole suite passed green
+while the donut chart rendered white-on-white and invisible.
 
 ## Gotchas
 
 - **Never run a bare `npm install` on a machine with a private registry.** This
   repo is developed where `NPM_CONFIG_REGISTRY` points at an internal Apple
-  mirror, and `npm install` bakes that host into all 149 `resolved` URLs in
+  mirror, and `npm install` bakes that host into every `resolved` URL in
   `package-lock.json`. The result works locally and fails everywhere else with
   `getaddrinfo ENOTFOUND`, which npm reports only as the useless "Exit handler
-  never called!". Always regenerate with an explicit override:
+  never called!". A repo `.npmrc` cannot prevent it — npm ranks env vars higher.
+  Always regenerate with an explicit override, which `test/lockfile.test.js`
+  then verifies:
 
   ```sh
   rm -rf node_modules package-lock.json
   npm install --registry=https://registry.npmjs.org
   ```
-
-  A repo `.npmrc` cannot prevent this — npm ranks env vars above project
-  `.npmrc`. `test/lockfile.test.js` fails the build if it happens again.
-- **Docker on this machine is not a valid stand-in for CI.** Containers inherit
-  the host's DNS, so internal Apple hosts resolve inside them. To reproduce a
-  GitHub runner, blackhole them:
-  `docker run --add-host npm.apple.com:127.0.0.1 --add-host artifacts.apple.com:127.0.0.1 …`
-- **`vite.config.js` hardcodes `base: '/verbose-octo-pancake/'`** to match the
-  repo name, because project Pages sites serve from `/<repo>/`. Renaming the
-  repo without updating this produces a blank page. Build with `VITE_BASE=/` for
-  a custom domain.
-- **`loadAll` returns `sheetIds` only if `ensureStructure` ran this session.**
-  `values.batchGet` cannot reveal sheet gids. `compact` needs a gid, so it falls
-  back to calling `ensureStructure` itself.
+- **`vite.config.js` defaults `base` to `/verbose-octo-pancake/`** to match the
+  repo name, because project Pages sites serve from `/<repo>/`. Renaming the repo
+  without updating it produces a blank page. Build with `VITE_BASE=/` for a
+  custom domain.
+- **`loadAll` returns `sheetIds` only if this session already read them.**
+  `values.batchGet` cannot reveal sheet gids; the cache is filled by
+  `readSheetIds`, which both `ensureStructure` and `readStructure` call. `compact`
+  needs a gid, so it falls back to calling `ensureStructure` itself.
 - **`drive.file` is a per-person, per-file grant.** Sharing the sheet in Google
   Sheets is not enough — each person must pick it through the Picker on their own
   device. This is the most common "it's broken for them" report.
 - **`getUserEmail()` fails soft, returning `null`.** It needs `openid` and
   `userinfo.email` on the consent screen; with `drive.file` alone the endpoint
-  401s. Since a mismatched consent screen is always possible, identity still falls
-  back to a manual choice in `localStorage`. Treat the manual path as
+  401s. Since a mismatched consent screen is always possible, identity still
+  falls back to a manual choice in `localStorage`. Treat the manual path as
   first-class, not an error case.

@@ -121,7 +121,9 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
           {mode === 'edit' && (
             <button
               type="button"
-              className="btn btn--ghost btn--icon"
+              /* push-end shoves the destructive action to the far left of the
+                 right-aligned footer, away from Save. */
+              className="btn btn--icon push-end"
               onClick={() => {
                 onDelete(entry)
                 onClose()
@@ -226,6 +228,12 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                 className="input"
                 type="text"
                 autoComplete="off"
+                /* Shop names are exactly what iOS mangles: "Ozeki" capitalised
+                   and autocorrected into an English word it recognises. */
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck="false"
+                enterKeyHint="done"
                 placeholder={t('form.notePlaceholder')}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -327,6 +335,11 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                       max="100"
                       step="5"
                       value={sharePercent}
+                      /* A range announces a bare "70"; say whose share it is. */
+                      aria-valuetext={t('form.splitValue', {
+                        name: payerLabel,
+                        percent: sharePercent,
+                      })}
                       onChange={(event) => setSharePercent(Number(event.target.value))}
                     />
                     <output>{t('summary.share', { percent: sharePercent })}</output>
@@ -334,7 +347,14 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                 </div>
               )}
 
-              {breakdown && <p className="field__hint">{breakdown}</p>}
+              {/* The numbers change on every slider step, so they have to be
+                  spoken; the region exists from the first keystroke in the
+                  amount field, well before the split is ever adjusted. */}
+              {breakdown && (
+                <p className="field__hint" role="status">
+                  {breakdown}
+                </p>
+              )}
             </div>
           </>
         )}

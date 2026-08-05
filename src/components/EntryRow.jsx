@@ -65,7 +65,7 @@ export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
 
       <button
         type="button"
-        className="btn btn--icon btn--ghost entry__delete"
+        className="btn btn--icon entry__delete"
         onClick={() => onDelete(entry)}
         aria-label={
           isSettlement

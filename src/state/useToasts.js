@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const DEFAULT_DURATION = 4000
 const UNDO_DURATION = 7000
@@ -38,6 +38,17 @@ export function useToasts() {
     (message) => push({ message, tone: 'error', duration: ERROR_DURATION }),
     [push],
   )
+
+  // A toast outlives its ttl on sign-out: the timeout fires against an unmounted
+  // component and setState warns. Read the ref once, per the exhaustive-deps
+  // rule about touching `.current` in a cleanup.
+  useEffect(() => {
+    const pending = timers.current
+    return () => {
+      for (const timer of pending.values()) clearTimeout(timer)
+      pending.clear()
+    }
+  }, [])
 
   return { toasts, push, error, dismiss }
 }

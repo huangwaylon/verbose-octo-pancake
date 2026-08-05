@@ -107,6 +107,9 @@ export default {
   'form.splitAll': 'All {name}',
   'form.splitHalf': 'Half',
   'form.splitShare': '{name}’s share',
+  // The slider's spoken value. A range otherwise announces a bare "70", which
+  // says nothing about whose share it is.
+  'form.splitValue': '{name}’s share, {percent}%',
   'form.breakdown': '{payer}: {payerAmount} · {other}: {otherAmount}',
   'form.deleteEntry': 'Delete this entry',
   'form.saveError': 'Could not save that.',
@@ -117,6 +120,15 @@ export default {
   'settings.youAreHint': 'Only changes how this device labels things.',
   'settings.language': 'Language',
   'settings.languageHint': 'Stored on this device. The sheet is unaffected.',
+  'settings.accent': 'Accent',
+  'settings.accentHint': 'Stored on this device, like the language.',
+  // The five presets, named after the traditional dye colours they are taken
+  // from. Latin names in English, the kanji names in Japanese.
+  'accent.indigo': 'Indigo',
+  'accent.pine': 'Pine',
+  'accent.teal': 'Teal',
+  'accent.plum': 'Plum',
+  'accent.sepia': 'Sepia',
   'settings.sheet': 'Sheet',
   'settings.openSheet': 'Open in Google Sheets',
   'settings.switchSheet': 'Switch sheet',

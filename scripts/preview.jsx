@@ -1,7 +1,11 @@
 /**
- * Throwaway visual harness: renders the signed-in app surface to a static HTML
- * file with the real stylesheets, so it can be screenshotted at phone and
- * desktop widths. Not part of the build or the test suite.
+ * Visual harness: renders the signed-in app surface to static HTML with the real
+ * stylesheets, so it can be screenshotted at phone and desktop widths. A green
+ * test suite says nothing about whether the page looks right — the donut chart
+ * once shipped white-on-white with every test passing.
+ *
+ * One file per locale, and each carries every accent preset as a query-free
+ * variant so a color change can be eyeballed across all five.
  *
  *   npx vite-node scripts/preview.jsx
  */
@@ -9,8 +13,9 @@ import { writeFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { DEFAULT_CONFIG } from '../src/config.js'
-import { setLocale } from '../src/i18n/index.js'
+import { setLocale, t } from '../src/i18n/index.js'
 import { ENTRY_TYPE, EVEN_SHARE, PERSON, makeEntry } from '../src/schema.js'
+import { ACCENTS } from '../src/lib/theme.js'
 import {
   computeBalance,
   groupByDate,
@@ -62,7 +67,6 @@ const entries = raw.map(([id, date, payer, amountCents, category, description, p
 
 function body() {
   const balance = computeBalance(entries)
-  const monthEntries = entries
   const noop = () => {}
 
   return renderToStaticMarkup(
@@ -78,9 +82,9 @@ function body() {
             onSettle={noop}
           />
           <SummaryCard
-            monthSpend={totalSpend(monthEntries)}
-            byCategory={spendByCategory(monthEntries)}
-            byPerson={spendByPerson(monthEntries)}
+            monthSpend={totalSpend(entries)}
+            byCategory={spendByCategory(entries)}
+            byPerson={spendByPerson(entries)}
             config={config}
             me={PERSON.P1}
             currency="JPY"
@@ -89,7 +93,7 @@ function body() {
         <section className="layout__main">
           <MonthNav monthKey="2026-08" onChange={noop} />
           <EntryList
-            groups={groupByDate(monthEntries)}
+            groups={groupByDate(entries)}
             config={config}
             me={PERSON.P1}
             currency="JPY"
@@ -100,16 +104,16 @@ function body() {
           />
         </section>
       </main>
-      <button type="button" className="fab" aria-label="Add">
+      <button type="button" className="fab" aria-label={t('list.emptyAction')}>
         <PlusIcon width={24} height={24} />
       </button>
     </div>,
   )
 }
 
-function page(markup, lang) {
+function page(markup, lang, accent) {
   return `<!doctype html>
-<html lang="${lang}">
+<html lang="${lang}"${accent === ACCENTS[0] ? '' : ` data-accent="${accent}"`}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -123,7 +127,18 @@ function page(markup, lang) {
 </html>`
 }
 
-writeFileSync(new URL('./preview-en.html', import.meta.url), page(body(), 'en'))
-setLocale('ja')
-writeFileSync(new URL('./preview-ja.html', import.meta.url), page(body(), 'ja'))
-console.log('wrote scripts/preview-en.html and scripts/preview-ja.html')
+const written = []
+for (const [locale, accents] of [
+  // Every accent in English, since the palette is what is being checked; the
+  // Japanese pass is about wrapping and line height, so one accent is enough.
+  ['en', ACCENTS],
+  ['ja', [ACCENTS[0]]],
+]) {
+  setLocale(locale)
+  for (const accent of accents) {
+    const name = accent === ACCENTS[0] ? `preview-${locale}.html` : `preview-${locale}-${accent}.html`
+    writeFileSync(new URL(`./${name}`, import.meta.url), page(body(), locale, accent))
+    written.push(`scripts/${name}`)
+  }
+}
+console.log(`wrote ${written.join(', ')}`)

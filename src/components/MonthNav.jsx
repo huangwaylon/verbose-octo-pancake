@@ -10,7 +10,7 @@ export function MonthNav({ monthKey, onChange }) {
     <div className="month-nav">
       <button
         type="button"
-        className="btn btn--icon btn--ghost"
+        className="btn btn--icon"
         onClick={() => onChange(shiftMonth(monthKey, -1))}
         aria-label={t('month.previous')}
       >
@@ -19,7 +19,7 @@ export function MonthNav({ monthKey, onChange }) {
       <span className="month-nav__label">{monthLabel(monthKey, { locale })}</span>
       <button
         type="button"
-        className="btn btn--icon btn--ghost"
+        className="btn btn--icon"
         onClick={() => onChange(shiftMonth(monthKey, 1))}
         disabled={atCurrent}
         aria-label={t('month.next')}
