@@ -10,14 +10,15 @@ import { DEFAULT_CONFIG } from '../config.js'
 import {
   CONFIG_RANGE,
   CONFIG_TAB,
-  EXPENSES_DATA_RANGE,
-  EXPENSES_HEADER_RANGE,
-  EXPENSES_TAB,
   EXPENSE_COLUMNS,
   FIRST_DATA_ROW,
+  PERSON,
   cellRange,
   columnLetter,
   entryToRow,
+  expensesDataRange,
+  expensesHeaderRange,
+  expensesTab,
   rowRange,
   rowToEntry,
 } from '../schema.js'
@@ -27,7 +28,11 @@ const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
 const RAW = 'RAW'
 
 const ID_COLUMN = columnLetter('id')
-const ID_COLUMN_RANGE = `${EXPENSES_TAB}!${ID_COLUMN}${FIRST_DATA_ROW}:${ID_COLUMN}`
+const DELETED_AT_INDEX = EXPENSE_COLUMNS.indexOf('deleted_at')
+
+function idColumnRange(person) {
+  return `${expensesTab(person)}!${ID_COLUMN}${FIRST_DATA_ROW}:${ID_COLUMN}`
+}
 
 /**
  * Sheet key <-> config field, plus how to read the value. One list so the two
@@ -226,23 +231,27 @@ function configToRows() {
  * @returns {Promise<{entries: object[], config: object, sheetIds: Record<string, number>}>}
  */
 export async function loadAll(spreadsheetId) {
+  const ranges = [expensesDataRange(PERSON.P1), expensesDataRange(PERSON.P2), CONFIG_RANGE]
   let valueRanges
   let hasConfigRange = true
 
   try {
-    const data = await batchGetValues(spreadsheetId, [EXPENSES_DATA_RANGE, CONFIG_RANGE])
+    const data = await batchGetValues(spreadsheetId, ranges)
     valueRanges = data.valueRanges ?? []
   } catch (error) {
     // A missing config tab makes the API reject the whole batch, so retry
     // without it and fall back to the defaults.
     if (error.status !== 400 && error.status !== 404) throw error
-    const data = await batchGetValues(spreadsheetId, [EXPENSES_DATA_RANGE])
+    const data = await batchGetValues(spreadsheetId, ranges.slice(0, 2))
     valueRanges = data.valueRanges ?? []
     hasConfigRange = false
   }
 
-  const entries = (valueRanges[0]?.values ?? []).map(rowToEntry).filter(Boolean)
-  const configRows = hasConfigRange ? (valueRanges[1]?.values ?? []) : []
+  const entries = [
+    ...(valueRanges[0]?.values ?? []).map((row, index) => rowToEntry(row, index, PERSON.P1)),
+    ...(valueRanges[1]?.values ?? []).map((row, index) => rowToEntry(row, index, PERSON.P2)),
+  ].filter(Boolean)
+  const configRows = hasConfigRange ? (valueRanges[2]?.values ?? []) : []
 
   const config = {
     ...DEFAULT_CONFIG,
@@ -257,39 +266,41 @@ export async function loadAll(spreadsheetId) {
 
 /** @returns {Promise<{rowNumber: number|null}>} rowNumber of the appended row */
 export async function appendEntry(spreadsheetId, entry) {
-  const data = await request(`/${encodePath(spreadsheetId)}/values/${encodePath(EXPENSES_TAB)}:append`, {
-    method: 'POST',
-    params: { valueInputOption: RAW, insertDataOption: 'INSERT_ROWS' },
-    body: { values: [entryToRow(entry)] },
-  })
+  const data = await request(
+    `/${encodePath(spreadsheetId)}/values/${encodePath(expensesTab(entry.payer))}:append`,
+    {
+      method: 'POST',
+      params: { valueInputOption: RAW, insertDataOption: 'INSERT_ROWS' },
+      body: { values: [entryToRow(entry)] },
+    },
+  )
 
   const match = /![A-Z]+(\d+)/.exec(data.updates?.updatedRange ?? '')
   return { rowNumber: match ? Number(match[1]) : null }
 }
 
-async function readIdColumn(spreadsheetId) {
-  const data = await request(`/${encodePath(spreadsheetId)}/values/${encodePath(ID_COLUMN_RANGE)}`, {
+async function readIdColumn(spreadsheetId, person) {
+  const data = await request(`/${encodePath(spreadsheetId)}/values/${encodePath(idColumnRange(person))}`, {
     params: { majorDimension: 'ROWS' },
   })
   return data.values ?? []
 }
 
 /**
- * Locate an entry's current row by re-reading the id column.
+ * Locate an entry's current row within one person's tab by re-reading its id
+ * column. Row numbers cannot be cached: editing the sheet directly in the
+ * Sheets UI (inserting or deleting rows) shifts every row below the edit.
  *
- * Row numbers cannot be cached: editing the sheet directly in the Sheets UI
- * (inserting or deleting rows) shifts every row below the edit.
- *
- * @returns {Promise<number|null>} null when the id is no longer in the sheet
+ * @returns {Promise<number|null>} null when the id is no longer in that tab
  */
-export async function findRowNumber(spreadsheetId, id) {
-  const rows = await readIdColumn(spreadsheetId)
+export async function findRowNumber(spreadsheetId, person, id) {
+  const rows = await readIdColumn(spreadsheetId, person)
   const index = rows.findIndex((row) => cellText(row, 0) === id)
   return index < 0 ? null : FIRST_DATA_ROW + index
 }
 
-async function resolveRow(spreadsheetId, id) {
-  const rowNumber = await findRowNumber(spreadsheetId, id)
+async function resolveRow(spreadsheetId, person, id) {
+  const rowNumber = await findRowNumber(spreadsheetId, person, id)
   if (rowNumber == null) {
     throw new Error(`That entry is no longer in the sheet (id ${id}). Reload to see the latest data.`)
   }
@@ -303,53 +314,75 @@ async function resolveRow(spreadsheetId, id) {
  * because any row number held by the UI may be stale — someone editing the
  * sheet directly moves rows around, and writing to a stale row would silently
  * overwrite a different expense.
+ *
+ * If the payer changed, the row must move tabs — the payer is which tab it
+ * lives in, not a cell that can just be overwritten. `previousPayer` says
+ * where to find the existing row; `entry.payer` says where it belongs now.
+ * The old row is tombstoned rather than removed outright, consistent with
+ * every other delete in this app, and only after the new one is appended
+ * successfully — so a failure between the two steps leaves the entry still
+ * visible under its old payer instead of silently gone.
  */
-export async function updateEntry(spreadsheetId, entry) {
-  const rowNumber = await resolveRow(spreadsheetId, entry.id)
-  await updateValues(spreadsheetId, rowRange(rowNumber), [entryToRow(entry)])
+export async function updateEntry(spreadsheetId, entry, previousPayer) {
+  if (previousPayer !== entry.payer) {
+    await appendEntry(spreadsheetId, entry)
+    const oldRowNumber = await resolveRow(spreadsheetId, previousPayer, entry.id)
+    await updateValues(spreadsheetId, cellRange(previousPayer, oldRowNumber, 'deleted_at'), [
+      [entry.updatedAt],
+    ])
+    return
+  }
+  const rowNumber = await resolveRow(spreadsheetId, entry.payer, entry.id)
+  await updateValues(spreadsheetId, rowRange(entry.payer, rowNumber), [entryToRow(entry)])
 }
 
 /** Tombstone an entry by stamping deleted_at; the row itself stays put. */
-export async function softDeleteEntry(spreadsheetId, id, deletedAtIso = new Date().toISOString()) {
-  const rowNumber = await resolveRow(spreadsheetId, id)
-  await updateValues(spreadsheetId, cellRange(rowNumber, 'deleted_at'), [[deletedAtIso]])
+export async function softDeleteEntry(spreadsheetId, person, id, deletedAtIso = new Date().toISOString()) {
+  const rowNumber = await resolveRow(spreadsheetId, person, id)
+  await updateValues(spreadsheetId, cellRange(person, rowNumber, 'deleted_at'), [[deletedAtIso]])
 }
 
 /** Undo a soft delete by blanking the same cell. */
-export async function restoreEntry(spreadsheetId, id) {
-  const rowNumber = await resolveRow(spreadsheetId, id)
-  await updateValues(spreadsheetId, cellRange(rowNumber, 'deleted_at'), [['']])
+export async function restoreEntry(spreadsheetId, person, id) {
+  const rowNumber = await resolveRow(spreadsheetId, person, id)
+  await updateValues(spreadsheetId, cellRange(person, rowNumber, 'deleted_at'), [['']])
 }
 
 /**
- * Permanently remove tombstoned rows.
+ * Permanently remove every tombstoned row from both people's tabs.
  *
- * @param {number}   sheetGid numeric sheetId of the expenses tab (see ensureStructure)
- * @param {string[]} ids      entry ids to hard-delete
+ * Reads each tab's own deleted_at column directly rather than trusting a
+ * caller-supplied id list, because an id is no longer a unique lookup key on
+ * its own once an edited entry can have left a tombstone behind in one tab
+ * while the live row sits in the other.
+ *
+ * @param {Record<string, number>} sheetGids expensesTab(person) -> numeric sheetId
  * @returns {Promise<{removed: number}>}
  */
-export async function compact(spreadsheetId, sheetGid, ids) {
-  const wanted = new Set(ids)
-  if (wanted.size === 0) return { removed: 0 }
+export async function compact(spreadsheetId, sheetGids) {
+  const requests = []
 
-  // All row numbers come from ONE fresh read, so they are consistent with each
-  // other before any deletion happens.
-  const rows = await readIdColumn(spreadsheetId)
-  const rowNumbers = []
-  rows.forEach((row, index) => {
-    if (wanted.has(cellText(row, 0))) rowNumbers.push(FIRST_DATA_ROW + index)
-  })
-  if (rowNumbers.length === 0) return { removed: 0 }
+  for (const person of [PERSON.P1, PERSON.P2]) {
+    const sheetGid = sheetGids[expensesTab(person)]
+    if (sheetGid == null) continue
 
-  // CRITICAL: delete from the bottom up. deleteDimension shifts every row
-  // below it, so ascending order would make each request after the first
-  // target the wrong row. Descending order keeps the earlier indices valid.
-  rowNumbers.sort((a, b) => b - a)
+    const data = await request(
+      `/${encodePath(spreadsheetId)}/values/${encodePath(expensesDataRange(person))}`,
+      { params: { majorDimension: 'ROWS' } },
+    )
+    const rows = data.values ?? []
+    const rowNumbers = []
+    rows.forEach((row, index) => {
+      if (cellText(row, DELETED_AT_INDEX)) rowNumbers.push(FIRST_DATA_ROW + index)
+    })
+    if (rowNumbers.length === 0) continue
 
-  await request(`/${encodePath(spreadsheetId)}:batchUpdate`, {
-    method: 'POST',
-    body: {
-      requests: rowNumbers.map((rowNumber) => ({
+    // CRITICAL: delete from the bottom up within each tab. deleteDimension
+    // shifts every row below it, so ascending order would make each request
+    // after the first target the wrong row.
+    rowNumbers.sort((a, b) => b - a)
+    for (const rowNumber of rowNumbers) {
+      requests.push({
         deleteDimension: {
           range: {
             sheetId: sheetGid,
@@ -359,11 +392,18 @@ export async function compact(spreadsheetId, sheetGid, ids) {
             endIndex: rowNumber,
           },
         },
-      })),
-    },
+      })
+    }
+  }
+
+  if (requests.length === 0) return { removed: 0 }
+
+  await request(`/${encodePath(spreadsheetId)}:batchUpdate`, {
+    method: 'POST',
+    body: { requests },
   })
 
-  return { removed: rowNumbers.length }
+  return { removed: requests.length }
 }
 
 async function readSheetIds(spreadsheetId) {
@@ -385,7 +425,7 @@ async function readSheetIds(spreadsheetId) {
  *
  * This is the guard in front of `ensureStructure`. Picking a file in the Google
  * Picker is one tap and the list is every spreadsheet you own, so picking the
- * wrong one is easy — and `ensureStructure` would then add two tabs to somebody's
+ * wrong one is easy — and `ensureStructure` would then add tabs to somebody's
  * unrelated spreadsheet. Callers on the picker path must check this first and
  * refuse rather than adopt a file that was never a ledger.
  *
@@ -394,7 +434,7 @@ async function readSheetIds(spreadsheetId) {
  */
 export async function readStructure(spreadsheetId) {
   const sheetIds = await readSheetIds(spreadsheetId)
-  const hasExpenses = EXPENSES_TAB in sheetIds
+  const hasExpenses = expensesTab(PERSON.P1) in sheetIds && expensesTab(PERSON.P2) in sheetIds
   const hasConfig = CONFIG_TAB in sheetIds
   return { sheetIds, hasExpenses, hasConfig, isLedger: hasExpenses && hasConfig }
 }
@@ -402,7 +442,7 @@ export async function readStructure(spreadsheetId) {
 /**
  * Bring a blank or newly created spreadsheet up to the schema.
  *
- * Idempotent: existing tabs are left alone, the header row is only rewritten
+ * Idempotent: existing tabs are left alone, a header row is only rewritten
  * when it does not already match EXPENSE_COLUMNS, a config tab that already has
  * any values is never reseeded, and expense data rows are never touched.
  *
@@ -412,7 +452,8 @@ export async function readStructure(spreadsheetId) {
  */
 export async function ensureStructure(spreadsheetId) {
   let sheetIds = await readSheetIds(spreadsheetId)
-  const created = [EXPENSES_TAB, CONFIG_TAB].filter((title) => !(title in sheetIds))
+  const wantedTabs = [expensesTab(PERSON.P1), expensesTab(PERSON.P2), CONFIG_TAB]
+  const created = wantedTabs.filter((title) => !(title in sheetIds))
 
   if (created.length > 0) {
     await request(`/${encodePath(spreadsheetId)}:batchUpdate`, {
@@ -422,18 +463,26 @@ export async function ensureStructure(spreadsheetId) {
     sheetIds = await readSheetIds(spreadsheetId)
   }
 
-  const { valueRanges = [] } = await batchGetValues(spreadsheetId, [EXPENSES_HEADER_RANGE, CONFIG_RANGE])
-  const headerRow = valueRanges[0]?.values?.[0] ?? []
-  const configRows = valueRanges[1]?.values ?? []
-
-  const headerMatches =
-    headerRow.length === EXPENSE_COLUMNS.length &&
-    EXPENSE_COLUMNS.every((column, index) => cellText(headerRow, index) === column)
+  const { valueRanges = [] } = await batchGetValues(spreadsheetId, [
+    expensesHeaderRange(PERSON.P1),
+    expensesHeaderRange(PERSON.P2),
+    CONFIG_RANGE,
+  ])
+  const configRows = valueRanges[2]?.values ?? []
 
   const data = []
-  if (!headerMatches) {
-    data.push({ range: EXPENSES_HEADER_RANGE, values: [EXPENSE_COLUMNS] })
+  for (const [person, headerRow] of [
+    [PERSON.P1, valueRanges[0]?.values?.[0] ?? []],
+    [PERSON.P2, valueRanges[1]?.values?.[0] ?? []],
+  ]) {
+    const headerMatches =
+      headerRow.length === EXPENSE_COLUMNS.length &&
+      EXPENSE_COLUMNS.every((column, index) => cellText(headerRow, index) === column)
+    if (!headerMatches) {
+      data.push({ range: expensesHeaderRange(person), values: [EXPENSE_COLUMNS] })
+    }
   }
+
   const configIsEmpty = configRows.every((row) => (row ?? []).every((cell) => text(cell) === ''))
   if (configIsEmpty) {
     data.push({ range: `${CONFIG_TAB}!A1`, values: [['key', 'value'], ...configToRows()] })

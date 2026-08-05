@@ -33,6 +33,10 @@ export default {
   'header.refresh': 'Refresh from the sheet',
   'header.settings': 'Settings',
 
+  // --- auth -------------------------------------------------------------
+  'auth.expiredBanner': 'Your Google session timed out.',
+  'auth.reconnect': 'Reconnect',
+
   'month.previous': 'Previous month',
   'month.next': 'Next month',
 
@@ -168,7 +172,7 @@ export default {
   'error.prepareSheet': 'Could not prepare the sheet.',
   'error.signIn': 'Sign-in failed.',
   'error.notALedger':
-    'That spreadsheet has no {expenses} or {config} tab, so it is not a Shared Finances ledger and this app will not modify it. Pick a different sheet, or use "Create a new sheet".',
+    'That spreadsheet has no {expensesP1}, {expensesP2}, or {config} tab, so it is not a Shared Finances ledger and this app will not modify it. Pick a different sheet, or use "Create a new sheet".',
   'error.sessionExpired': 'Your Google session ended. Sign in again to pick up where you left off.',
   'error.missingId': 'Missing id.',
   'error.badDate': 'Date must be a real day, as YYYY-MM-DD.',

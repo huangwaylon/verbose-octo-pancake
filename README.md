@@ -57,7 +57,8 @@ around that last point rather than pretending otherwise.
   │  (static hosting, │      │                              │
   │   built by CI)    │      │   ┌──────────────────────┐   │
   └───────────────────┘      │   │  ONE spreadsheet     │   │
-                             │   │   ├─ expenses tab    │   │
+                             │   │   ├─ expenses_p1 tab │   │
+                             │   │   ├─ expenses_p2 tab │   │
                              │   │   └─ config tab      │   │
                              │   └──────────────────────┘   │
                              └──────────────────────────────┘
@@ -72,26 +73,31 @@ sees your data, and it never sees a token.
 
 ## Data model
 
-One spreadsheet, two tabs.
+One spreadsheet, three tabs.
 
-### `expenses` tab
+### `expenses_p1` / `expenses_p2` tabs
 
-Row 1 is the header. Data starts at row 2. Columns, in order:
+Each person has their own expenses tab. Which tab a row lives in *is* the
+payer — there is no `payer` column, so a row can never disagree with its own
+tab. Row 1 is the header. Data starts at row 2. Columns, in order:
 
 | Col | Field | Example | Notes |
 | --- | --- | --- | --- |
 | A | `id` | `9f1c…` | UUID generated in the browser |
 | B | `type` | `expense` | `expense` or `settlement` |
 | C | `date` | `2026-08-05` | ISO `YYYY-MM-DD`, validated as a real calendar day — `2026-02-31` is treated as unset |
-| D | `payer` | `p1` | `p1` or `p2`, resolved to names via the `config` tab |
-| E | `amount` | `1250` | Plain decimal string at the row's own currency scale — `1250` for ¥1250, `42.50` for $42.50. Parsed to integer minor units in the app |
-| F | `currency` | `JPY` | Decoded **before** the amount: `1250` means ¥1250 or $12.50 depending on this cell. A blank cell means `USD`, which is what migrates older sheets |
-| G | `category` | `Groceries` | Must be non-empty for an `expense` |
-| H | `description` | `weekly shop` | Free text, always stored literally |
-| I | `payer_share` | `0.5` | Fraction of this entry the payer owes themselves |
-| J | `created_at` | `2026-08-05T18:02:11.004Z` | ISO timestamp |
-| K | `updated_at` | `2026-08-05T18:02:11.004Z` | ISO timestamp |
-| L | `deleted_at` | *(empty)* | Set to a timestamp to soft-delete |
+| D | `amount` | `1250` | Plain decimal string at the row's own currency scale — `1250` for ¥1250, `42.50` for $42.50. Parsed to integer minor units in the app |
+| E | `currency` | `JPY` | Decoded **before** the amount: `1250` means ¥1250 or $12.50 depending on this cell. A blank cell means `USD`, which is what migrates older sheets |
+| F | `category` | `Groceries` | Must be non-empty for an `expense` |
+| G | `description` | `weekly shop` | Free text, always stored literally |
+| H | `payer_share` | `0.5` | Fraction of this entry the payer owes themselves |
+| I | `created_at` | `2026-08-05T18:02:11.004Z` | ISO timestamp |
+| J | `updated_at` | `2026-08-05T18:02:11.004Z` | ISO timestamp |
+| K | `deleted_at` | *(empty)* | Set to a timestamp to soft-delete |
+
+Editing an entry to change who paid moves the row: the app appends it to the
+other person's tab and tombstones the original, rather than trying to
+overwrite a payer that no longer exists as a cell.
 
 ### `config` tab
 
@@ -225,8 +231,8 @@ currency.
   all live in the sheet's `config` tab, so changing them needs no redeploy.
 - **Refuses to touch a spreadsheet that is not already a ledger.** The picker
   lists every spreadsheet you own and choosing one is a single tap, so the app
-  checks for the `expenses` and `config` tabs before writing anything and declines
-  rather than adding tabs to an unrelated file.
+  checks for the `expenses_p1`, `expenses_p2`, and `config` tabs before writing
+  anything and declines rather than adding tabs to an unrelated file.
 - Google sign-in with narrow, non-sensitive scopes. No app accounts, no
   passwords.
 - Built for a phone and usable on a monitor: one column that becomes two at

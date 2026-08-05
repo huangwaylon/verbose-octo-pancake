@@ -18,6 +18,26 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233d4e8b'/%3E%3Cpath d='M10 9l6 7 6-7' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M10.5 17.5h11M10.5 21h11M16 16v7' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E"
     />
     <!--
+      Home Screen install (iOS Safari 26+): Share -> Add to Home Screen. No
+      service worker — iOS needs none for installability, and one would only
+      add cache-invalidation risk on deploy that this static site has avoided
+      so far. `apple-touch-icon` (not the SVG favicon) is what iOS actually
+      uses for the home screen tile and splash flash; PNGs live in `public/`.
+    -->
+    <!-- Plain absolute paths, like the script tag below: Vite's dev server
+         prepends `base` to a leading-slash href exactly once. %BASE_URL%
+         already resolves to the base itself, so using it here would double
+         it (`/verbose-octo-pancake/verbose-octo-pancake/...`) in dev. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-180.png" />
+    <!-- Safari still only recognizes the apple- prefixed tag; the unprefixed
+         one is the standards-track name Chromium now asks for instead.
+         Harmless to ship both. -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Finances" />
+    <!--
       Locked down to what the app actually needs: Google's auth, API, and
       Picker hosts. No third-party CDNs, no inline script beyond the bundle.
       The Picker is the reason docs.google.com/drive.google.com appear under

@@ -31,7 +31,17 @@ throw — it quietly writes the wrong thing to someone's spreadsheet.
 
 **`src/schema.js` is the only file that knows the sheet layout.** Column names,
 order, ranges, and row↔entry mapping live there and nowhere else. Never hardcode
-a range like `'expenses!A2:L'` or a column index in another file.
+a range like `'expenses_p1!A2:K'` or a column index in another file.
+
+**Each person has their own expenses tab (`expenses_p1`, `expenses_p2`).**
+Which tab a row lives in *is* the payer, so there is no `payer` column to keep
+in sync — `rowToEntry` takes the person as an explicit argument instead of
+reading it from a cell. Every function that touches expense rows
+(`appendEntry`, `findRowNumber`, `updateEntry`, `softDeleteEntry`,
+`restoreEntry`, `compact`) is keyed on a person for the same reason. Editing an
+entry to change who paid must move the row to the other person's tab —
+`updateEntry` does this by appending to the new tab and tombstoning the old
+row, never by overwriting a `payer` cell that no longer exists.
 
 **Every write uses `valueInputOption: RAW`.** Never `USER_ENTERED`. A note of
 `=SUM(A:A)` must be stored as literal text, and dates must not be reformatted to
@@ -39,13 +49,14 @@ the sheet's locale.
 
 **Never trust a cached `rowNumber`.** Row positions shift whenever anyone edits
 the sheet directly in the Sheets UI. `updateEntry` and `softDeleteEntry` must
-re-resolve id → row via `findRowNumber` immediately before writing. The
-`rowNumber` on an entry is advisory only.
+re-resolve id → row via `findRowNumber`, scoped to the right person's tab,
+immediately before writing. The `rowNumber` on an entry is advisory only.
 
 **Deletes are soft.** Write a `deleted_at` timestamp and filter client-side, so
-rows never change position. `compact()` is the only hard delete; it must issue
-its `deleteDimension` requests in **descending** row order, or earlier deletions
-shift the indices of later ones.
+rows never change position. `compact()` is the only hard delete; it reads each
+person's tab independently and must issue its `deleteDimension` requests in
+**descending** row order within each tab, or earlier deletions shift the
+indices of later ones.
 
 **Money is integer minor units.** One integer per amount, in that currency's
 smallest unit — cents for USD, **whole yen for JPY**, fils for KWD.
@@ -110,11 +121,12 @@ the app from a sub-path and the Picker otherwise infers the wrong origin. Omitti
 either produces an opaque "invalid API key". Both live in `src/lib/picker.js`.
 
 **Only `createSheet` may build structure; the picker path must never write.**
-`ensureStructure` adds the `expenses` and `config` tabs, so calling it on an
-arbitrary picked file scribbles two tabs into somebody's unrelated spreadsheet —
-not something undo can reach. `chooseSheet` therefore calls the read-only
-`readStructure` first and refuses anything where `isLedger` is false. If you add
-another path that adopts an existing spreadsheet, it needs the same guard.
+`ensureStructure` adds the `expenses_p1`, `expenses_p2`, and `config` tabs, so
+calling it on an arbitrary picked file scribbles three tabs into somebody's
+unrelated spreadsheet — not something undo can reach. `chooseSheet` therefore
+calls the read-only `readStructure` first and refuses anything where `isLedger`
+is false. If you add another path that adopts an existing spreadsheet, it needs
+the same guard.
 
 **Config values are not all strings.** `CONFIG_FIELDS` in `src/lib/sheets.js`
 carries a kind per key — `text`, `list`, or `fraction` — and `parseConfigRows`

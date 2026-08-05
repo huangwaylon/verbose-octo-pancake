@@ -30,6 +30,10 @@ export default {
   'header.refresh': 'シートから再読み込み',
   'header.settings': '設定',
 
+  // --- auth -------------------------------------------------------------
+  'auth.expiredBanner': 'Google のセッションがタイムアウトしました。',
+  'auth.reconnect': '再接続',
+
   'month.previous': '前の月',
   'month.next': '次の月',
 
@@ -161,7 +165,7 @@ export default {
   'error.prepareSheet': 'シートを準備できませんでした。',
   'error.signIn': 'ログインできませんでした。',
   'error.notALedger':
-    'このスプレッドシートには{expenses}タブも{config}タブもないため、家計シェアのシートではないと判断し、変更しません。別のシートを選ぶか、「新しいシートを作る」を使ってください。',
+    'このスプレッドシートには{expensesP1}タブも{expensesP2}タブも{config}タブもないため、家計シェアのシートではないと判断し、変更しません。別のシートを選ぶか、「新しいシートを作る」を使ってください。',
   'error.sessionExpired': 'Google のセッションが終了しました。もう一度ログインすると、続きから再開できます。',
   'error.missingId': 'ID がありません。',
   'error.badDate': '日付は YYYY-MM-DD 形式の実在する日を入力してください。',

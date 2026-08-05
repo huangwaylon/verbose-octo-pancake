@@ -10,14 +10,30 @@
 
 import { centsToSheetString, parseAmountToCents } from './lib/money.js'
 
-export const EXPENSES_TAB = 'expenses'
+export const PERSON = {
+  P1: 'p1',
+  P2: 'p2',
+}
+
+export function otherPerson(person) {
+  return person === PERSON.P1 ? PERSON.P2 : PERSON.P1
+}
+
 export const CONFIG_TAB = 'config'
+
+/**
+ * One expenses tab per person rather than a shared tab with a `payer` column.
+ * Which tab a row lives in is itself the payer, so there is nothing to keep in
+ * sync and no way for a row to disagree with its own tab.
+ */
+export function expensesTab(person) {
+  return person === PERSON.P2 ? 'expenses_p2' : 'expenses_p1'
+}
 
 export const EXPENSE_COLUMNS = [
   'id',
   'type',
   'date',
-  'payer',
   'amount',
   'currency',
   'category',
@@ -31,22 +47,21 @@ export const EXPENSE_COLUMNS = [
 /** Sheet rows are 1-indexed and row 1 is the header, so data starts at 2. */
 export const FIRST_DATA_ROW = 2
 
-export const EXPENSES_HEADER_RANGE = `${EXPENSES_TAB}!A1:L1`
-export const EXPENSES_DATA_RANGE = `${EXPENSES_TAB}!A${FIRST_DATA_ROW}:L`
+const LAST_COLUMN = String.fromCharCode(64 + EXPENSE_COLUMNS.length)
+
+export function expensesHeaderRange(person) {
+  return `${expensesTab(person)}!A1:${LAST_COLUMN}1`
+}
+
+export function expensesDataRange(person) {
+  return `${expensesTab(person)}!A${FIRST_DATA_ROW}:${LAST_COLUMN}`
+}
+
 export const CONFIG_RANGE = `${CONFIG_TAB}!A:B`
 
 export const ENTRY_TYPE = {
   EXPENSE: 'expense',
   SETTLEMENT: 'settlement',
-}
-
-export const PERSON = {
-  P1: 'p1',
-  P2: 'p2',
-}
-
-export function otherPerson(person) {
-  return person === PERSON.P1 ? PERSON.P2 : PERSON.P1
 }
 
 /** Even split: the payer is responsible for half of what they paid. */
@@ -72,34 +87,39 @@ export function isRealDate(value) {
 }
 
 /**
- * Range for a single row's worth of columns, e.g. rowRange(7) -> "expenses!A7:L7".
- * Only ever call this with a row number resolved from a *fresh* read — row
- * positions shift whenever the sheet is edited directly in the Sheets UI.
+ * Range for a single row's worth of columns within one person's tab, e.g.
+ * rowRange('p1', 7) -> "expenses_p1!A7:K7". Only ever call this with a row
+ * number resolved from a *fresh* read — row positions shift whenever the
+ * sheet is edited directly in the Sheets UI.
  */
-export function rowRange(rowNumber) {
-  return `${EXPENSES_TAB}!A${rowNumber}:L${rowNumber}`
+export function rowRange(person, rowNumber) {
+  return `${expensesTab(person)}!A${rowNumber}:${LAST_COLUMN}${rowNumber}`
 }
 
-/** Column letter for a named field, e.g. columnLetter('deleted_at') -> 'L'. */
+/** Column letter for a named field, e.g. columnLetter('deleted_at') -> 'K'. */
 export function columnLetter(field) {
   const index = EXPENSE_COLUMNS.indexOf(field)
   if (index < 0) throw new Error(`Unknown column: ${field}`)
   return String.fromCharCode(65 + index)
 }
 
-export function cellRange(rowNumber, field) {
+export function cellRange(person, rowNumber, field) {
   const letter = columnLetter(field)
-  return `${EXPENSES_TAB}!${letter}${rowNumber}:${letter}${rowNumber}`
+  return `${expensesTab(person)}!${letter}${rowNumber}:${letter}${rowNumber}`
 }
 
 /**
  * Map a raw sheet row to an entry object.
  *
+ * The payer is not a column — it is which of the two per-person tabs the row
+ * came from — so the caller passes it in rather than it being read here.
+ *
  * @param {string[]} row      Cell values as returned by values.get
- * @param {number}   index    0-based offset within EXPENSES_DATA_RANGE
+ * @param {number}   index    0-based offset within that tab's data range
+ * @param {string}   payer    'p1' or 'p2': whichever tab this row was read from
  * @returns {object|null}     null for blank or structurally invalid rows
  */
-export function rowToEntry(row, index) {
+export function rowToEntry(row, index, payer) {
   if (!Array.isArray(row)) return null
 
   const get = (field) => {
@@ -120,7 +140,6 @@ export function rowToEntry(row, index) {
   const amountCents = parseAmountToCents(get('amount'), currency)
   if (amountCents == null) return null
 
-  const payer = get('payer') === PERSON.P2 ? PERSON.P2 : PERSON.P1
   const type = get('type') === ENTRY_TYPE.SETTLEMENT ? ENTRY_TYPE.SETTLEMENT : ENTRY_TYPE.EXPENSE
 
   const rawShare = Number.parseFloat(get('payer_share'))
@@ -137,7 +156,7 @@ export function rowToEntry(row, index) {
     id,
     type,
     date: isRealDate(date) ? date : '',
-    payer,
+    payer: payer === PERSON.P2 ? PERSON.P2 : PERSON.P1,
     amountCents,
     currency,
     category: get('category'),
@@ -150,13 +169,16 @@ export function rowToEntry(row, index) {
   }
 }
 
-/** Map an entry object back to a raw sheet row (always 12 strings). */
+/**
+ * Map an entry object back to a raw sheet row (always EXPENSE_COLUMNS.length
+ * strings). The payer is not written here — it is expressed by which
+ * person's tab the caller writes this row into.
+ */
 export function entryToRow(entry) {
   const byField = {
     id: entry.id,
     type: entry.type,
     date: entry.date,
-    payer: entry.payer,
     // Always the entry's OWN currency, never config.currency: a sheet holding
     // both USD and JPY rows stays correct only if each row is encoded at its own
     // scale.

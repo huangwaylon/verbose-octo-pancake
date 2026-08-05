@@ -609,6 +609,22 @@
   line-height: var(--lh-prose);
 }
 
+/* Plain flow, not fixed: it sits above the sticky header and any gate as an
+   ordinary block, so it needs no z-index bookkeeping against the header,
+   FAB, sheet, and toast layers that already claim the stack. */
+.reconnect-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: calc(var(--safe-top) + var(--space-3)) var(--space-4) var(--space-3);
+  background-color: var(--danger);
+  color: var(--danger-text);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+}
+
 .settings__warning {
   margin: 0;
   padding: var(--space-3) var(--space-4);

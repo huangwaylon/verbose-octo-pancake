@@ -183,7 +183,6 @@ describe('schema rows carry their own currency', () => {
     'id-1',
     'expense',
     '2026-08-05',
-    'p1',
     amount,
     currency,
     'Groceries',
@@ -195,18 +194,18 @@ describe('schema rows carry their own currency', () => {
   ]
 
   it('reads a JPY row as whole yen', () => {
-    const entry = rowToEntry(row('1250', 'JPY'), 0)
+    const entry = rowToEntry(row('1250', 'JPY'), 0, 'p1')
     expect(entry.amountCents).toBe(1250)
     expect(entry.currency).toBe('JPY')
   })
 
   it('reads a USD row as cents', () => {
-    const entry = rowToEntry(row('42.10', 'USD'), 0)
+    const entry = rowToEntry(row('42.10', 'USD'), 0, 'p1')
     expect(entry.amountCents).toBe(4210)
   })
 
   it('treats a blank currency cell as USD, which is what migrates old sheets', () => {
-    const entry = rowToEntry(row('42.10', ''), 0)
+    const entry = rowToEntry(row('42.10', ''), 0, 'p1')
     expect(entry.amountCents).toBe(4210)
     expect(entry.currency).toBe('USD')
   })
@@ -216,13 +215,13 @@ describe('schema rows carry their own currency', () => {
       { id: 'a', date: '2026-08-05', payer: 'p1', amountCents: 1250, currency: 'JPY', category: 'x' },
       '2026-08-05T00:00:00.000Z',
     )
-    expect(entryToRow(jpy)[4]).toBe('1250')
+    expect(entryToRow(jpy)[3]).toBe('1250')
 
     const usd = makeEntry(
       { id: 'b', date: '2026-08-05', payer: 'p1', amountCents: 4210, currency: 'USD', category: 'x' },
       '2026-08-05T00:00:00.000Z',
     )
-    expect(entryToRow(usd)[4]).toBe('42.10')
+    expect(entryToRow(usd)[3]).toBe('42.10')
   })
 
   it('survives a full row round trip in both scales', () => {
@@ -231,9 +230,9 @@ describe('schema rows carry their own currency', () => {
       ['42.10', 'USD', 4210],
       ['1.234', 'KWD', 1234],
     ]) {
-      const entry = rowToEntry(row(amount, currency), 0)
+      const entry = rowToEntry(row(amount, currency), 0, 'p1')
       expect(entry.amountCents).toBe(expected)
-      expect(entryToRow(entry)[4]).toBe(amount)
+      expect(entryToRow(entry)[3]).toBe(amount)
     }
   })
 })

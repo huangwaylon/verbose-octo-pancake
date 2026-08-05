@@ -37,7 +37,21 @@ export default function App() {
   const { t } = useT()
   const auth = useAuth()
   const toasts = useToasts()
-  const ledger = useLedger({ enabled: auth.status === 'signed-in' })
+  // 'expired' keeps every gate and the app shell rendering as if still
+  // signed in — see useAuth for why — so the ledger stays enabled and the
+  // banner below is the only thing that changes.
+  const authed = auth.status === 'signed-in' || auth.status === 'expired'
+  const ledger = useLedger({ enabled: authed })
+  const [reconnecting, setReconnecting] = useState(false)
+
+  const reconnect = useCallback(async () => {
+    setReconnecting(true)
+    try {
+      await auth.reconnect()
+    } finally {
+      setReconnecting(false)
+    }
+  }, [auth])
 
   const [identityChoice, setIdentityChoice] = useState(readStoredIdentity)
   const [monthKey, setMonthKey] = useState(currentMonthKey)
@@ -124,13 +138,13 @@ export default function App() {
   const removeEntry = useCallback(
     async (entry) => {
       try {
-        await ledger.removeEntry(entry.id)
+        await ledger.removeEntry(entry.id, entry.payer)
         toasts.push({
           message: t('toast.deleted'),
           action: {
             label: t('toast.undo'),
             onClick: () => {
-              ledger.restoreEntry(entry.id).catch((cause) => toasts.error(cause.message))
+              ledger.restoreEntry(entry.id, entry.payer).catch((cause) => toasts.error(cause.message))
             },
           },
         })
@@ -146,31 +160,67 @@ export default function App() {
     ledger.forgetSheet()
   }, [ledger])
 
+  // Persistent, not a toast: it must stay up until the tap resolves it, and it
+  // has to render above every gate too, since 'expired' can arrive while any
+  // of them is showing — not just the main app screen below.
+  const reconnectBanner = auth.status === 'expired' && (
+    <div className="reconnect-banner" role="alert">
+      <span>{t('auth.expiredBanner')}</span>
+      <button
+        type="button"
+        className="btn btn--sm btn--primary"
+        onClick={reconnect}
+        disabled={reconnecting}
+      >
+        {reconnecting ? <span className="spinner" /> : t('auth.reconnect')}
+      </button>
+    </div>
+  )
+
   if (auth.status === 'unconfigured') return <UnconfiguredGate />
-  if (auth.status !== 'signed-in') {
+  if (!authed) {
     return <SignInGate onSignIn={auth.signIn} status={auth.status} error={auth.error} />
   }
   if (!ledger.spreadsheet) {
     return (
-      <SheetGate
-        onCreate={ledger.createSheet}
-        onChoose={ledger.chooseSheet}
-        error={ledger.error}
-      />
+      <>
+        {reconnectBanner}
+        <SheetGate
+          onCreate={ledger.createSheet}
+          onChoose={ledger.chooseSheet}
+          error={ledger.error}
+        />
+      </>
     )
   }
   if (ledger.status === 'error') {
     return (
-      <ErrorGate message={ledger.error} onRetry={ledger.refresh} onSwitchSheet={switchSheet} />
+      <>
+        {reconnectBanner}
+        <ErrorGate message={ledger.error} onRetry={ledger.refresh} onSwitchSheet={switchSheet} />
+      </>
     )
   }
   if (ledger.status === 'idle' || ledger.status === 'loading') {
-    return <LoadingGate label={t('gate.loadingSheet')} />
+    return (
+      <>
+        {reconnectBanner}
+        <LoadingGate label={t('gate.loadingSheet')} />
+      </>
+    )
   }
-  if (!me) return <IdentityGate config={ledger.config} onPick={setMe} />
+  if (!me) {
+    return (
+      <>
+        {reconnectBanner}
+        <IdentityGate config={ledger.config} onPick={setMe} />
+      </>
+    )
+  }
 
   return (
     <div className="app">
+      {reconnectBanner}
       <Header
         config={ledger.config}
         me={me}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_CONFIG, STORAGE_KEYS } from '../config.js'
-import { EXPENSES_TAB, CONFIG_TAB, makeEntry, validateEntryCodes } from '../schema.js'
+import { CONFIG_TAB, expensesTab, PERSON, makeEntry, validateEntryCodes } from '../schema.js'
 import { t } from '../i18n/index.js'
 import * as sheets from '../lib/sheets.js'
 import { createSpreadsheet, pickSpreadsheet } from '../lib/picker.js'
@@ -167,10 +167,10 @@ export function useLedger({ enabled }) {
    *
    * Refuses anything that is not already a ledger. The picker lists every
    * spreadsheet you own and selecting one is a single tap, so picking the wrong
-   * file is easy — and `connect` would then have `ensureStructure` add two tabs
-   * to it. A sheet that has neither tab is almost certainly not meant for this
-   * app, and writing to it is not recoverable by undo. "Create a new sheet" is
-   * the path that is allowed to build structure.
+   * file is easy — and `connect` would then have `ensureStructure` add tabs
+   * to it. A sheet with none of the expected tabs is almost certainly not meant
+   * for this app, and writing to it is not recoverable by undo. "Create a new
+   * sheet" is the path that is allowed to build structure.
    */
   const chooseSheet = useCallback(
     async (name) => {
@@ -182,7 +182,8 @@ export function useLedger({ enabled }) {
         const error = new Error(
           t('error.notALedger', {
             name: picked.name || name || '',
-            expenses: EXPENSES_TAB,
+            expensesP1: expensesTab(PERSON.P1),
+            expensesP2: expensesTab(PERSON.P2),
             config: CONFIG_TAB,
           }),
         )
@@ -252,7 +253,10 @@ export function useLedger({ enabled }) {
         }),
       )
       try {
-        await sheets.updateEntry(spreadsheet.id, entry)
+        // previous.payer, not entry.payer: it says which tab the row is
+        // CURRENTLY in, which is what updateEntry needs to find it before it
+        // can move the row if the payer changed.
+        await sheets.updateEntry(spreadsheet.id, entry, previous?.payer)
         setEntries((current) =>
           current.map((item) => (item.id === entry.id ? { ...item, pending: false } : item)),
         )
@@ -270,7 +274,7 @@ export function useLedger({ enabled }) {
   )
 
   const setDeleted = useCallback(
-    async (id, deletedAt) => {
+    async (id, payer, deletedAt) => {
       let previous
       setEntries((current) =>
         current.map((item) => {
@@ -280,8 +284,8 @@ export function useLedger({ enabled }) {
         }),
       )
       try {
-        if (deletedAt) await sheets.softDeleteEntry(spreadsheet.id, id, deletedAt)
-        else await sheets.restoreEntry(spreadsheet.id, id)
+        if (deletedAt) await sheets.softDeleteEntry(spreadsheet.id, payer, id, deletedAt)
+        else await sheets.restoreEntry(spreadsheet.id, payer, id)
         setEntries((current) =>
           current.map((item) => (item.id === id ? { ...item, pending: false } : item)),
         )
@@ -296,25 +300,28 @@ export function useLedger({ enabled }) {
   )
 
   const removeEntry = useCallback(
-    (id) => setDeleted(id, new Date().toISOString()),
+    (id, payer) => setDeleted(id, payer, new Date().toISOString()),
     [setDeleted],
   )
-  const restoreEntry = useCallback((id) => setDeleted(id, null), [setDeleted])
+  const restoreEntry = useCallback((id, payer) => setDeleted(id, payer, null), [setDeleted])
 
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
   const compact = useCallback(async () => {
-    const ids = entries.filter((item) => item.deletedAt).map((item) => item.id)
-    if (!ids.length) return { removed: 0 }
+    if (!entries.some((item) => item.deletedAt)) return { removed: 0 }
 
-    let gid = sheetIds[EXPENSES_TAB]
-    if (gid == null) {
-      const { sheetIds: ids2 } = await sheets.ensureStructure(spreadsheet.id)
-      setSheetIds(ids2 ?? {})
-      gid = (ids2 ?? {})[EXPENSES_TAB]
+    const p1Tab = expensesTab(PERSON.P1)
+    const p2Tab = expensesTab(PERSON.P2)
+    let gids = sheetIds
+    if (gids[p1Tab] == null || gids[p2Tab] == null) {
+      const { sheetIds: refreshed } = await sheets.ensureStructure(spreadsheet.id)
+      setSheetIds(refreshed ?? {})
+      gids = refreshed ?? {}
     }
-    if (gid == null) throw new Error('Could not find the expenses tab.')
+    if (gids[p1Tab] == null || gids[p2Tab] == null) {
+      throw new Error('Could not find the expenses tabs.')
+    }
 
-    const result = await sheets.compact(spreadsheet.id, gid, ids)
+    const result = await sheets.compact(spreadsheet.id, gids)
     await refresh()
     return result
   }, [entries, sheetIds, spreadsheet?.id, refresh])
