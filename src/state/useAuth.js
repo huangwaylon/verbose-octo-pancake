@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { getUserEmail, hasToken, onAuthChange, signIn, signOut } from '../lib/googleAuth.js'
 import { isConfigured } from '../config.js'
+import { t } from '../i18n/index.js'
 
 /**
  * Auth state for the UI.
@@ -21,6 +22,11 @@ export function useAuth() {
   const [email, setEmail] = useState(null)
   const [error, setError] = useState(null)
 
+  /** Distinguishes a deliberate sign-out from a session that fell over. */
+  const deliberate = useRef(false)
+  /** StrictMode re-runs mount effects in development; one email fetch is enough. */
+  const fetchedEmail = useRef(false)
+
   useEffect(
     () =>
       onAuthChange(() => {
@@ -34,6 +40,11 @@ export function useAuth() {
         // real click instead of a background failure.
         setStatus('signed-out')
         setEmail(null)
+        fetchedEmail.current = false
+        // Without this the person is silently dumped on the sign-in screen with
+        // no idea why, which is exactly what a real session expiry looks like.
+        if (deliberate.current) deliberate.current = false
+        else setError(t('error.sessionExpired'))
       }),
     [],
   )
@@ -41,7 +52,8 @@ export function useAuth() {
   // Resolve the email for a token restored from storage. A fresh sign-in gets
   // it from start() instead, so this only runs on the rehydrated path.
   useEffect(() => {
-    if (!hasToken()) return
+    if (!hasToken() || fetchedEmail.current) return
+    fetchedEmail.current = true
     let cancelled = false
     getUserEmail().then((value) => {
       if (!cancelled) setEmail(value)
@@ -57,16 +69,19 @@ export function useAuth() {
     try {
       await signIn({ silent: false })
       setStatus('signed-in')
+      fetchedEmail.current = true
       setEmail(await getUserEmail())
     } catch (cause) {
       setStatus('signed-out')
-      setError(cause.message || 'Sign-in failed.')
+      setError(cause.message || t('error.signIn'))
     }
   }, [])
 
   const end = useCallback(async () => {
+    deliberate.current = true
     await signOut().catch(() => {})
     setEmail(null)
+    setError(null)
     setStatus('signed-out')
   }, [])
 

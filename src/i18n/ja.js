@@ -153,6 +153,7 @@ export default {
   'error.readSheet': 'シートを読み込めませんでした。',
   'error.prepareSheet': 'シートを準備できませんでした。',
   'error.signIn': 'ログインできませんでした。',
+  'error.sessionExpired': 'Google のセッションが終了しました。もう一度ログインすると、続きから再開できます。',
   'error.missingId': 'ID がありません。',
   'error.badDate': '日付は YYYY-MM-DD 形式の実在する日を入力してください。',
   'error.badAmount': '金額は 0 より大きい値を入力してください。',

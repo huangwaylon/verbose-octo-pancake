@@ -47,6 +47,9 @@ function looksUninitialized(cause) {
   return cause?.status === 400 || cause?.status === 404
 }
 
+/** Floor between focus-triggered refreshes. Window switching is constant. */
+const REFRESH_THROTTLE_MS = 30_000
+
 /**
  * Owns the spreadsheet connection and the entry list.
  *
@@ -110,6 +113,35 @@ export function useLedger({ enabled }) {
     if (!enabled || !spreadsheet?.id) return Promise.resolve()
     return load(spreadsheet.id)
   }, [enabled, spreadsheet?.id, load])
+
+  /**
+   * Re-read the sheet when the tab regains attention.
+   *
+   * Two people share one spreadsheet and there is no push channel, so without
+   * this whoever leaves the tab open sits on stale data until they think to hit
+   * refresh — the most likely "it's wrong" complaint. Throttled, because
+   * switching windows is something people do constantly and each refresh is a
+   * real API call against a per-user quota.
+   */
+  const lastRefresh = useRef(0)
+  useEffect(() => {
+    if (!enabled || !spreadsheet?.id) return
+
+    const maybeRefresh = () => {
+      if (document.visibilityState !== 'visible') return
+      const now = Date.now()
+      if (now - lastRefresh.current < REFRESH_THROTTLE_MS) return
+      lastRefresh.current = now
+      refresh()
+    }
+
+    window.addEventListener('focus', maybeRefresh)
+    document.addEventListener('visibilitychange', maybeRefresh)
+    return () => {
+      window.removeEventListener('focus', maybeRefresh)
+      document.removeEventListener('visibilitychange', maybeRefresh)
+    }
+  }, [enabled, spreadsheet?.id, refresh])
 
   const connect = useCallback(
     async (sheet) => {

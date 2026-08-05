@@ -160,6 +160,7 @@ export default {
   'error.readSheet': 'Could not read the sheet.',
   'error.prepareSheet': 'Could not prepare the sheet.',
   'error.signIn': 'Sign-in failed.',
+  'error.sessionExpired': 'Your Google session ended. Sign in again to pick up where you left off.',
   'error.missingId': 'Missing id.',
   'error.badDate': 'Date must be a real day, as YYYY-MM-DD.',
   'error.badAmount': 'Amount must be greater than zero.',
