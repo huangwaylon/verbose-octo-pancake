@@ -1,0 +1,676 @@
+/* primitives.css — generic, app-agnostic UI building blocks: surfaces, buttons, forms, sheet, toasts, feedback. */
+
+/* =========================================================================
+   Card
+   ========================================================================= */
+.card {
+  display: block;
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-1);
+}
+
+.card__title {
+  display: block;
+  margin-bottom: var(--space-3);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.card__body {
+  display: block;
+}
+
+/* =========================================================================
+   Button
+   ========================================================================= */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target);
+  min-width: var(--tap-target);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-elev);
+  color: var(--text);
+  font-family: inherit;
+  font-size: var(--text-base);
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: background-color var(--transition-fast),
+    border-color var(--transition-fast), color var(--transition-fast),
+    transform var(--transition-fast), opacity var(--transition-fast);
+}
+
+@media (hover: hover) {
+  .btn:hover {
+    background-color: var(--bg-sunken);
+  }
+}
+
+/* A small press-in reads as tactile on touch, where there is no hover. */
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.btn[disabled],
+.btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn--primary {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+@media (hover: hover) {
+  .btn--primary:hover {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
+  }
+}
+
+.btn--ghost {
+  background-color: transparent;
+  border-color: transparent;
+  color: var(--text);
+}
+
+@media (hover: hover) {
+  .btn--ghost:hover {
+    background-color: var(--bg-sunken);
+  }
+}
+
+.btn--danger {
+  background-color: var(--danger);
+  border-color: var(--danger);
+  color: var(--danger-text);
+}
+
+@media (hover: hover) {
+  .btn--danger:hover {
+    filter: brightness(0.94);
+  }
+}
+
+.btn--block {
+  display: flex;
+  width: 100%;
+}
+
+.btn--icon {
+  width: var(--tap-target);
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.btn--sm {
+  min-height: 34px;
+  min-width: 34px;
+  padding: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  border-radius: var(--radius-sm);
+}
+
+/* Small icon buttons must stay square. */
+.btn--icon.btn--sm {
+  width: 34px;
+  padding: 0;
+}
+
+/* =========================================================================
+   Field + inputs
+   ========================================================================= */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.field__label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.field__hint {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.field__error {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--danger);
+}
+
+.input,
+.select,
+.textarea {
+  width: 100%;
+  min-height: var(--tap-target);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background-color: var(--bg-elev);
+  color: var(--text);
+  font-family: inherit;
+  /* Never below 16px — see the iOS zoom note in base.css. */
+  font-size: max(1rem, var(--text-base));
+  line-height: 1.4;
+  transition: border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.input:focus,
+.select:focus,
+.textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-ring);
+}
+
+/* Keyboard users still get the standard ring on top of the glow. */
+.input:focus-visible,
+.select:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.input[aria-invalid="true"],
+.select[aria-invalid="true"],
+.textarea[aria-invalid="true"] {
+  border-color: var(--danger);
+}
+
+.input[aria-invalid="true"]:focus,
+.select[aria-invalid="true"]:focus,
+.textarea[aria-invalid="true"]:focus {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 3px var(--danger-ring);
+}
+
+.input[disabled],
+.select[disabled],
+.textarea[disabled] {
+  background-color: var(--bg-sunken);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* Native selects look wrong on every platform in a different way, so draw our
+   own caret. Inline data-URI SVG: no extra request, and img-src allows data:. */
+.select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: var(--space-7);
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='12'%20height='8'%20viewBox='0%200%2012%208'%20fill='none'%3E%3Cpath%20d='M1%201.5%206%206.5%2011%201.5'%20stroke='%238a949e'%20stroke-width='1.75'%20stroke-linecap='round'%20stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right var(--space-3) center;
+  background-size: 12px 8px;
+}
+
+.textarea {
+  min-height: calc(var(--tap-target) * 2);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+/* =========================================================================
+   Segmented control
+   Markup: <div class="segmented">
+             <label class="segmented__option"><input type="radio" name="x">A</label>
+             ...
+           </div>
+   The radio stays in the DOM (focusable, announced); only its paint is hidden.
+   ========================================================================= */
+.segmented {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background-color: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.segmented__option {
+  position: relative;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: calc(var(--tap-target) - var(--space-1));
+  padding: var(--space-2) var(--space-3);
+  border-radius: calc(var(--radius-md) - 3px);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  transition: background-color var(--transition-fast),
+    color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.segmented__option input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+  appearance: none;
+}
+
+.segmented__option:has(input:checked) {
+  background-color: var(--bg-elev);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: var(--shadow-1);
+}
+
+/* Fallback for markup that wraps the label text in an element. */
+.segmented__option input:checked + span {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.segmented__option:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.segmented__option:has(input:disabled) {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* =========================================================================
+   Sheet — bottom sheet on phones, centered dialog from 720px up
+   ========================================================================= */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-sheet);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.sheet__backdrop {
+  position: absolute;
+  inset: 0;
+  background-color: var(--overlay);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border: 0;
+  padding: 0;
+}
+
+.sheet__panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--content-max);
+  max-height: 92vh;
+  max-height: 92dvh;
+  background-color: var(--bg-elev);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  /* Keeps the footer clear of the home indicator. */
+  padding-bottom: var(--safe-bottom);
+}
+
+.sheet__handle {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 4px;
+  margin: var(--space-2) auto 0;
+  border-radius: var(--radius-full);
+  background-color: var(--border-strong);
+}
+
+.sheet__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.sheet__title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.sheet__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sheet__footer {
+  position: sticky;
+  bottom: 0;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-top: 1px solid var(--border);
+  background-color: var(--bg-elev);
+}
+
+/* Action rows read best as equal-width buttons; override per-button if needed. */
+.sheet__footer > .btn {
+  flex: 1 1 auto;
+}
+
+@media (min-width: 720px) {
+  .sheet {
+    align-items: center;
+    padding: var(--space-6);
+  }
+
+  .sheet__panel {
+    border-radius: var(--radius-lg);
+    max-height: min(84vh, 44rem);
+    padding-bottom: 0;
+  }
+
+  /* Grab bar is a touch affordance only. */
+  .sheet__handle {
+    display: none;
+  }
+}
+
+/* =========================================================================
+   Toasts
+   ========================================================================= */
+.toast-stack {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+  padding-left: calc(var(--space-4) + var(--safe-left));
+  padding-right: calc(var(--space-4) + var(--safe-right));
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  max-width: 26rem;
+  min-height: var(--tap-target);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--bg-elev);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.toast--error {
+  border-color: var(--danger);
+  box-shadow: inset 3px 0 0 var(--danger), var(--shadow-2);
+}
+
+.toast--success {
+  border-color: var(--success);
+  box-shadow: inset 3px 0 0 var(--success), var(--shadow-2);
+}
+
+.toast__action {
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-height: var(--tap-target);
+  min-width: var(--tap-target);
+  padding: 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--accent);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.toast__action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* =========================================================================
+   Loading feedback
+   ========================================================================= */
+.spinner {
+  display: inline-block;
+  width: var(--spinner-size, 1.25rem);
+  height: var(--spinner-size, 1.25rem);
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-full);
+  /* Static ring when motion is reduced — see the guarded block below. */
+}
+
+.skeleton {
+  display: block;
+  min-height: 1em;
+  border-radius: var(--radius-sm);
+  background-color: var(--bg-sunken);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--bg-elev) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+}
+
+/* =========================================================================
+   Pill
+   ========================================================================= */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background-color: var(--bg-sunken);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+
+.pill--muted {
+  background-color: transparent;
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+.pill--accent {
+  background-color: var(--accent-soft);
+  border-color: transparent;
+  color: var(--accent);
+}
+
+/* =========================================================================
+   Empty state
+   ========================================================================= */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-7) var(--space-4);
+  text-align: center;
+}
+
+.empty__icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-full);
+  background-color: var(--bg-sunken);
+  color: var(--text-faint);
+  font-size: var(--text-xl);
+  line-height: 1;
+}
+
+.empty__title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.empty__text {
+  max-width: 34ch;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* =========================================================================
+   Layout helpers
+   The gap vars are read with a fallback rather than declared, so they can be
+   set on the element (inline style, or an app.css class) *or* inherited from
+   any ancestor.
+   ========================================================================= */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--stack-gap, var(--space-3));
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--row-gap, var(--space-3));
+}
+
+/* =========================================================================
+   Animations — opt-in only, so reduced motion never sees them
+   ========================================================================= */
+@keyframes sheet-slide-up {
+  from {
+    transform: translateY(12%);
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-zoom-in {
+  from {
+    transform: scale(0.97);
+    opacity: 0;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes toast-rise {
+  from {
+    transform: translateY(8px);
+    opacity: 0;
+  }
+}
+
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(1turn);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sheet__backdrop {
+    animation: fade-in 180ms ease-out both;
+  }
+
+  .sheet__panel {
+    animation: sheet-slide-up 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .toast {
+    animation: toast-rise 180ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  .spinner {
+    animation: spinner-rotate 700ms linear infinite;
+  }
+
+  .skeleton {
+    animation: skeleton-shimmer 1.4s linear infinite;
+  }
+
+  @media (min-width: 720px) {
+    .sheet__panel {
+      animation: sheet-zoom-in 180ms ease-out both;
+    }
+  }
+}

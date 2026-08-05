@@ -1,0 +1,70 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One Pages deployment at a time. Queued runs are not cancelled, so a push that
+# lands mid-deploy still ships instead of being silently dropped.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Build
+        # VITE_GOOGLE_CLIENT_ID and VITE_GOOGLE_API_KEY are GitHub Actions
+        # *variables*, not secrets, and that is deliberate. An OAuth web client
+        # ID and a browser API key are public values: Vite inlines them into the
+        # JavaScript bundle, so anyone can read them straight out of the shipped
+        # site. What protects them is the authorized-JavaScript-origins list and
+        # the HTTP-referrer restriction configured in Google Cloud. Putting them
+        # in `secrets` would hide them from collaborators while doing nothing to
+        # hide them from the public, which is worse than useless — it creates a
+        # false impression that the deployed app keeps them confidential.
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
+          VITE_GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

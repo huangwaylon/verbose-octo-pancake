@@ -1,0 +1,148 @@
+/* tokens.css — the single source of truth for design values: colors, type, space, motion, z-order. */
+
+:root {
+  color-scheme: light dark;
+
+  /* ---- Color: light theme ---------------------------------------------- */
+  --bg: #f5f7f8;
+  --bg-elev: #ffffff;
+  --bg-sunken: #eaeef1;
+
+  --text: #14181d;
+  --text-muted: #5b6570;
+  --text-faint: #6a747f;
+
+  --border: #e1e6ea;
+  --border-strong: #c3cbd3;
+
+  /* Deep teal: money-adjacent and calm, but not the default corporate blue. */
+  --accent: #0f7a6a;
+  --accent-hover: #0b6153;
+  --accent-text: #ffffff;
+  --accent-soft: #eaf6f3;
+  --accent-ring: rgba(15, 122, 106, 0.24);
+
+  --danger: #c62828;
+  --danger-text: #ffffff;
+  --danger-ring: rgba(198, 40, 40, 0.2);
+
+  --success: #157f4f;
+  --warning: #a25c00;
+
+  --overlay: rgba(15, 20, 25, 0.4);
+
+  /* ---- Radii ----------------------------------------------------------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 999px;
+
+  /* ---- Space: 4px base, 4/8/12/16/24/32/48/64 -------------------------- */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* ---- Type ------------------------------------------------------------
+     The big sizes use clamp() so the balance figure reads large on a phone
+     without ballooning on a 27" monitor. */
+  --text-xs: 0.75rem;      /* 12px */
+  --text-sm: 0.875rem;     /* 14px */
+  --text-base: 1rem;       /* 16px — also the iOS no-zoom floor for inputs */
+  --text-lg: 1.125rem;     /* 18px */
+  --text-xl: clamp(1.25rem, 1.14rem + 0.55vw, 1.5rem);
+  --text-2xl: clamp(1.5rem, 1.29rem + 1vw, 2rem);
+  --text-3xl: clamp(2rem, 1.55rem + 2.2vw, 2.75rem);
+
+  /* ---- Fonts -----------------------------------------------------------
+     No web fonts: zero network cost, no CSP exception. --font-mono is for
+     currency figures; monospace stacks give tabular digits so columns of
+     amounts line up. Pair it with `font-variant-numeric: tabular-nums`. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji";
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
+    "Roboto Mono", "Liberation Mono", monospace;
+
+  /* ---- Elevation ------------------------------------------------------- */
+  --shadow-1: 0 1px 2px rgba(16, 24, 32, 0.06), 0 1px 3px rgba(16, 24, 32, 0.05);
+  --shadow-2: 0 4px 12px rgba(16, 24, 32, 0.1), 0 16px 40px rgba(16, 24, 32, 0.12);
+
+  /* ---- Metrics --------------------------------------------------------- */
+  --tap-target: 44px;
+  --header-height: 56px;
+  --content-max: 34rem; /* ~544px: one readable column, centered on desktop */
+
+  /* ---- Motion ----------------------------------------------------------
+     Duration + easing live together so components can write
+     `transition: background var(--transition-fast)`. The reduced-motion
+     block at the bottom of this file zeroes both, which neutralizes every
+     transition in the app without needing !important anywhere. */
+  --transition-fast: 120ms ease;
+  --transition-base: 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* ---- Stacking order -------------------------------------------------- */
+  --z-header: 100;
+  --z-fab: 200;
+  --z-sheet: 300;
+  --z-toast: 400;
+
+  /* ---- iOS safe areas --------------------------------------------------
+     Exposed as tokens so layout code can compose them, e.g.
+     `padding-bottom: calc(var(--space-4) + var(--safe-bottom))`.
+     Requires <meta name="viewport" content="... viewport-fit=cover"> (set). */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+}
+
+/* ---- Color: dark theme ------------------------------------------------
+   Genuinely dark surfaces (near-black, slightly blue) rather than mid-gray,
+   with the accent shifted bright so it stays the most salient thing on the
+   screen. Only the tokens are remapped — no component rule is duplicated. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1215;
+    --bg-elev: #181c21;
+    --bg-sunken: #0a0c0e;
+
+    --text: #e8ecf0;
+    --text-muted: #a2adb8;
+    --text-faint: #7f8b97;
+
+    --border: #262c33;
+    --border-strong: #3a434d;
+
+    --accent: #2fbfa8;
+    --accent-hover: #4fd3bd;
+    --accent-text: #06231f;
+    --accent-soft: #11302c;
+    --accent-ring: rgba(47, 191, 168, 0.3);
+
+    --danger: #f26d6d;
+    --danger-text: #2b0a08;
+    --danger-ring: rgba(242, 109, 109, 0.26);
+
+    --success: #4ecf94;
+    --warning: #e0a63a;
+
+    --overlay: rgba(0, 0, 0, 0.62);
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
+    --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.55), 0 18px 44px rgba(0, 0, 0, 0.5);
+  }
+}
+
+/* Zeroing the motion tokens is the primary reduced-motion mechanism; see the
+   note above and the global fallback block in base.css. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition-fast: 0.01ms linear;
+    --transition-base: 0.01ms linear;
+  }
+}

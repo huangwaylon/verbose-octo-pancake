@@ -1,0 +1,392 @@
+# Setup
+
+This is the part nobody can do for you. The app has no backend, so the entire
+trust relationship is between your browser and Google — which means you have to
+create a Google Cloud project and tell it which origins are allowed to use it.
+
+It is tedious: roughly 30–45 minutes the first time, most of it clicking through
+consoles. It is also a one-time cost. Nothing here needs to be repeated unless
+you change domains or add a third person.
+
+One warning about the Google Cloud console: Google has been migrating the OAuth
+screens from **APIs & Services > OAuth consent screen** to a newer section
+called **Google Auth Platform**. Depending on your account you will land in one
+or the other, and old tutorials describe the old one. Where the two differ,
+both labels are given below.
+
+**Before you start, decide two things:**
+
+| Decision | Why it matters |
+| --- | --- |
+| Your GitHub username | It forms your Pages origin, `https://huangwaylon.github.io` |
+| The repo name | `vite.config.js` defaults `base` to `/verbose-octo-pancake/`, so naming the repo **`verbose-octo-pancake`** means zero config. Any other name needs a matching `base`. |
+
+Throughout, replace `huangwaylon` with your actual GitHub username.
+
+---
+
+## 1. Create a Google Cloud project
+
+No billing account, no credit card. Everything this app uses is free at this
+volume.
+
+1. Go to <https://console.cloud.google.com/>.
+2. Click the project dropdown in the top bar (it says **Select a project**, or
+   shows a project name).
+3. Click **New project** in the top right of the dialog.
+4. **Project name:** `Shared Finances`. Leave **Location** as *No organization*.
+5. Click **Create**, wait for the notification, then use the project dropdown
+   again to select the new project.
+
+Everything from here on assumes this project is the one selected in the top bar.
+Losing track of which project is selected is the most common way to configure
+credentials into the void.
+
+## 2. Enable the three APIs
+
+The app needs exactly three:
+
+| API | Used for |
+| --- | --- |
+| **Google Sheets API** | reading and writing the spreadsheet |
+| **Google Drive API** | creating a new spreadsheet on first run |
+| **Google Picker API** | the "choose an existing sheet" dialog |
+
+For each one:
+
+1. In the left nav go to **APIs & Services > Library** (or search "API Library"
+   in the top search bar).
+2. Type the API name into the search box.
+3. Click the result, then click **Enable**.
+4. Use your browser's back button and repeat for the next API.
+
+You can confirm all three under **APIs & Services > Enabled APIs & services**.
+The Picker API is the one people forget, because nothing fails until the moment
+you try to open the picker.
+
+## 3. Configure the OAuth consent screen
+
+1. Go to **APIs & Services > OAuth consent screen**. If you are redirected to
+   **Google Auth Platform**, click **Get started**.
+2. **App name:** `Shared Finances`. This string is shown on the sign-in screen,
+   so make it something you will recognise.
+3. **User support email:** pick your own address from the dropdown.
+4. **Audience** / **User type:** choose **External**. *Internal* is only
+   available to Google Workspace organisations, and even then External is the
+   right choice here.
+5. **Contact information:** your email address again.
+6. Accept the Google API Services User Data Policy and click **Create**.
+
+### Add the scope
+
+In the new console this is **Google Auth Platform > Data access**; in the old
+one it is step 2 of the consent screen wizard, **Scopes**.
+
+1. Click **Add or remove scopes**.
+2. The scope you want is not in the common list. Paste it into the
+   **Manually add scopes** box at the bottom:
+   ```
+   https://www.googleapis.com/auth/drive.file
+   ```
+3. Click **Add to table**, then **Update**, then **Save**.
+
+That is the only scope the app requests. `drive.file` grants per-file access:
+the app can read and write files you explicitly pick in the Google Picker, plus
+files it creates itself, and nothing else in your Drive. It cannot list your
+other spreadsheets. This is deliberate, and it is also why the app has a picker
+at all.
+
+`drive.file` is a **non-sensitive** scope, which is what keeps the next part
+simple.
+
+### Add both of you as Test users
+
+In the new console: **Google Auth Platform > Audience > Test users > Add
+users**. In the old one it is step 3 of the wizard.
+
+Add both Google account addresses — yours and the other person's — exactly as
+they are used to sign in to Google. Click **Save**.
+
+### Leave the app in Testing mode
+
+Under **Audience** you will see **Publishing status: Testing** and a **Publish
+app** button. **Do not click it.**
+
+Testing mode means only the accounts in the Test users list can sign in, and
+Google does not require a verification review. Publishing would put you in the
+verification queue for no benefit: a 2-person app has no audience to reach.
+There is no expiry that matters here — the 7-day refresh-token limit that
+Testing mode imposes does not apply, because this app uses short-lived access
+tokens obtained fresh in the browser and never stores a refresh token. Leaving
+it in Testing indefinitely is the correct end state, not a temporary hack.
+
+### Expect the "unverified app" screen
+
+The trade-off for skipping verification is a scary interstitial the first time
+each of you signs in:
+
+> **Google hasn't verified this app**
+> The app is requesting access to sensitive info in your Google Account…
+
+This is expected. To get past it:
+
+1. Click **Advanced** (bottom left of the dialog).
+2. Click **Go to Shared Finances (unsafe)**.
+
+The "(unsafe)" is Google saying *we have not reviewed who wrote this* — which
+is accurate; you wrote it. Tell the other person this in advance, because it
+looks alarming and it is the single most likely reason they bounce off.
+
+## 4. Create the OAuth Client ID
+
+1. Go to **APIs & Services > Credentials** (in the new console, **Google Auth
+   Platform > Clients**).
+2. Click **+ Create credentials > OAuth client ID**.
+3. **Application type:** **Web application**.
+4. **Name:** `Shared Finances web` — internal label only, never shown to users.
+5. Leave **Authorized redirect URIs** completely empty. The app uses the GIS
+   token flow, which does not redirect. Adding a redirect URI here does nothing.
+6. Under **Authorized JavaScript origins**, click **+ Add URI** twice and add:
+
+   ```
+   http://localhost:5173
+   https://huangwaylon.github.io
+   ```
+
+7. Click **Create**. Copy the **Client ID** from the dialog. It looks like
+   `000000000000-abc123….apps.googleusercontent.com`. You can always come back
+   and copy it again later.
+
+**Get the origins exactly right.** An origin is *scheme + host + port* and
+nothing else:
+
+| | |
+| --- | --- |
+| Correct | `https://huangwaylon.github.io` |
+| Correct | `http://localhost:5173` |
+| Wrong — has a path | `https://huangwaylon.github.io/verbose-octo-pancake` |
+| Wrong — trailing slash | `https://huangwaylon.github.io/` |
+| Wrong — scheme mismatch | `http://huangwaylon.github.io` |
+| Wrong — wrong host form | `https://www.huangwaylon.github.io` |
+| Wrong — not the same origin | `http://127.0.0.1:5173` |
+
+Note that the repo path is **not** part of the origin: even though the app is
+served from `https://huangwaylon.github.io/verbose-octo-pancake/`, the origin Google
+checks is just `https://huangwaylon.github.io`. Getting this wrong is the number
+one cause of `origin_mismatch` and `redirect_uri_mismatch` errors, and the error
+message does not tell you which character is off.
+
+`127.0.0.1` and `localhost` are different origins to Google. Vite prints both
+when it starts; use the `localhost` one, or add both here.
+
+## 5. Create and restrict the API key
+
+1. **APIs & Services > Credentials > + Create credentials > API key**.
+2. The key appears in a dialog. Copy it (`AIzaSy…`), then click **Edit API key**
+   — an unrestricted key is a key anyone can borrow for their own site.
+3. **Name:** `Shared Finances browser key`.
+4. Under **Application restrictions**, select **Websites** (labelled **HTTP
+   referrers (web sites)** in the older UI). Click **Add** and enter:
+
+   ```
+   http://localhost:5173/*
+   https://huangwaylon.github.io/*
+   ```
+
+   Referrer patterns are not origins: here the trailing `/*` **is** required,
+   because the browser sends a full URL as the referrer and the pattern has to
+   match it. This is the opposite convention from step 4, which is confusing and
+   worth double-checking.
+
+5. Under **API restrictions**, select **Restrict key** and tick exactly:
+   - Google Sheets API
+   - Google Drive API
+   - Google Picker API
+
+6. Click **Save**. Restriction changes can take a few minutes to propagate; if
+   the picker misbehaves immediately after saving, wait five minutes before
+   debugging anything.
+
+You now have both values. Locally:
+
+```sh
+cp .env.example .env
+```
+
+then paste the client ID and API key into `.env`. Neither is a secret — they
+both ship inside the JavaScript bundle — but `.env` is gitignored so you are not
+editing a tracked file every time.
+
+Check it works before touching GitHub:
+
+```sh
+npm install
+npm run dev
+```
+
+Open <http://localhost:5173> and sign in.
+
+## 6. GitHub: repo, Pages, and variables
+
+1. Create a new repository named **`verbose-octo-pancake`** (see the table at the top
+   for why the name matters). It can be **public** — there are no secrets in
+   this repo. Being public also means GitHub Actions minutes are free.
+2. Push your code to the `main` branch. The workflow triggers on pushes to
+   `main` only.
+3. Go to **Settings > Pages**. Under **Build and deployment**, set **Source** to
+   **GitHub Actions**. Do not pick "Deploy from a branch" — the included
+   workflow uploads a Pages artifact, which the branch-based mode ignores.
+4. Go to **Settings > Secrets and variables > Actions**, then click the
+   **Variables** tab (not Secrets), then **New repository variable**. Add both:
+
+   | Name | Value |
+   | --- | --- |
+   | `VITE_GOOGLE_CLIENT_ID` | the client ID from step 4 |
+   | `VITE_GOOGLE_API_KEY` | the API key from step 5 |
+
+   Variables, not secrets, on purpose: these are public values that Vite bakes
+   into the bundle. Storing them as secrets would hide them from your
+   collaborator while still publishing them to the world, and would imply a
+   confidentiality the deployed site cannot provide.
+
+5. Go to the **Actions** tab and either push a commit or run the **Deploy to
+   GitHub Pages** workflow manually via **Run workflow**. When it finishes, the
+   deploy job prints the live URL.
+
+If you added the variables *after* the first run, re-run the workflow — the
+values are read at build time, so a build that ran without them produces a
+bundle with empty strings in place of the credentials and the app will tell you
+the client ID is missing.
+
+## 7. First run
+
+1. Open the deployed URL (or `localhost:5173`) and click sign in. Work through
+   the unverified-app screen from step 3.
+2. Choose one of:
+   - **Create a new sheet** — the app creates the spreadsheet, writes the
+     `expenses` header row, and seeds the `config` tab. Nothing to do by hand.
+   - **Pick an existing sheet** — the Google Picker opens; choose your sheet.
+     The app adds the tabs and header row if they are missing.
+3. Open the sheet in Google Sheets and share it with the other person's Google
+   account as an **Editor** (**Share** > enter their address > Editor > Send).
+   Leave general access as **Restricted**. Never set it to *Anyone with the
+   link*: the sheet is the entire database and link access makes it world
+   readable.
+4. In the `config` tab, set `person1_name` and `person2_name` to your actual
+   names, and `person1_email` / `person2_email` to the two Google addresses so
+   the app can tell who is using it. Adjust `currency` and the comma-separated
+   `categories` list while you are there.
+5. **Have the other person sign in and pick the same sheet themselves.** This
+   step is easy to miss. The `drive.file` grant is per-person, per-file — your
+   authorisation does not carry over to them. Until they pick the sheet in the
+   picker on their own device, their browser has no access to it even though
+   Google Sheets shows them as an Editor.
+
+---
+
+## Troubleshooting
+
+### "Google hasn't verified this app"
+
+Expected, not a misconfiguration. Click **Advanced**, then **Go to Shared
+Finances (unsafe)**. If there is no **Advanced** link, the signed-in account is
+not in the Test users list — add it under **Google Auth Platform > Audience >
+Test users**.
+
+### `origin_mismatch`, `redirect_uri_mismatch`, or "The given origin is not allowed for the given client ID"
+
+The page's origin is not in the client ID's **Authorized JavaScript origins**
+list. Almost always one of:
+
+- A trailing slash or a path was included. Origins are scheme + host + port only.
+- You are on `http://127.0.0.1:5173` but registered `http://localhost:5173`.
+  Different origins. Change the URL or register both.
+- You are on a Vite fallback port because 5173 was taken. Vite says
+  `Port 5173 is in use, trying another one…` on startup — read the URL it
+  actually printed.
+- The GitHub Pages origin was written as `https://huangwaylon.github.io/<repo>`.
+  Drop the repo path.
+- The build shipped a stale or empty client ID. Open devtools and check that the
+  client ID in the request matches the console.
+
+Open devtools > Network, find the `accounts.google.com` request, and read the
+origin it sent. Compare it character by character with the console. Changes to
+the origins list are usually live within a minute or two, but can take longer;
+a hard reload clears cached GIS state.
+
+### 403 from the Sheets API
+
+`sheets.googleapis.com` returning 403 has three distinct causes, and the JSON
+error body distinguishes them — read it rather than guessing:
+
+| Message contains | Cause | Fix |
+| --- | --- | --- |
+| `has not been used in project … or it is disabled` | Sheets API not enabled | Step 2 |
+| `insufficientPermissions` / `Request had insufficient authentication scopes` | token lacks `drive.file` | Re-check the scope in step 3, then sign out and back in so a new token is issued |
+| `The caller does not have permission` | this account has not picked the file, or is not shared on it | Sign in as that person, pick the sheet in the picker (step 7.5), and confirm they are an Editor on the sheet |
+
+A 401 instead of a 403 means the access token expired and could not be silently
+renewed. Sign out and sign in again.
+
+### The API key referrer restriction is rejecting requests
+
+Symptom: `"API keys with referer restrictions cannot be used with this API"`, or
+`requests-from-referer-<something>-are-blocked`, or the picker opening and
+immediately closing.
+
+- The referrer pattern needs the trailing `/*` (`https://name.github.io/*`),
+  unlike the OAuth origin. Check step 5.
+- Add the localhost pattern too; forgetting it breaks dev but not production,
+  which makes it look like a deploy problem.
+- Give restriction changes up to five minutes to propagate.
+- If the message says referrer restrictions "cannot be used with this API", the
+  key's **API restrictions** list is missing the Picker API.
+
+### Blank page after deploy
+
+Almost always the `base` path. Open devtools > Console; if you see 404s for
+`/assets/index-*.js` — note the missing `/verbose-octo-pancake/` prefix — then the
+built `base` does not match the path Pages serves from.
+
+`vite.config.js` uses `base: process.env.VITE_BASE ?? '/verbose-octo-pancake/'`, so:
+
+- If your repo is named `verbose-octo-pancake`, it already matches. A blank page is
+  something else — read the console for a real error.
+- If the repo has a different name, the default is wrong. Renaming the repo to
+  `verbose-octo-pancake` is the least invasive fix; otherwise change the fallback in
+  `vite.config.js` to `/<your-repo>/`.
+- For a user/organisation site (`huangwaylon.github.io`) or a custom domain, the
+  site is served from the root, so build with `VITE_BASE=/`.
+
+A white page with no console errors and no network requests usually means the
+CSP in `index.html` blocked the bundle — the Console tab reports CSP violations
+explicitly.
+
+### The picker never opens
+
+- **Google Picker API not enabled.** The most common cause; step 2. The console
+  error is a 403 from `apis.google.com/js/api.js`-loaded code, which is not
+  obviously about the Picker.
+- **Popup blocked.** The picker is a popup-adjacent iframe and must be triggered
+  by a real click. If it works on the second click, a blocker is involved.
+- **Missing API key.** The console will say `Missing VITE_GOOGLE_API_KEY` — the
+  build did not receive the variable.
+- **CSP.** `frame-src` must include `https://docs.google.com`, which is where
+  the picker iframe is hosted. It does by default; only relevant if you edited
+  `index.html`.
+
+### The other person sees an empty app
+
+They signed in but have not picked the sheet. See step 7.5 — the `drive.file`
+grant is per-person, per-file.
+
+### CI fails at the "Run tests" step with "No test files found"
+
+`npm test` runs `vitest run`, which exits non-zero when `test/` contains no
+`*.test.js` files. If the test directory is empty, either add a test or change
+the `test` script in `package.json` to `vitest run --passWithNoTests`.
+
+### The deploy job fails with "Missing environment" or a Pages permissions error
+
+**Settings > Pages > Source** is not set to **GitHub Actions** (step 6.3), or
+the first run predates that change. Set it, then re-run the workflow.

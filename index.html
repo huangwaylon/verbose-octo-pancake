@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#111418" />
+    <meta name="color-scheme" content="light dark" />
+    <!--
+      Locked down to what the app actually needs: Google's auth, API, and
+      Picker hosts. No third-party CDNs, no inline script beyond the bundle.
+      The Picker is the reason docs.google.com/drive.google.com appear under
+      frame-src and gstatic under script-src — it renders in a Google iframe.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' https://accounts.google.com https://apis.google.com https://www.gstatic.com https://ssl.gstatic.com;
+        frame-src https://accounts.google.com https://docs.google.com https://drive.google.com;
+        connect-src 'self' https://sheets.googleapis.com https://www.googleapis.com https://content.googleapis.com https://accounts.google.com;
+        img-src 'self' data: blob: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com https://drive-thirdparty.googleusercontent.com;
+        style-src 'self' 'unsafe-inline';
+        font-src 'self';
+        base-uri 'none';
+        object-src 'none';
+        form-action 'none';
+      "
+    />
+    <title>Shared Finances</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
