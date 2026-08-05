@@ -6,11 +6,24 @@
  * creates itself. There is no "list all my spreadsheets" access.
  */
 
-import { GOOGLE_API_KEY } from '../config.js'
+import { GOOGLE_API_KEY, GOOGLE_CLIENT_ID } from '../config.js'
 import { getAccessToken } from './googleAuth.js'
 
 const GAPI_SRC = 'https://apis.google.com/js/api.js'
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets'
+
+/**
+ * The Cloud project number, which is the numeric prefix of the OAuth client ID
+ * ("726967089583-abc....apps.googleusercontent.com" -> "726967089583").
+ *
+ * The Picker needs it via setAppId so the file the user picks is granted to
+ * *this* app under `drive.file`. Derived rather than hardcoded as a second
+ * config value, because the two must never disagree.
+ */
+function projectNumber() {
+  const [prefix] = String(GOOGLE_CLIENT_ID).split('-')
+  return /^\d+$/.test(prefix) ? prefix : ''
+}
 
 let pickerPromise = null
 
@@ -81,10 +94,16 @@ export async function pickSpreadsheet() {
     }
 
     try {
-      const dialog = new picker.PickerBuilder()
+      const appId = projectNumber()
+      const builder = new picker.PickerBuilder()
         .addView(new picker.View(picker.ViewId.SPREADSHEETS))
         .setOAuthToken(token)
         .setDeveloperKey(GOOGLE_API_KEY)
+        // Without an origin the Picker infers one from the frame it renders in,
+        // which breaks when the page is served under a sub-path (GitHub Pages
+        // serves this app from /verbose-octo-pancake/). Pass the bare origin —
+        // scheme + host + port, never a path.
+        .setOrigin(`${window.location.protocol}//${window.location.host}`)
         .setTitle('Choose your shared finances sheet')
         // NAV_HIDDEN drops the side navigation pane, without which the picker
         // is unusable on a phone-width screen.
@@ -97,7 +116,13 @@ export async function pickSpreadsheet() {
             finish(null)
           }
         })
-        .build()
+
+      // Required for `drive.file`: it is what tells Drive to grant the picked
+      // file to this app. Skipped only if the client ID is malformed, since
+      // setAppId('') is worse than not calling it.
+      if (appId) builder.setAppId(appId)
+
+      const dialog = builder.build()
       dialog.setVisible(true)
     } catch (error) {
       reject(error instanceof Error ? error : new Error(String(error)))

@@ -15,7 +15,7 @@
  * the sign-in screen rather than failing writes in the background.
  */
 
-import { GOOGLE_CLIENT_ID, OAUTH_SCOPE } from '../config.js'
+import { GOOGLE_CLIENT_ID, OAUTH_SCOPE, STORAGE_KEYS } from '../config.js'
 
 const GIS_SRC = 'https://accounts.google.com/gsi/client'
 const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
@@ -24,13 +24,61 @@ const USERINFO_URL = 'https://www.googleapis.com/oauth2/v3/userinfo'
 const EXPIRY_MARGIN_MS = 60_000
 
 /**
- * The access token lives ONLY here, in module memory. It is never written to
- * localStorage or sessionStorage: a persisted bearer token is readable by any
- * XSS on the origin and outlives the tab, and GIS can silently re-issue one
- * anyway, so persisting it would be pure downside.
+ * The access token is cached in `localStorage` so a page refresh does not force
+ * another sign-in, and cleared only on explicit sign-out.
+ *
+ * This is a deliberate, eyes-open trade-off and it is worth stating plainly: a
+ * persisted bearer token is readable by any XSS on this origin and survives the
+ * tab. It is accepted here because the alternative is worse in practice — the
+ * token flow cannot renew without a click (see the popup note above), so
+ * *not* persisting means re-authenticating on every single page load.
+ *
+ * What it buys is bounded by Google, not by us: the token itself lasts about an
+ * hour, so this removes the re-login on refresh but cannot make a session
+ * outlive the token. There is no refresh token in the browser flow to extend it
+ * with. Ceiling raised only by adding a backend, which this app does not have.
  */
 let accessToken = null
 let expiresAt = 0
+
+function persistToken() {
+  try {
+    if (accessToken) {
+      localStorage.setItem(STORAGE_KEYS.token, JSON.stringify({ accessToken, expiresAt }))
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.token)
+    }
+  } catch {
+    // Storage blocked (private browsing): fall back to memory-only behaviour.
+  }
+}
+
+/**
+ * Rehydrate at module load. Anything malformed or already expired is discarded
+ * rather than trusted, so a corrupt entry cannot wedge the app in a state where
+ * it believes it is signed in.
+ */
+function restoreToken() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.token)
+    if (!raw) return
+    const saved = JSON.parse(raw)
+    if (typeof saved?.accessToken !== 'string' || typeof saved?.expiresAt !== 'number') {
+      localStorage.removeItem(STORAGE_KEYS.token)
+      return
+    }
+    if (Date.now() >= saved.expiresAt - EXPIRY_MARGIN_MS) {
+      localStorage.removeItem(STORAGE_KEYS.token)
+      return
+    }
+    accessToken = saved.accessToken
+    expiresAt = saved.expiresAt
+  } catch {
+    // Unparseable or unavailable: stay signed out.
+  }
+}
+
+restoreToken()
 
 let scriptPromise = null
 let tokenClient = null
@@ -121,6 +169,7 @@ function requestToken(prompt) {
             accessToken = response.access_token
             const lifetimeMs = (Number(response.expires_in) || 3600) * 1000
             expiresAt = Date.now() + lifetimeMs
+            persistToken()
             notify()
             resolve({ accessToken, expiresAt })
           }
@@ -137,6 +186,7 @@ function requestToken(prompt) {
       // and the retry arrives from a real click instead of looping.
       accessToken = null
       expiresAt = 0
+      persistToken()
       notify()
       throw error
     })
@@ -191,6 +241,7 @@ export async function signOut() {
   const token = accessToken
   accessToken = null
   expiresAt = 0
+  persistToken()
   notify()
   if (!token) return
   try {

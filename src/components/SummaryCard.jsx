@@ -1,44 +1,92 @@
-import { formatCents } from '../lib/money.js'
 import { labelFor } from '../lib/identity.js'
 import { PERSON } from '../schema.js'
+import { useMoney, useT } from '../i18n/index.js'
+import { DonutChart } from './DonutChart.jsx'
 
+/**
+ * The month's spending: a total, who paid how much, and a category breakdown.
+ *
+ * Two different forms on purpose. The category split is genuine part-to-whole
+ * across many classes, so it gets the donut. "Who paid" is exactly two values,
+ * and a two-slice pie is the canonical chart anti-pattern — the number is the
+ * chart — so that gets a meter bar plus the two figures.
+ */
 export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, currency }) {
+  // Both hooks run before the early return below: hook order must not depend on
+  // props.
+  const { t } = useT()
+  const money = useMoney(currency)
+
   if (!monthSpend) return null
 
-  const top = byCategory.slice(0, 5)
-  const largest = top[0]?.totalCents || 1
+  const you = t('common.you')
+  const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
+  const label = (person) => labelFor(config, person, me, you, fallbacks)
+
+  const paid1 = byPerson[PERSON.P1] ?? 0
+  const paid2 = byPerson[PERSON.P2] ?? 0
+  const paidTotal = paid1 + paid2
+
+  const items = byCategory.map((row) => ({
+    key: row.category,
+    label: row.category === 'Uncategorized' ? t('summary.uncategorized') : row.category,
+    valueCents: row.totalCents,
+  }))
 
   return (
     <section className="card summary">
-      <p className="card__title">This month</p>
-      <p className="summary__total">{formatCents(monthSpend, currency)}</p>
-
-      <div className="summary__people">
-        {[PERSON.P1, PERSON.P2].map((person) => (
-          <div className="summary__person" key={person}>
-            <span className="summary__person-name">{labelFor(config, person, me)} paid</span>
-            <span className="summary__person-amount">
-              {formatCents(byPerson[person] ?? 0, currency)}
-            </span>
-          </div>
-        ))}
+      <div>
+        <p className="eyebrow">{t('summary.title')}</p>
+        <p className="summary__total tnum">{money(monthSpend, { trimZeroCents: true })}</p>
       </div>
 
-      {top.length > 0 && (
-        <ul className="summary__categories">
-          {top.map((row) => (
-            <li className="summary__row" key={row.category}>
-              <span className="summary__label">{row.category}</span>
-              <span className="summary__bar">
-                <span
-                  className="summary__bar-fill"
-                  style={{ width: `${Math.max(4, (row.totalCents / largest) * 100)}%` }}
-                />
+      <div className="summary__section">
+        <p className="eyebrow">{t('summary.whoPaid')}</p>
+        {paidTotal > 0 && (
+          <div
+            className="summary__meter"
+            role="img"
+            aria-label={`${label(PERSON.P1)} ${money(paid1)} / ${label(PERSON.P2)} ${money(paid2)}`}
+          >
+            <span
+              className="summary__meter-fill"
+              style={{ flexGrow: paid1, flexBasis: 0 }}
+            />
+            <span
+              className="summary__meter-fill summary__meter-fill--other"
+              style={{ flexGrow: paid2, flexBasis: 0 }}
+            />
+          </div>
+        )}
+        <div className="summary__people">
+          {[PERSON.P1, PERSON.P2].map((person) => (
+            <span className="summary__person" key={person}>
+              <span
+                className={`summary__person-swatch${
+                  person === PERSON.P2 ? ' summary__person-swatch--other' : ''
+                }`}
+                aria-hidden="true"
+              />
+              <span className="summary__person-name">{t('summary.paid', { name: label(person) })}</span>
+              <span className="summary__person-amount tnum">
+                {money(byPerson[person] ?? 0, { trimZeroCents: true })}
               </span>
-              <span className="summary__value">{formatCents(row.totalCents, currency)}</span>
-            </li>
+            </span>
           ))}
-        </ul>
+        </div>
+      </div>
+
+      {items.length > 0 && (
+        <div className="summary__section">
+          <p className="eyebrow">{t('summary.byCategory')}</p>
+          <DonutChart
+            items={items}
+            formatMoney={(cents) => money(cents, { trimZeroCents: true })}
+            formatShare={(percent) => t('summary.share', { percent })}
+            label={t('summary.chartLabel')}
+            otherLabel={t('summary.other')}
+          />
+        </div>
       )}
     </section>
   )

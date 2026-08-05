@@ -32,17 +32,29 @@ export const STORAGE_KEYS = {
   spreadsheetId: 'sf.spreadsheetId',
   spreadsheetName: 'sf.spreadsheetName',
   identity: 'sf.identity',
+  token: 'sf.token',
+  locale: 'sf.locale',
 }
 
 /**
  * Used when the sheet has no `config` tab yet, or a key is missing from it.
+ *
+ * These values are WRITTEN to the shared spreadsheet by `configToRows`, so none
+ * of them is localized: two people sharing one sheet may be reading the UI in
+ * different languages, and the stored data must not depend on whose device
+ * seeded it. Category names are English defaults and are meant to be edited in
+ * the sheet's config tab.
+ *
+ * `currency` is per-sheet (here and in the config tab); the UI language is
+ * per-device (localStorage). They are deliberately independent — a yen sheet
+ * read in English is a normal thing to want.
  */
 export const DEFAULT_CONFIG = {
   person1Name: 'Person 1',
   person2Name: 'Person 2',
   person1Email: '',
   person2Email: '',
-  currency: 'USD',
+  currency: 'JPY',
   categories: ['Groceries', 'Dining', 'Household', 'Other'],
 }
 

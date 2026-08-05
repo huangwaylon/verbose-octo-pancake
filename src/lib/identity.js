@@ -39,12 +39,19 @@ export function resolveIdentity(config, email, stored = readStoredIdentity()) {
   return stored
 }
 
-export function nameOf(config, person) {
-  if (person === PERSON.P2) return config?.person2Name || 'Person 2'
-  return config?.person1Name || 'Person 1'
+/**
+ * The two people's display names.
+ *
+ * `fallbacks` and `youLabel` are optional parameters rather than catalog lookups,
+ * so this module stays pure and independently testable. Components pass the
+ * translated strings in.
+ */
+export function nameOf(config, person, fallbacks = { p1: 'Person 1', p2: 'Person 2' }) {
+  if (person === PERSON.P2) return config?.person2Name || fallbacks.p2
+  return config?.person1Name || fallbacks.p1
 }
 
 /** Label a person relative to the viewer, so the UI can say "You". */
-export function labelFor(config, person, me) {
-  return person === me ? 'You' : nameOf(config, person)
+export function labelFor(config, person, me, youLabel = 'You', fallbacks) {
+  return person === me ? youLabel : nameOf(config, person, fallbacks)
 }

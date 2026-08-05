@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
-import { centsToSheetString, formatCents, parseAmountToCents, splitCents } from '../lib/money.js'
+import { centsToSheetString, minorDigits, parseAmountToCents, splitCents } from '../lib/money.js'
 import { ENTRY_TYPE, EVEN_SHARE, PERSON, otherPerson } from '../schema.js'
 import { labelFor } from '../lib/identity.js'
+import { useMoney, useT } from '../i18n/index.js'
 import { TrashIcon } from './icons.jsx'
 
 /**
@@ -11,11 +12,18 @@ import { TrashIcon } from './icons.jsx'
  * controls rather than a separate form.
  */
 export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete, onClose }) {
+  const { t } = useT()
   const { mode, entry } = draft
   const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
 
+  // The entry's own currency where it has one, so editing an old row keeps its
+  // scale rather than being reinterpreted at the config currency's.
+  const entryCurrency = entry.currency || currency
+  const digits = minorDigits(entryCurrency)
+  const money = useMoney(entryCurrency)
+
   const [amount, setAmount] = useState(
-    entry.amountCents ? centsToSheetString(entry.amountCents) : '',
+    entry.amountCents ? centsToSheetString(entry.amountCents, entryCurrency) : '',
   )
   const [payer, setPayer] = useState(entry.payer ?? me ?? PERSON.P1)
   const [date, setDate] = useState(entry.date)
@@ -28,24 +36,32 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
-  const cents = parseAmountToCents(amount)
+  const cents = parseAmountToCents(amount, entryCurrency)
   const payerShare = isSettlement ? 0 : splitMode === 'even' ? EVEN_SHARE : sharePercent / 100
-  const payerLabel = labelFor(config, payer, me)
-  const otherLabel = labelFor(config, otherPerson(payer), me)
+
+  const you = t('common.you')
+  const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
+  const label = (person) => labelFor(config, person, me, you, fallbacks)
+  const payerLabel = label(payer)
+  const otherLabel = label(otherPerson(payer))
 
   const breakdown = useMemo(() => {
     if (cents == null || isSettlement) return null
     const { payerCents, otherCents } = splitCents(cents, payerShare)
-    return `${payerLabel}: ${formatCents(payerCents, currency)} · ${otherLabel}: ${formatCents(
-      otherCents,
-      currency,
-    )}`
-  }, [cents, payerShare, payerLabel, otherLabel, currency, isSettlement])
+    return t('form.breakdown', {
+      payer: payerLabel,
+      payerAmount: money(payerCents),
+      other: otherLabel,
+      otherAmount: money(otherCents),
+    })
+    // `money` and `t` are memoised per locale/currency, so this recomputes only
+    // when the numbers or the labels actually change.
+  }, [cents, payerShare, payerLabel, otherLabel, isSettlement, money, t])
 
   async function handleSubmit(event) {
     event.preventDefault()
     if (cents == null) {
-      setError('Enter an amount, like 42.10')
+      setError(t('form.amountError', { example: digits ? '42.10' : '1250' }))
       return
     }
     setError(null)
@@ -57,7 +73,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
         date,
         payer,
         amountCents: cents,
-        currency,
+        currency: entryCurrency,
         category: isSettlement ? '' : category,
         description: description.trim(),
         payerShare,
@@ -65,11 +81,15 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
       onClose()
     } catch (cause) {
       setBusy(false)
-      setError(cause.message || 'Could not save that.')
+      setError(cause.i18nKey ? t(cause.i18nKey) : cause.message || t('form.saveError'))
     }
   }
 
-  const title = isSettlement ? 'Settle up' : mode === 'edit' ? 'Edit expense' : 'Add expense'
+  const title = isSettlement
+    ? t('form.settleTitle')
+    : mode === 'edit'
+      ? t('form.editTitle')
+      : t('form.addTitle')
 
   return (
     <BottomSheet
@@ -85,21 +105,16 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                 onDelete(entry)
                 onClose()
               }}
-              aria-label="Delete this entry"
+              aria-label={t('form.deleteEntry')}
             >
               <TrashIcon />
             </button>
           )}
           <button type="button" className="btn btn--ghost" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
-          <button
-            type="submit"
-            form="entry-form"
-            className="btn btn--primary"
-            disabled={busy}
-          >
-            {busy ? <span className="spinner" /> : mode === 'edit' ? 'Save' : 'Add'}
+          <button type="submit" form="entry-form" className="btn btn--primary" disabled={busy}>
+            {busy ? <span className="spinner" /> : mode === 'edit' ? t('common.save') : t('common.add')}
           </button>
         </>
       }
@@ -107,15 +122,16 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
       <form id="entry-form" className="stack" onSubmit={handleSubmit}>
         <div className="field">
           <label className="field__label" htmlFor="entry-amount">
-            Amount
+            {t('form.amount')}
           </label>
           <input
             id="entry-amount"
             className="input input--amount"
             type="text"
-            inputMode="decimal"
+            /* A zero-decimal currency should get a plain numeric pad. */
+            inputMode={digits ? 'decimal' : 'numeric'}
             autoComplete="off"
-            placeholder="0.00"
+            placeholder={digits ? '0.00' : t('form.amountPlaceholder')}
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             aria-invalid={error && cents == null ? 'true' : undefined}
@@ -123,7 +139,9 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
         </div>
 
         <div className="field">
-          <span className="field__label">{isSettlement ? 'Paid by' : 'Who paid'}</span>
+          <span className="field__label">
+            {isSettlement ? t('form.paidBy') : t('form.whoPaid')}
+          </span>
           <div className="segmented">
             {[PERSON.P1, PERSON.P2].map((person) => (
               <label className="segmented__option" key={person}>
@@ -134,20 +152,20 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                   checked={payer === person}
                   onChange={() => setPayer(person)}
                 />
-                {labelFor(config, person, me)}
+                {label(person)}
               </label>
             ))}
           </div>
           {isSettlement && (
             <p className="field__hint">
-              Records that {payerLabel} paid {otherLabel} back.
+              {t('form.settlementHint', { payer: payerLabel, other: otherLabel })}
             </p>
           )}
         </div>
 
         <div className="field">
           <label className="field__label" htmlFor="entry-date">
-            Date
+            {t('form.date')}
           </label>
           <input
             id="entry-date"
@@ -162,7 +180,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
           <>
             <div className="field">
               <label className="field__label" htmlFor="entry-category">
-                Category
+                {t('form.category')}
               </label>
               <select
                 id="entry-category"
@@ -180,26 +198,26 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
 
             <div className="field">
               <label className="field__label" htmlFor="entry-note">
-                Note <span className="field__hint">optional</span>
+                {t('form.note')} <span className="field__hint">{t('common.optional')}</span>
               </label>
               <input
                 id="entry-note"
                 className="input"
                 type="text"
                 autoComplete="off"
-                placeholder="Trader Joe's"
+                placeholder={t('form.notePlaceholder')}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
               />
             </div>
 
             <div className="field">
-              <span className="field__label">Split</span>
+              <span className="field__label">{t('form.split')}</span>
               <div className="segmented">
                 {[
-                  ['even', 'Even'],
-                  ['custom', 'Custom'],
-                ].map(([value, label]) => (
+                  ['even', t('form.splitEven')],
+                  ['custom', t('form.splitCustom')],
+                ].map(([value, optionLabel]) => (
                   <label className="segmented__option" key={value}>
                     <input
                       type="radio"
@@ -211,7 +229,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                         if (value === 'even') setSharePercent(50)
                       }}
                     />
-                    {label}
+                    {optionLabel}
                   </label>
                 ))}
               </div>
@@ -224,25 +242,27 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                       className="btn btn--sm btn--ghost"
                       onClick={() => setSharePercent(100)}
                     >
-                      All {payerLabel}
+                      {t('form.splitAll', { name: payerLabel })}
                     </button>
                     <button
                       type="button"
                       className="btn btn--sm btn--ghost"
                       onClick={() => setSharePercent(50)}
                     >
-                      Half
+                      {t('form.splitHalf')}
                     </button>
                     <button
                       type="button"
                       className="btn btn--sm btn--ghost"
                       onClick={() => setSharePercent(0)}
                     >
-                      All {otherLabel}
+                      {t('form.splitAll', { name: otherLabel })}
                     </button>
                   </div>
                   <label className="split-control__slider">
-                    <span className="field__hint">{payerLabel}&rsquo;s share</span>
+                    <span className="field__hint">
+                      {t('form.splitShare', { name: payerLabel })}
+                    </span>
                     <input
                       type="range"
                       min="0"
@@ -251,7 +271,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                       value={sharePercent}
                       onChange={(event) => setSharePercent(Number(event.target.value))}
                     />
-                    <output>{sharePercent}%</output>
+                    <output>{t('summary.share', { percent: sharePercent })}</output>
                   </label>
                 </div>
               )}

@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_CONFIG, STORAGE_KEYS } from '../config.js'
-import { EXPENSES_TAB, makeEntry, validateEntry } from '../schema.js'
+import { EXPENSES_TAB, makeEntry, validateEntryCodes } from '../schema.js'
+import { t } from '../i18n/index.js'
 import * as sheets from '../lib/sheets.js'
 import { createSpreadsheet, pickSpreadsheet } from '../lib/picker.js'
+
+/**
+ * Turn the first validation failure into a throwable error.
+ *
+ * The code travels on `i18nKey` so the form can translate it at render time in
+ * whatever locale is current, while `message` stays a readable English fallback
+ * for anything that only logs the error.
+ */
+function validationError(codes) {
+  const error = new Error(t(`error.${codes[0]}`))
+  error.i18nKey = `error.${codes[0]}`
+  return error
+}
 
 function readStoredSheet() {
   try {
@@ -74,12 +88,12 @@ export function useLedger({ enabled }) {
             return
           } catch (secondCause) {
             setStatus('error')
-            setError(secondCause.message || 'Could not read the sheet.')
+            setError(secondCause.message || t('error.readSheet'))
             return
           }
         }
         setStatus('error')
-        setError(cause.message || 'Could not read the sheet.')
+        setError(cause.message || t('error.readSheet'))
       }
     },
     [applyLoad],
@@ -108,7 +122,7 @@ export function useLedger({ enabled }) {
         setSheetIds(ids ?? {})
       } catch (cause) {
         setStatus('error')
-        setError(cause.message || 'Could not prepare the sheet.')
+        setError(cause.message || t('error.prepareSheet'))
         return
       }
       await load(sheet.id, { quiet: true })
@@ -145,8 +159,8 @@ export function useLedger({ enabled }) {
   const addEntry = useCallback(
     async (input) => {
       const entry = makeEntry(input)
-      const problems = validateEntry(entry)
-      if (problems.length) throw new Error(problems[0])
+      const problems = validateEntryCodes(entry)
+      if (problems.length) throw validationError(problems)
 
       setEntries((current) => [...current, { ...entry, pending: true }])
       try {
@@ -166,8 +180,8 @@ export function useLedger({ enabled }) {
   const editEntry = useCallback(
     async (input) => {
       const entry = makeEntry(input)
-      const problems = validateEntry(entry)
-      if (problems.length) throw new Error(problems[0])
+      const problems = validateEntryCodes(entry)
+      if (problems.length) throw validationError(problems)
 
       let previous
       setEntries((current) =>

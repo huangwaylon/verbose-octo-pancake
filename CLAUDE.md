@@ -44,9 +44,31 @@ rows never change position. `compact()` is the only hard delete; it must issue
 its `deleteDimension` requests in **descending** row order, or earlier deletions
 shift the indices of later ones.
 
-**Money is integer cents.** Parse at the boundary with `parseAmountToCents` and
-never do float arithmetic on an amount. `splitCents` must conserve every penny:
-`payerCents + otherCents === cents` for all inputs.
+**Money is integer minor units.** One integer per amount, in that currency's
+smallest unit — cents for USD, **whole yen for JPY**, fils for KWD.
+`minorDigits(currency)` is the only place the exponent is decided, and it is a
+hardcoded ISO 4217 table, never derived from `Intl`, because it decides what gets
+written to the sheet and must be identical on every device forever. Parse at the
+boundary with `parseAmountToCents(input, currency)` and never do float arithmetic
+on an amount. `splitCents` and `sumCents` are scale-agnostic and need no currency;
+`splitCents` must conserve every unit: `payerCents + otherCents === cents`.
+
+**Decode a row's currency BEFORE its amount.** The stored string `"1250"` is
+¥1250 or $12.50 depending entirely on that row's `currency` cell. Getting the
+order wrong in `rowToEntry` is a silent 100x corruption, and
+`test/currency.test.js` pins it. A blank currency cell means USD — that fallback
+is what migrates every pre-existing sheet for free, so never point it at
+`DEFAULT_CONFIG.currency`. `entryToRow` writes each row at its *own* scale, never
+the config's.
+
+**Nothing written to the sheet is ever localized.** Config defaults, column
+names, timestamps, and amount strings are locale-independent by design: two
+people sharing a sheet may be reading the UI in different languages, and the
+stored data must not depend on whose device seeded it.
+
+**The locale is per-device, the currency is per-sheet.** Locale lives in
+`localStorage` (like identity); currency lives in the sheet's `config` tab and on
+every entry row.
 
 **Settlements are not a separate code path.** A settlement is an entry with
 `payer_share: 0`, which makes the balance a single sum over every row. It counts
@@ -58,12 +80,16 @@ reconsider.
 that parses as UTC midnight and shifts to the previous day in western timezones.
 Use the helpers in `src/lib/dates.js`, which build dates from explicit parts.
 
-**The access token stays in memory.** Module-scoped in `src/lib/googleAuth.js`,
-never in `localStorage` or `sessionStorage`. A persisted bearer token is
-readable by any XSS and outlives the tab. Note that it cannot be re-issued
-silently either — GIS only hands out tokens through a popup, and a popup outside
-a user gesture is blocked — so a session ends when the token expires and the
-user has to click sign in again. That is inherent to the flow, not a bug.
+**The access token is persisted, deliberately.** `src/lib/googleAuth.js` caches it
+in `localStorage` and clears it only on explicit sign-out, so a refresh does not
+force another sign-in. This reverses an earlier invariant and the trade-off is
+real: a stored bearer token is readable by any XSS on this origin and survives
+the tab. It is accepted because the token flow cannot renew without a click, so
+the alternative was re-authenticating on every page load. The cache is bounded by
+Google anyway — the token lasts about an hour and there is no refresh token to
+extend it, so this removes the re-login on refresh but cannot make a session
+outlive the token. Anything malformed or expired in storage is discarded on load
+rather than trusted.
 
 **Never request a token outside a user gesture.** `requestAccessToken` always
 opens a popup, even with `prompt: ''`. Calling it on mount or from a background
@@ -77,6 +103,12 @@ scopes, `openid` and `userinfo.email`, exist only to identify which of the two
 people is signed in. Never widen the Drive scope to `spreadsheets` — that would
 grant access to every sheet in the user's Drive. This is why the Google Picker
 exists.
+
+**The Picker needs `setAppId` and `setOrigin`.** `setAppId` (the Cloud project
+number, derived from the client ID prefix) is what makes Drive grant the picked
+file to this app under `drive.file`. `setOrigin` is required because the app is
+served from a sub-path on GitHub Pages and the Picker otherwise infers the wrong
+origin. Both live in `src/lib/picker.js`.
 
 ## Conventions
 
@@ -92,34 +124,110 @@ exists.
 - **Comments explain *why*, not *what*.** Match the existing density — the
   non-obvious constraint gets a comment; the obvious line does not.
 
+### i18n
+
+English and Japanese, no dependency. `src/i18n/` holds the engine (`index.js`),
+the two catalogs (`en.js`, `ja.js`), the registry (`catalogs.js`), and the
+node-returning variant for strings with inline markup (`nodes.jsx`).
+
+- **Never hardcode a user-facing string in a component.** That includes every
+  `aria-label`, `title`, and `placeholder`. `test/i18n.test.js` statically scans
+  `src/` and fails on a catalog key that nothing references *and* on a referenced
+  key that no catalog has.
+- **It is a module singleton, not a context.** `render.test.jsx` renders
+  components bare, and non-React modules (`useLedger`) need the same `t`. A
+  provider would break the first and be unreachable from the second.
+- **`useT()` uses `useSyncExternalStore` with the third argument.** Omitting
+  `getServerSnapshot` throws under `renderToStaticMarkup`, which is how every
+  render test runs.
+- **Plurals go through `Intl.PluralRules`, never a `count === 1` ternary.** A
+  pluralised value is an object keyed by CLDR category, and it is the only case
+  where a catalog value is not a string. `en` supplies `one`/`other`; `ja`
+  supplies `other` alone, because that is what `Intl.PluralRules('ja')` reports —
+  a test asserts the catalogs match the engine exactly.
+- **The pure layers stay pure.** `money.js`, `dates.js`, `balance.js`,
+  `schema.js`, and `identity.js` never read the singleton; locale and localized
+  strings arrive as arguments with English defaults. That is what keeps their
+  single-argument behaviour, and their tests, unchanged.
+- **A test that calls `setLocale` must restore it** in `afterEach`, or the state
+  leaks into other files.
+
+### Charts
+
+`DonutChart` is hand-rolled inline SVG — no charting library, and it uses a
+`stroke-dasharray` trick rather than arc-path math (r is chosen so the
+circumference is exactly 100, making a dash length a percentage).
+
+- **The `--series-N` order is the colorblindness-safety mechanism, not
+  cosmetic.** It was validated with the dataviz palette validator against the
+  white card surface, including the ring's wrap-around pair. Never reorder, never
+  cycle past slot 6 — a 7th category folds into "Other" via `foldTail`.
+- **Set the slice stroke inline, never in CSS.** `var()` is invalid in an SVG
+  presentation attribute, and a CSS rule on `.chart__slice` overrides the
+  attribute and paints every slice one color. This shipped once as an invisible
+  chart; `test/ui.test.jsx` now pins it.
+- **The legend always carries name, value and share.** Three series colors sit
+  below 3:1 against white, so text is the required relief — identity must never
+  be communicated by color alone.
+- **Two values is not a pie.** The who-paid split is a meter bar. A two-slice pie
+  is the canonical chart anti-pattern.
+
 ### CSS
 
-Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties,
-light/dark), `base.css` (reset, typography), `primitives.css` (generic `.card`,
-`.btn`, `.input`, `.sheet`, …), `app.css` (app-specific layout).
+Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
+`base.css` (reset, typography), `primitives.css` (generic `.card`, `.btn`,
+`.input`, `.sheet`, …), `app.css` (app-specific layout).
 
+- **Light theme only.** There is no dark block and no `--success`/`--warning`:
+  state is stated in words, and money direction is never encoded in hue.
 - **Use the tokens.** In particular, use `var(--transition-fast|base)` rather
   than a hardcoded duration — the tokens collapse to ~0ms under
   `prefers-reduced-motion`, so hardcoding silently opts out of that support.
+- **`letter-spacing: 0` and no `text-transform`, anywhere text can be Japanese.**
+  Tracking inserts a gap between every kana (「このつき」 becomes 「こ の つ き」) and
+  `uppercase` is a no-op on kana. The lone carve-out is `.balance__amount`, which
+  renders digits exclusively.
+- **No line-height below 1.5** on anything that can hold Japanese; CJK glyphs
+  fill the em box. Same carve-out, same reason.
+- **Nothing below 13px**, and weights are `400|500|600|700` only — `550` is
+  unreliable outside SF Pro and Hiragino ships W3/W6 with nothing between.
+- **Shadows appear in exactly four places** (sheet panel, toast, FAB, segmented
+  thumb) and never on hover. Cards are a white plane plus one hairline; the
+  temperature step from `--bg` to `--surface` is the elevation.
+- **`--line-input` is deliberately darker than `--line`.** WCAG 1.4.11 wants 3:1
+  for the boundary identifying a control; `--line` on white is ~1.15:1 and fails.
+  Do not "tidy" the two together.
 - **Never drop a form control below 16px.** Mobile Safari zooms on focus below
   that and will not zoom back out.
-- Mobile-first. The layout goes two-column at `62rem`. Tap targets are at least
-  `var(--tap-target)` (44px).
+- Mobile-first. One column, capped at `--column-max` from `48rem`, two columns at
+  `62rem`. Tap targets are at least `var(--tap-target)` (44px).
 - Keep specificity flat: single class selectors, no IDs, no `!important`.
 
 ## Testing
 
-Specs live in `test/**/*.test.{js,jsx}`. Four suites: `money`, `balance`,
-`schema`, and `render`.
+Specs live in `test/**/*.test.{js,jsx}`. Eight files: `money`, `currency`,
+`balance`, `schema`, `i18n`, `render`, `ui`, and `lockfile`.
 
-`render.test.jsx` renders components to static markup with
-`renderToStaticMarkup` — no DOM, no browser. It catches components that throw on
+`render.test.jsx` and `ui.test.jsx` render components to static markup with
+`renderToStaticMarkup` — no DOM, no browser. They catch components that throw on
 a real prop shape or silently drop data, which a build cannot.
 
 When fixing a bug, add the regression test. When changing balance or money
 arithmetic, the test that matters most is the end-to-end one: a settlement of
-exactly the outstanding balance must drive the net to zero, with odd-cent
+exactly the outstanding balance must drive the net to zero, with odd-unit
 amounts so rounding is genuinely exercised.
+
+**A passing suite does not mean it looks right.** `scripts/preview.jsx` renders
+the signed-in surface to static HTML in both locales with the real stylesheets:
+
+```sh
+npx vite-node scripts/preview.jsx     # writes scripts/preview-{en,ja}.html
+```
+
+Open those, or load them in `<iframe>`s at 390/768/1440 and screenshot — an
+iframe gets its own viewport, so media queries resolve honestly, which
+`--window-size` on headless Chrome does not reliably do. The invisible-donut bug
+was invisible to 231 passing tests.
 
 ## Gotchas
 

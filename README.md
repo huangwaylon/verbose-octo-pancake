@@ -43,8 +43,9 @@ around that last point rather than pretending otherwise.
   │   token flow                │                               │
   │        │                    │                               │
   │        │ 2. access token    │                               │
-  │        │    (in memory,     │                               │
-  │        │     ~1 hour)       │                               │
+  │        │  (localStorage,    │                               │
+  │        │   ~1 hour, until   │                               │
+  │        │   you sign out)    │                               │
   │        └───────────────►────┘                               │
   └─────────┬───────────────────────────┬───────────────────────┘
             │                           │
@@ -83,8 +84,8 @@ Row 1 is the header. Data starts at row 2. Columns, in order:
 | B | `type` | `expense` | `expense` or `settlement` |
 | C | `date` | `2026-08-05` | ISO `YYYY-MM-DD`, validated as a real calendar day — `2026-02-31` is treated as unset |
 | D | `payer` | `p1` | `p1` or `p2`, resolved to names via the `config` tab |
-| E | `amount` | `42.50` | Written as a plain decimal string, parsed to integer cents in the app |
-| F | `currency` | `USD` | |
+| E | `amount` | `1250` | Plain decimal string at the row's own currency scale — `1250` for ¥1250, `42.50` for $42.50. Parsed to integer minor units in the app |
+| F | `currency` | `JPY` | Decoded **before** the amount: `1250` means ¥1250 or $12.50 depending on this cell. A blank cell means `USD`, which is what migrates older sheets |
 | G | `category` | `Groceries` | Must be non-empty for an `expense` |
 | H | `description` | `weekly shop` | Free text, always stored literally |
 | I | `payer_share` | `0.5` | Fraction of this entry the payer owes themselves |
@@ -102,11 +103,27 @@ Plain key/value pairs in columns A and B — no header row:
 | `person2_name` | `Sam` |
 | `person1_email` | `alex@example.com` |
 | `person2_email` | `sam@example.com` |
-| `currency` | `USD` |
+| `currency` | `JPY` |
 | `categories` | `Groceries, Dining, Household, Other` |
 
-The emails let the app guess which of the two people is signed in. Missing keys
-fall back to the defaults in `src/config.js`.
+The emails let the app tell which of the two people is signed in. Missing keys
+fall back to the defaults in `src/config.js`, where the default currency is
+**JPY**.
+
+Currency is per-sheet and lives here. The interface language is per-device and
+lives in `localStorage`, deliberately not in this tab — two people sharing one
+sheet can read it in different languages. Nothing written to the sheet is ever
+localized.
+
+### Zero-decimal currencies
+
+The yen has no subunit, so "integer minor units" means *whole yen* for JPY and
+*cents* for USD. `minorDigits(currency)` in `src/lib/money.js` is the only place
+that exponent is decided, from a hardcoded ISO 4217 table rather than from `Intl`
+— it determines what is written to the sheet, so it has to be identical on every
+device forever, not dependent on a browser's ICU version. The arithmetic needs no
+special case: because the internal integer *is* the yen, splitting ¥1,251 evenly
+gives ¥626 and ¥625 and conserves exactly, the same way cents do.
 
 ### `payer_share`, and why settlements need no special case
 
@@ -149,11 +166,13 @@ given. A description of `=SUM(A:A)` stays the literal text `=SUM(A:A)` instead
 of becoming a formula, `+1 pizza` is not read as arithmetic, and dates are not
 silently reformatted into whatever the sheet's locale prefers.
 
-### Money is integer cents
+### Money is integer minor units
 
-Amounts are integers in the app — `4250`, not `42.50` — and only converted to a
-decimal string when written to the sheet and when displayed. Splitting `0.1` in
-floating point is how you end up a cent adrift after a hundred entries.
+Amounts are integers in the app — `1250` for ¥1,250, `4250` for $42.50 — and only
+converted to a decimal string when written to the sheet and when displayed.
+Splitting `0.1` in floating point is how you end up a unit adrift after a hundred
+entries. See the zero-decimal note above for what "minor unit" means per
+currency.
 
 ## Features
 
@@ -163,8 +182,12 @@ floating point is how you end up a cent adrift after a hundred entries.
 - A running balance: one number saying who owes whom, all-time rather than
   per-month, because a debt does not reset in January.
 - Settle up, pre-filled with the outstanding amount and the person who owes it.
-- Month-by-month view: entries grouped by day, spend total, what each person
-  paid, and a category breakdown.
+- Month-by-month view: entries grouped by day, spend total, a donut chart of the
+  category breakdown, and a meter showing what each person paid. (Two values is
+  a meter, not a pie — a two-slice pie is the canonical chart anti-pattern.)
+- **Japanese or English**, switched in Settings and stored per device. Dates,
+  numbers, and currency all follow the chosen locale.
+- **Japanese yen by default**, with correct zero-decimal handling.
 - Delete offers **Undo** instead of a confirmation dialog, which is what soft
   deletes buy you. An explicit compact action reclaims tombstoned rows.
 - First run creates the spreadsheet for you — header row and `config` tab
@@ -174,7 +197,9 @@ floating point is how you end up a cent adrift after a hundred entries.
 - Google sign-in with narrow, non-sensitive scopes. No app accounts, no
   passwords.
 - Built for a phone and usable on a monitor: one column that becomes two at
-  `62rem`, light and dark themes, 44px tap targets, reduced-motion support.
+  `62rem` and stops widening well before it looks stretched, 44px tap targets,
+  reduced-motion support. A light theme only, with a warm paper ground, one
+  indigo accent, and money set in the system sans with tabular figures.
 
 ## Quick start
 
@@ -230,14 +255,21 @@ once: the grant is per-person, per-file. The other two, `openid` and
 `userinfo.email`, reveal only the signed-in address, so the app can tell which of
 the two people is using it; they grant no file access at all.
 
-**Tokens are held in memory only.** The access token lives in a module-scoped
-variable in `src/lib/googleAuth.js` and is never written to `localStorage` or
-`sessionStorage`. A persisted bearer token is readable by any XSS on the origin
-and outlives the tab. There is no refresh token, because the browser flow does
-not issue one, and there is no silent renewal either: GIS only issues a token
-through a popup, and browsers block popups that are not the direct result of a
-click. So a session lasts about an hour, after which the app returns you to the
-sign-in screen for one more click. Closing the tab discards the credential.
+**The token is cached in the browser, and that is a deliberate trade-off.** The
+access token is written to `localStorage` and cleared only when you sign out, so
+refreshing the page does not make you sign in again. Being honest about the cost:
+a stored bearer token is readable by any XSS on this origin and survives closing
+the tab. It is accepted here because the browser token flow cannot renew a token
+without a user click — GIS only issues tokens through a popup, and browsers block
+popups that are not the direct result of a click — so the alternative was
+re-authenticating on every single page load.
+
+What the cache buys is capped by Google, not by this app: the token lasts about an
+hour and the browser flow issues no refresh token, so a session cannot outlive
+it. After that the app returns you to the sign-in screen for one more click.
+Raising that ceiling would require a backend to hold a refresh token, which this
+design deliberately does not have. Anything malformed or already expired in
+storage is discarded on load rather than trusted.
 
 **There is no bank connection anywhere in this design.** No Plaid, no Open
 Banking, no institution credentials, no account or card numbers, no read-only
@@ -299,8 +331,9 @@ people from the other.
 │   │   ├── balance.js             who-owes-whom and the month aggregates
 │   │   ├── dates.js               timezone-safe ISO date helpers
 │   │   └── identity.js            which of the two people is signed in
+│   ├── i18n                       engine, en/ja catalogs, node interpolation
 │   ├── state                      useAuth, useLedger (optimistic CRUD), useToasts
-│   ├── components                 one file per view; icons.jsx is inline SVG
+│   ├── components                 one file per view; icons.jsx and DonutChart.jsx are inline SVG
 │   └── styles                     tokens, base, primitives, app
 └── test                           vitest specs, test/**/*.test.{js,jsx}
 ```

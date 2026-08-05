@@ -1,14 +1,16 @@
 import { useState } from 'react'
-import { PERSON } from '../schema.js'
+import { CONFIG_TAB, PERSON } from '../schema.js'
 import { nameOf } from '../lib/identity.js'
+import { useT } from '../i18n/index.js'
+import { useTNodes } from '../i18n/nodes.jsx'
 import { WalletIcon } from './icons.jsx'
 
 /** Full-screen screens shown before the app has what it needs to run. */
 function Panel({ title, children }) {
   return (
     <div className="gate">
-      <div className="gate__panel card">
-        <WalletIcon className="gate__icon" width={32} height={32} />
+      <div className="gate__panel">
+        <WalletIcon className="gate__icon" width={28} height={28} />
         <h1 className="gate__title">{title}</h1>
         {children}
       </div>
@@ -17,44 +19,52 @@ function Panel({ title, children }) {
 }
 
 export function UnconfiguredGate() {
+  const { t } = useT()
+  const tn = useTNodes()
+
   return (
-    <Panel title="Not configured yet">
+    <Panel title={t('gate.unconfiguredTitle')}>
       <p className="gate__text">
-        This build is missing <code>VITE_GOOGLE_CLIENT_ID</code> or{' '}
-        <code>VITE_GOOGLE_API_KEY</code>. Both are public values, set at build time.
+        {tn('gate.unconfiguredBody', {
+          clientId: <code>VITE_GOOGLE_CLIENT_ID</code>,
+          apiKey: <code>VITE_GOOGLE_API_KEY</code>,
+        })}
       </p>
       <p className="gate__text">
-        Follow <code>SETUP.md</code> to create them, then put them in <code>.env</code> for local
-        development or in the repository variables for GitHub Pages.
+        {tn('gate.unconfiguredFollow', {
+          setup: <code>SETUP.md</code>,
+          env: <code>.env</code>,
+        })}
       </p>
     </Panel>
   )
 }
 
 export function SignInGate({ onSignIn, status, error }) {
+  const { t } = useT()
+
   return (
-    <Panel title="Shared Finances">
-      <p className="gate__text">
-        Groceries and food, split between two people. Everything lives in your own Google Sheet.
-      </p>
-      <button
-        type="button"
-        className="btn btn--primary btn--block"
-        onClick={onSignIn}
-        disabled={status === 'signing-in'}
-      >
-        {status === 'signing-in' ? <span className="spinner" /> : null}
-        Sign in with Google
-      </button>
+    <Panel title={t('app.name')}>
+      <p className="gate__text">{t('app.tagline')}</p>
+      <div className="gate__actions">
+        <button
+          type="button"
+          className="btn btn--primary btn--block"
+          onClick={onSignIn}
+          disabled={status === 'signing-in'}
+        >
+          {status === 'signing-in' ? <span className="spinner" /> : null}
+          {t('gate.signIn')}
+        </button>
+      </div>
       {error && <p className="field__error">{error}</p>}
-      <p className="gate__fine">
-        The app asks only for access to the single spreadsheet you pick — not your whole Drive.
-      </p>
+      <p className="gate__fine">{t('gate.signInFine')}</p>
     </Panel>
   )
 }
 
 export function SheetGate({ onCreate, onChoose, error }) {
+  const { t } = useT()
   const [busy, setBusy] = useState(null)
 
   async function run(kind, action) {
@@ -67,75 +77,82 @@ export function SheetGate({ onCreate, onChoose, error }) {
   }
 
   return (
-    <Panel title="Pick a sheet">
-      <p className="gate__text">
-        Start a fresh spreadsheet, or connect one you already have. You can change this later.
-      </p>
-      <button
-        type="button"
-        className="btn btn--primary btn--block"
-        onClick={() => run('create', () => onCreate('Shared Finances'))}
-        disabled={Boolean(busy)}
-      >
-        {busy === 'create' ? <span className="spinner" /> : null}
-        Create a new sheet
-      </button>
-      <button
-        type="button"
-        className="btn btn--ghost btn--block"
-        onClick={() => run('choose', onChoose)}
-        disabled={Boolean(busy)}
-      >
-        {busy === 'choose' ? <span className="spinner" /> : null}
-        Choose an existing sheet
-      </button>
+    <Panel title={t('gate.sheetTitle')}>
+      <p className="gate__text">{t('gate.sheetBody')}</p>
+      <div className="gate__actions">
+        <button
+          type="button"
+          className="btn btn--primary btn--block"
+          onClick={() => run('create', () => onCreate())}
+          disabled={Boolean(busy)}
+        >
+          {busy === 'create' ? <span className="spinner" /> : null}
+          {t('gate.createSheet')}
+        </button>
+        <button
+          type="button"
+          className="btn btn--ghost btn--block"
+          onClick={() => run('choose', onChoose)}
+          disabled={Boolean(busy)}
+        >
+          {busy === 'choose' ? <span className="spinner" /> : null}
+          {t('gate.chooseSheet')}
+        </button>
+      </div>
       {error && <p className="field__error">{error}</p>}
     </Panel>
   )
 }
 
 export function IdentityGate({ config, onPick }) {
+  const { t } = useT()
+  const tn = useTNodes()
+  const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
+
   return (
-    <Panel title="Which one are you?">
-      <p className="gate__text">
-        So the app can say &ldquo;you&rdquo; instead of a name. Stored on this device only.
-      </p>
-      {[PERSON.P1, PERSON.P2].map((person) => (
-        <button
-          key={person}
-          type="button"
-          className="btn btn--primary btn--block"
-          onClick={() => onPick(person)}
-        >
-          {nameOf(config, person)}
-        </button>
-      ))}
-      <p className="gate__fine">
-        Set both names in the <code>config</code> tab of your sheet if these look wrong.
-      </p>
+    <Panel title={t('gate.identityTitle')}>
+      <p className="gate__text">{t('gate.identityBody')}</p>
+      <div className="gate__actions">
+        {[PERSON.P1, PERSON.P2].map((person) => (
+          <button
+            key={person}
+            type="button"
+            className="btn btn--primary btn--block"
+            onClick={() => onPick(person)}
+          >
+            {nameOf(config, person, fallbacks)}
+          </button>
+        ))}
+      </div>
+      <p className="gate__fine">{tn('gate.identityFine', { tab: <code>{CONFIG_TAB}</code> })}</p>
     </Panel>
   )
 }
 
-export function LoadingGate({ label = 'Loading' }) {
+export function LoadingGate({ label }) {
+  const { t } = useT()
   return (
     <div className="gate" aria-busy="true">
       <span className="spinner spinner--lg" />
-      <span className="visually-hidden">{label}</span>
+      <span className="visually-hidden">{label ?? t('gate.loading')}</span>
     </div>
   )
 }
 
 export function ErrorGate({ message, onRetry, onSwitchSheet }) {
+  const { t } = useT()
+
   return (
-    <Panel title="Could not read the sheet">
+    <Panel title={t('gate.errorTitle')}>
       <p className="gate__text">{message}</p>
-      <button type="button" className="btn btn--primary btn--block" onClick={onRetry}>
-        Try again
-      </button>
-      <button type="button" className="btn btn--ghost btn--block" onClick={onSwitchSheet}>
-        Pick a different sheet
-      </button>
+      <div className="gate__actions">
+        <button type="button" className="btn btn--primary btn--block" onClick={onRetry}>
+          {t('common.retry')}
+        </button>
+        <button type="button" className="btn btn--ghost btn--block" onClick={onSwitchSheet}>
+          {t('gate.pickDifferent')}
+        </button>
+      </div>
     </Panel>
   )
 }

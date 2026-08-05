@@ -1,7 +1,9 @@
 import { currentMonthKey, monthLabel, shiftMonth } from '../lib/dates.js'
+import { useT } from '../i18n/index.js'
 import { ChevronLeftIcon, ChevronRightIcon } from './icons.jsx'
 
 export function MonthNav({ monthKey, onChange }) {
+  const { t, locale } = useT()
   const atCurrent = monthKey >= currentMonthKey()
 
   return (
@@ -10,17 +12,17 @@ export function MonthNav({ monthKey, onChange }) {
         type="button"
         className="btn btn--icon btn--ghost"
         onClick={() => onChange(shiftMonth(monthKey, -1))}
-        aria-label="Previous month"
+        aria-label={t('month.previous')}
       >
         <ChevronLeftIcon />
       </button>
-      <span className="month-nav__label">{monthLabel(monthKey)}</span>
+      <span className="month-nav__label">{monthLabel(monthKey, { locale })}</span>
       <button
         type="button"
         className="btn btn--icon btn--ghost"
         onClick={() => onChange(shiftMonth(monthKey, 1))}
         disabled={atCurrent}
-        aria-label="Next month"
+        aria-label={t('month.next')}
       >
         <ChevronRightIcon />
       </button>

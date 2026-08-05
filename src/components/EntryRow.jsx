@@ -1,22 +1,47 @@
-import { formatCents } from '../lib/money.js'
-import { ENTRY_TYPE, EVEN_SHARE, PERSON } from '../schema.js'
+import { ENTRY_TYPE, EVEN_SHARE, PERSON, otherPerson } from '../schema.js'
 import { labelFor } from '../lib/identity.js'
+import { useMoney, useT } from '../i18n/index.js'
 import { SwapIcon, TrashIcon } from './icons.jsx'
 
-/** Only mention the split when it is not the assumed even one. */
-function splitNote(entry, config, me) {
-  if (entry.payerShare === EVEN_SHARE) return null
-  const other = entry.payer === PERSON.P1 ? PERSON.P2 : PERSON.P1
-  if (entry.payerShare === 1) return `${labelFor(config, entry.payer, me)} only`
-  if (entry.payerShare === 0) return `${labelFor(config, other, me)} only`
-  return `${Math.round(entry.payerShare * 100)}% ${labelFor(config, entry.payer, me)}`
-}
-
 export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
+  const { t } = useT()
+  // The entry's own currency wins: a sheet holding rows from before a currency
+  // change is only rendered correctly per row.
+  const money = useMoney(entry.currency || currency)
+
   const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
-  const note = isSettlement ? null : splitNote(entry, config, me)
-  const payerLabel = labelFor(config, entry.payer, me)
-  const otherLabel = labelFor(config, entry.payer === PERSON.P1 ? PERSON.P2 : PERSON.P1, me)
+  const you = t('common.you')
+  const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
+  const label = (person) => labelFor(config, person, me, you, fallbacks)
+
+  const payerLabel = label(entry.payer)
+  const otherLabel = label(otherPerson(entry.payer))
+
+  /** Only mention the split when it is not the assumed even one. */
+  const splitNote = () => {
+    if (isSettlement || entry.payerShare === EVEN_SHARE) return null
+    if (entry.payerShare === 1) return t('entry.onlyPerson', { name: payerLabel })
+    if (entry.payerShare === 0) return t('entry.onlyPerson', { name: otherLabel })
+    return t('entry.splitPercent', {
+      percent: Math.round(entry.payerShare * 100),
+      name: payerLabel,
+    })
+  }
+
+  const separator = t('entry.metaSeparator')
+  const note = splitNote()
+  const meta = isSettlement
+    ? t('entry.settlementMeta', { payer: payerLabel, other: otherLabel })
+    : [
+        entry.description && entry.category
+          ? t('entry.paidCategory', { name: payerLabel, category: entry.category })
+          : t('entry.paid', { name: payerLabel }),
+        note,
+      ]
+        .filter(Boolean)
+        .join(separator)
+
+  const description = entry.description || entry.category || t('entry.expense')
 
   return (
     <li
@@ -29,26 +54,18 @@ export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
           {isSettlement ? (
             <>
               <SwapIcon width={16} height={16} />
-              Settled up
+              {t('entry.settled')}
             </>
           ) : (
-            entry.description || entry.category || 'Expense'
+            description
           )}
         </span>
-        <span className="entry__meta">
-          {isSettlement ? (
-            `${payerLabel} paid ${otherLabel}`
-          ) : (
-            <>
-              {payerLabel} paid
-              {entry.description && entry.category ? ` · ${entry.category}` : ''}
-              {note ? ` · ${note}` : ''}
-            </>
-          )}
-        </span>
+        <span className="entry__meta">{meta}</span>
       </button>
 
-      <span className="entry__amount">{formatCents(entry.amountCents, currency)}</span>
+      <span className="entry__amount tnum">
+        {money(entry.amountCents, { trimZeroCents: true })}
+      </span>
 
       <button
         type="button"
@@ -56,8 +73,8 @@ export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
         onClick={() => onDelete(entry)}
         aria-label={
           isSettlement
-            ? 'Delete settlement'
-            : `Delete ${entry.description || entry.category || 'expense'}`
+            ? t('entry.deleteSettlement')
+            : t('entry.delete', { description })
         }
       >
         <TrashIcon width={18} height={18} />

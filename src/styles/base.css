@@ -12,19 +12,24 @@ html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
+  /* Kinsoku shori: keeps 、。」 from being orphaned at the start of a line.
+     Harmless for Latin, load-bearing for Japanese. */
+  line-break: strict;
 }
 
 body {
   min-height: 100%;
   margin: 0;
   background-color: var(--bg);
-  color: var(--text);
+  color: var(--ink);
   font-family: var(--font-sans);
-  font-size: var(--text-base);
-  line-height: 1.5;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* break-word, never break-all: break-all splits Latin words mid-glyph. */
   overflow-wrap: break-word;
+  word-break: normal;
   /* Horizontal safe area lives here so nothing hides under a landscape notch.
      Top/bottom insets are intentionally NOT applied globally: the sticky
      header and the bottom sheet each need to paint *into* their inset and
@@ -55,7 +60,9 @@ h5,
 h6 {
   font-size: inherit;
   font-weight: 600;
-  line-height: 1.22;
+  /* 1.45, not 1.22: CJK glyphs fill the em box and a tight heading is
+     unreadable in Japanese. */
+  line-height: var(--lh-heading);
   text-wrap: balance;
 }
 
@@ -95,7 +102,8 @@ optgroup {
   margin: 0;
   font: inherit;
   color: inherit;
-  letter-spacing: inherit;
+  /* letter-spacing is deliberately NOT inherited here. Any non-zero tracking
+     inserts a gap between every kana — 「このつき」 becomes 「こ の つ き」. */
 }
 
 /* 16px MINIMUM on form controls. Mobile Safari auto-zooms the viewport when a
@@ -104,7 +112,7 @@ optgroup {
 input,
 select,
 textarea {
-  font-size: max(1rem, var(--text-base));
+  font-size: max(1rem, var(--fs-body));
 }
 
 button {
@@ -140,7 +148,7 @@ hr {
   height: 1px;
   border: 0;
   margin: var(--space-4) 0;
-  background-color: var(--border);
+  background-color: var(--line);
 }
 
 code,
@@ -153,6 +161,16 @@ pre {
 
 [hidden] {
   display: none;
+}
+
+/* ---- Numerals ----------------------------------------------------------
+   Every money figure in the app carries this. Tabular figures line up in a
+   column while keeping the proportional letterforms of the UI sans — which is
+   the whole point of not setting money in monospace. Digits resolve from the
+   Latin faces regardless of the Japanese fallbacks, so `tnum` always applies. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 /* ---- Focus -------------------------------------------------------------
@@ -173,7 +191,7 @@ pre {
 }
 
 ::placeholder {
-  color: var(--text-faint);
+  color: var(--ink-4);
   opacity: 1;
 }
 
@@ -196,7 +214,7 @@ pre {
    scrollbars, which must not be restyled or they stop auto-hiding. */
 @media (pointer: fine) {
   html {
-    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-color: var(--line-input) transparent;
     scrollbar-width: thin;
   }
 
@@ -210,14 +228,14 @@ pre {
   }
 
   ::-webkit-scrollbar-thumb {
-    background-color: var(--border-strong);
+    background-color: var(--line-input);
     border: 3px solid transparent;
     background-clip: content-box;
     border-radius: var(--radius-full);
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background-color: var(--text-faint);
+    background-color: var(--ink-3);
   }
 }
 

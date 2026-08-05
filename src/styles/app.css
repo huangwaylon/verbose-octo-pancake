@@ -1,4 +1,4 @@
-/* App-specific layout: shell, balance, summary, entry list, gates. */
+/* App-specific layout: shell, balance, summary, charts, entry list, gates. */
 /* Primitives (.card, .btn, .input, .sheet, …) live in primitives.css. */
 
 .app {
@@ -7,7 +7,9 @@
   min-height: 100dvh;
 }
 
-/* --- Header ------------------------------------------------------------- */
+/* =========================================================================
+   Header
+   ========================================================================= */
 
 .app__header {
   position: sticky;
@@ -17,23 +19,31 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: calc(var(--space-3) + var(--safe-top)) var(--space-4) var(--space-3);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  backdrop-filter: blur(12px);
-  border-bottom: 1px solid var(--border);
+  min-height: var(--header-height);
+  padding: var(--safe-top) var(--space-4) 0;
+  /* The one blur in the app, and it is functional: content scrolls under it. */
+  background-color: color-mix(in srgb, var(--bg) 80%, transparent);
+  backdrop-filter: blur(14px) saturate(1.4);
+  border-bottom: 1px solid var(--line);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .app__header {
+    background-color: var(--bg);
+  }
 }
 
 .brand__title {
-  font-size: var(--text-lg);
-  font-weight: 650;
-  letter-spacing: -0.01em;
-  line-height: 1.1;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: var(--lh-heading);
 }
 
 .brand__subtitle {
-  margin-top: 2px;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-tight);
 }
 
 .header-actions {
@@ -42,164 +52,333 @@
   gap: var(--space-1);
 }
 
-/* --- Layout ------------------------------------------------------------- */
+/* =========================================================================
+   Layout
+   =========================================================================
+   Phone: one column. 48rem: still one column but capped and centred, because a
+   768px-wide column of 44px rows is the ugliest state a mobile-first app passes
+   through. 62rem: two columns.
+
+   The DOM order is aside-then-main, which is already the right reading order on
+   a phone (balance, summary, then the list), so no `order` is needed anywhere. */
 
 .layout {
-  flex: 1;
-  width: 100%;
-  max-width: 68rem;
-  margin-inline: auto;
-  padding: var(--space-4);
-  /* Clear the fixed FAB so the last row is never trapped underneath it. */
-  padding-bottom: calc(var(--space-8) + var(--tap-target) + var(--safe-bottom));
   display: grid;
-  gap: var(--space-5);
-  align-items: start;
+  gap: var(--space-6);
+  width: 100%;
+  padding: var(--space-5) var(--space-4)
+    calc(var(--space-9) + var(--tap-target) + var(--safe-bottom));
 }
 
 .layout__aside {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  min-width: 0;
+  gap: var(--space-4);
 }
 
 .layout__main {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
   min-width: 0;
 }
 
-.layout__main > .stack {
-  --stack-gap: var(--space-5);
+@media (min-width: 48rem) {
+  .layout {
+    max-width: var(--column-max);
+    margin-inline: auto;
+    padding-inline: var(--space-6);
+  }
 }
 
 @media (min-width: 62rem) {
   .layout {
-    grid-template-columns: 20rem minmax(0, 1fr);
-    gap: var(--space-6);
-    padding-bottom: calc(var(--space-6) + var(--safe-bottom));
+    max-width: var(--shell-max);
+    grid-template-columns: minmax(18rem, var(--aside-w)) minmax(0, 1fr);
+    gap: var(--space-7);
+    padding: var(--space-7) var(--space-7) calc(var(--space-7) + var(--safe-bottom));
   }
 
   .layout__aside {
     position: sticky;
-    top: calc(var(--header-height) + var(--space-4));
+    top: calc(var(--header-height) + var(--space-5));
+    align-self: start;
+  }
+
+  .layout__main {
+    max-width: var(--main-max);
   }
 }
 
-/* --- Balance ------------------------------------------------------------ */
+/* =========================================================================
+   Balance — the hero
+   =========================================================================
+   Deliberately NOT a card. It is a bare block on the page ground, closed by a
+   single hairline. Taking the frame off the most important element on the page
+   is the strongest hierarchy move available and costs nothing; the white cards
+   below then read unambiguously as "the details". */
 
-.balance__amount {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-3xl);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+.balance {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  padding-block: var(--space-2) var(--space-6);
+  border-bottom: 1px solid var(--line);
 }
 
-.balance--settled .balance__amount {
-  font-family: var(--font-sans);
-  font-size: var(--text-xl);
-  color: var(--success);
+.balance__direction {
+  margin: var(--space-1) 0 0;
+  color: var(--ink-2);
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+}
+
+/* Container-relative, not viewport-relative: the same component renders at
+   288px on a phone and inside a 352px aside on a 1440px monitor, where a
+   vw-keyed clamp would overflow. */
+.balance__amount {
+  display: flex;
+  align-items: baseline;
+  gap: 0.06em;
+  margin: var(--space-3) 0 0;
+  color: var(--ink);
+  font-size: clamp(2.5rem, 14cqi, 4rem);
+  font-weight: 600;
+  /* The one place a line-height below 1.5 is allowed: digits only, no CJK. */
+  line-height: 1;
+  /* Likewise the one place letter-spacing is allowed, for the same reason. */
+  letter-spacing: -0.022em;
+  font-feature-settings: "tnum" 1, "palt" 1;
+  font-variant-numeric: tabular-nums;
+}
+
+@supports not (container-type: inline-size) {
+  .balance__amount {
+    font-size: clamp(2.5rem, 12vw, 4rem);
+  }
+}
+
+/* Symbol and minor units recede; the integer part carries the weight. */
+.balance__symbol,
+.balance__fraction {
+  color: var(--ink-3);
+  font-size: 0.5em;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Optically hang the symbol at cap height instead of sitting it on the
+   baseline, where it looks dropped. */
+.balance__symbol {
+  align-self: flex-start;
+  padding-top: 0.14em;
+}
+
+/* Settled is typographic, never green. A green success state in a two-person
+   ledger is a small indignity, and hue adds nothing that the words do not say. */
+.balance__settled {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  color: var(--ink);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+
+.balance__dot {
+  flex: none;
+  width: 0.375rem;
+  height: 0.375rem;
+  background-color: var(--accent);
+  border-radius: var(--radius-full);
 }
 
 .balance__caption {
-  margin-top: var(--space-1);
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  margin: var(--space-2) 0 0;
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-prose);
 }
 
-.balance--owed .btn--primary {
-  margin-top: var(--space-4);
+.balance__action {
+  margin-top: var(--space-5);
 }
 
-/* --- Month summary ------------------------------------------------------ */
+/* =========================================================================
+   Summary
+   ========================================================================= */
+
+.summary {
+  /* The chart below switches to a side-by-side figure+legend based on the space
+     the card actually has, not the viewport — the same card renders full-width on
+     a phone and inside a 22rem aside on a desktop. */
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
 
 .summary__total {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-2xl);
+  margin: var(--space-1) 0 0;
+  color: var(--ink);
+  font-size: var(--fs-xl);
   font-weight: 600;
-  letter-spacing: -0.02em;
+  line-height: var(--lh-tight);
+}
+
+.summary__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Who-paid is two values, so it is a meter, not a pie. A 2-slice pie is the
+   canonical chart anti-pattern: the number is the chart. */
+.summary__meter {
+  display: flex;
+  gap: 2px;
+  height: 0.5rem;
+  background-color: var(--sunken);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.summary__meter-fill {
+  min-width: 2px;
+  background-color: var(--accent);
+  border-radius: var(--radius-full);
+}
+
+.summary__meter-fill--other {
+  background-color: var(--accent-wash);
 }
 
 .summary__people {
   display: flex;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
 }
 
 .summary__person {
-  flex: 1;
-  min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: var(--space-2) var(--space-3);
-  background: var(--bg-sunken);
-  border-radius: var(--radius-md);
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--fs-caption);
 }
 
 .summary__person-name {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: var(--ink-3);
 }
 
 .summary__person-amount {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-sm);
-  font-weight: 550;
+  color: var(--ink);
+  font-weight: 600;
 }
 
-.summary__categories {
-  margin-top: var(--space-4);
+.summary__person-swatch {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-xs);
+  background-color: var(--accent);
+}
+
+.summary__person-swatch--other {
+  background-color: var(--accent-wash);
+  border: 1px solid var(--line-input);
+}
+
+/* =========================================================================
+   Donut chart
+   =========================================================================
+   Part-to-whole at a glance, capped at 6 slices with the tail folded into
+   "Other" — past ~6 segments adjacent slices blur and a table is the honest
+   form. The legend always carries name, value and share, which is also the
+   relief for the three series colors that sit under 3:1 on white. */
+
+.chart {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+@container (min-width: 22rem) {
+  .chart {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-5);
+  }
+}
+
+.chart__figure {
+  flex: none;
+  align-self: center;
+  width: 8.5rem;
+  max-width: 100%;
+}
+
+.chart__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* The per-slice stroke is set inline by the component, not here: a CSS rule on
+   this class would WIN over an SVG presentation attribute and paint every slice
+   the same color. The 2px gap between fills comes from the dash geometry, so it
+   needs no stroke of its own. */
+.chart__slice {
+  stroke-linecap: butt;
+}
+
+.chart__legend {
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
 }
 
-.summary__row {
+.chart__item {
   display: grid;
-  grid-template-columns: minmax(4rem, 6rem) minmax(0, 1fr) auto;
-  align-items: center;
+  grid-template-columns: 0.5rem minmax(0, 1fr) auto;
+  align-items: baseline;
   gap: var(--space-2);
-  font-size: var(--text-xs);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-tight);
 }
 
-.summary__label {
-  color: var(--text-muted);
-  white-space: nowrap;
+.chart__swatch {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-xs);
+  /* Set inline from the validated --series-N tokens, in fixed order. */
+  background-color: var(--series-1);
+}
+
+.chart__name {
   overflow: hidden;
+  color: var(--ink-2);
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.summary__bar {
-  height: 6px;
-  border-radius: var(--radius-full);
-  background: var(--bg-sunken);
-  overflow: hidden;
+.chart__value {
+  color: var(--ink);
+  font-weight: 600;
 }
 
-.summary__bar-fill {
-  display: block;
-  height: 100%;
-  border-radius: var(--radius-full);
-  background: var(--accent);
+.chart__share {
+  color: var(--ink-3);
 }
 
-.summary__value {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}
-
-/* --- Month switcher ----------------------------------------------------- */
+/* =========================================================================
+   Month navigation
+   ========================================================================= */
 
 .month-nav {
   display: flex;
@@ -209,174 +388,153 @@
 }
 
 .month-nav__label {
-  font-size: var(--text-base);
+  font-size: var(--fs-lg);
   font-weight: 600;
+  line-height: var(--lh-heading);
 }
 
-/* --- Entry list --------------------------------------------------------- */
+/* =========================================================================
+   Entry list
+   =========================================================================
+   One continuous white card per day, with rows divided by hairlines INSET to
+   align with the text. Edge-to-edge dividers are the Bootstrap list-group;
+   inset dividers are the editorial detail, and the difference is immediately
+   legible. */
 
+.day-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.day-group + .day-group {
+  margin-top: var(--space-5);
+}
+
+/* Sits outside the white card, on the page ground: structure by typography and
+   whitespace rather than a tinted header bar. */
 .day-group__label {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--space-2);
-  padding: 0 var(--space-1) var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: 550;
-  color: var(--text-muted);
+  gap: var(--space-3);
+  padding-inline: var(--space-1);
+  color: var(--ink-2);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  line-height: var(--lh-tight);
 }
 
-.day-group__label > :last-child {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
+.day-group__total {
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
+  font-weight: 400;
 }
 
 .entry-list {
-  display: flex;
-  flex-direction: column;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  background-color: var(--surface);
+  border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  overflow: hidden;
 }
 
 .entry {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
-  padding-right: var(--space-2);
-  border-top: 1px solid var(--border);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
 }
 
-.entry:first-child {
-  border-top: 0;
+.entry:not(:first-child)::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: var(--space-4);
+  right: 0;
+  height: 1px;
+  background-color: var(--line);
 }
 
 .entry--settlement {
-  background: var(--accent-soft);
+  background-color: var(--accent-wash);
+}
+
+.entry:first-child,
+.entry:first-child.entry--settlement {
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.entry:last-child,
+.entry:last-child.entry--settlement {
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
 }
 
 .entry--pending {
-  opacity: 0.5;
+  opacity: 0.55;
 }
 
 .entry__main {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 0;
+  gap: 0.125rem;
   min-height: var(--tap-target);
-  padding: var(--space-3);
-  background: none;
-  border: 0;
+  justify-content: center;
+  min-width: 0;
+  padding: var(--space-1) 0;
   text-align: left;
-  cursor: pointer;
-  color: inherit;
-  border-radius: var(--radius-md);
-}
-
-.entry__main:hover {
-  background: var(--bg-sunken);
 }
 
 .entry__desc {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--text-sm);
-  font-weight: 550;
   overflow: hidden;
+  color: var(--ink);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  line-height: var(--lh-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .entry__meta {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
   overflow: hidden;
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-tight);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .entry__amount {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-sm);
+  color: var(--ink);
+  font-size: var(--fs-label);
   font-weight: 600;
 }
 
-/* Keep the row calm until it is being pointed at; touch devices, which have
-   no hover, always show the control. */
 .entry__delete {
-  opacity: 0.45;
-  transition: opacity var(--transition-fast);
-}
-
-.entry:hover .entry__delete,
-.entry__delete:focus-visible {
-  opacity: 1;
-}
-
-@media (hover: none) {
-  .entry__delete {
-    opacity: 0.7;
-  }
+  width: 2.25rem;
+  min-width: 2.25rem;
+  height: 2.25rem;
+  min-height: 2.25rem;
+  color: var(--ink-3);
 }
 
 .skeleton--entry {
-  height: 4rem;
-  border-radius: var(--radius-lg);
-}
-
-/* --- Add button --------------------------------------------------------- */
-
-.fab {
-  position: fixed;
-  right: max(var(--space-4), var(--safe-right));
-  bottom: calc(var(--space-4) + var(--safe-bottom));
-  z-index: var(--z-fab);
-  display: grid;
-  place-items: center;
-  width: 3.5rem;
   height: 3.5rem;
-  border: 0;
-  border-radius: var(--radius-full);
-  background: var(--accent);
-  color: var(--accent-text);
-  box-shadow: var(--shadow-2);
-  cursor: pointer;
-  transition:
-    transform var(--transition-fast),
-    background var(--transition-fast);
 }
 
-.fab:hover {
-  background: var(--accent-hover);
-}
-
-.fab:active {
-  transform: scale(0.94);
-}
-
-/* --- Form extras -------------------------------------------------------- */
-
-.input--amount {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-2xl);
-  font-weight: 600;
-  height: auto;
-  padding-block: var(--space-3);
-}
+/* =========================================================================
+   Split control
+   ========================================================================= */
 
 .split-control {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  margin-top: var(--space-3);
   padding: var(--space-3);
-  background: var(--bg-sunken);
+  background-color: var(--sunken);
   border-radius: var(--radius-md);
 }
 
@@ -386,53 +544,96 @@
   gap: var(--space-2);
 }
 
-.split-control__presets > .btn {
-  flex: 1 1 auto;
-}
-
 .split-control__slider {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  display: flex;
   align-items: center;
   gap: var(--space-3);
 }
 
-.split-control__slider input[type='range'] {
-  width: 100%;
+.split-control__slider input {
+  flex: 1 1 auto;
+  min-width: 0;
   accent-color: var(--accent);
-  min-height: var(--tap-target);
 }
 
 .split-control__slider output {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--text-sm);
+  min-width: 2.75rem;
+  color: var(--ink);
+  font-size: var(--fs-label);
   font-weight: 600;
-  min-width: 3ch;
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
-/* primitives.css makes every footer button flex-grow; the delete icon should
-   stay square instead of stretching across a third of the row. */
-.sheet__footer > .btn--icon {
-  flex: 0 0 auto;
+/* =========================================================================
+   Amount input, FAB, settings
+   ========================================================================= */
+
+.input--amount {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.fab {
+  position: fixed;
+  right: var(--space-5);
+  bottom: calc(var(--space-5) + var(--safe-bottom));
+  z-index: var(--z-fab);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  background-color: var(--accent);
+  color: var(--accent-text);
+  border-radius: var(--radius-full);
+  box-shadow: var(--shadow-fab);
+  transition: background-color var(--transition-fast);
+}
+
+.fab:hover {
+  background-color: var(--accent-hover);
+}
+
+/* Pin to the shell's edge rather than the viewport's: a FAB in the corner of a
+   27" monitor is half a metre from the content. */
+@media (min-width: 62rem) {
+  .fab {
+    right: max(var(--space-7), calc(50vw - var(--shell-max) / 2 + var(--space-7)));
+  }
 }
 
 .settings__value {
-  font-size: var(--text-sm);
-  font-weight: 550;
-  margin-bottom: var(--space-2);
-  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-prose);
 }
 
-/* --- Gates -------------------------------------------------------------- */
+.settings__warning {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  background-color: var(--sunken);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius-sm);
+  color: var(--ink-2);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-prose);
+}
+
+/* =========================================================================
+   Gates
+   ========================================================================= */
 
 .gate {
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
   min-height: 100dvh;
-  padding: calc(var(--space-5) + var(--safe-top)) var(--space-4)
-    calc(var(--space-5) + var(--safe-bottom));
+  padding: var(--space-6) var(--space-4);
 }
 
 .gate__panel {
@@ -441,30 +642,35 @@
   gap: var(--space-3);
   width: 100%;
   max-width: 24rem;
-  text-align: center;
 }
 
 .gate__icon {
-  margin-inline: auto;
   color: var(--accent);
 }
 
 .gate__title {
-  font-size: var(--text-xl);
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: var(--lh-tight);
 }
 
 .gate__text {
-  font-size: var(--text-sm);
-  color: var(--text-muted);
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-prose);
 }
 
 .gate__fine {
-  font-size: var(--text-xs);
-  color: var(--text-faint);
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-prose);
 }
 
-.gate__panel .btn {
-  width: 100%;
+.gate__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }

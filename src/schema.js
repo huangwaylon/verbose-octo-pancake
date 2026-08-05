@@ -110,7 +110,14 @@ export function rowToEntry(row, index) {
   const id = get('id')
   if (!id) return null
 
-  const amountCents = parseAmountToCents(get('amount'))
+  // MUST be read before the amount. The stored string "1250" means ¥1250 or
+  // $12.50 depending entirely on this cell, so decoding in the other order is a
+  // silent 100x corruption. A blank cell keeps meaning USD — that fallback is
+  // what migrates every pre-existing sheet for free, so do not point it at
+  // DEFAULT_CONFIG.currency.
+  const currency = get('currency') || 'USD'
+
+  const amountCents = parseAmountToCents(get('amount'), currency)
   if (amountCents == null) return null
 
   const payer = get('payer') === PERSON.P2 ? PERSON.P2 : PERSON.P1
@@ -132,7 +139,7 @@ export function rowToEntry(row, index) {
     date: isRealDate(date) ? date : '',
     payer,
     amountCents,
-    currency: get('currency') || 'USD',
+    currency,
     category: get('category'),
     description: get('description'),
     payerShare,
@@ -150,7 +157,10 @@ export function entryToRow(entry) {
     type: entry.type,
     date: entry.date,
     payer: entry.payer,
-    amount: centsToSheetString(entry.amountCents),
+    // Always the entry's OWN currency, never config.currency: a sheet holding
+    // both USD and JPY rows stays correct only if each row is encoded at its own
+    // scale.
+    amount: centsToSheetString(entry.amountCents, entry.currency),
     currency: entry.currency,
     category: entry.category,
     description: entry.description,
@@ -195,16 +205,40 @@ export function makeEntry(input, now = new Date().toISOString()) {
   }
 }
 
-/** @returns {string[]} human-readable problems; empty means valid. */
-export function validateEntry(entry) {
+/**
+ * Validation failure codes. These, not the English sentences, are the stable
+ * contract: `useLedger` attaches one to the thrown error as `i18nKey` so the UI
+ * can translate it, and `validateEntry` maps them back to English for callers
+ * (and tests) that want a readable string.
+ */
+export const ENTRY_ERROR = {
+  MISSING_ID: 'missingId',
+  BAD_DATE: 'badDate',
+  BAD_AMOUNT: 'badAmount',
+  BAD_PAYER: 'badPayer',
+  BAD_SHARE: 'badShare',
+  MISSING_CATEGORY: 'missingCategory',
+}
+
+const EN_ENTRY_ERRORS = {
+  missingId: 'Missing id.',
+  badDate: 'Date must be a real day, as YYYY-MM-DD.',
+  badAmount: 'Amount must be greater than zero.',
+  badPayer: 'Payer must be one of the two people.',
+  badShare: 'Split must be between 0 and 100%.',
+  missingCategory: 'Pick a category.',
+}
+
+/** @returns {string[]} failure codes from ENTRY_ERROR; empty means valid. */
+export function validateEntryCodes(entry) {
   const errors = []
-  if (!entry.id) errors.push('Missing id.')
-  if (!isRealDate(entry.date)) errors.push('Date must be a real day, as YYYY-MM-DD.')
+  if (!entry.id) errors.push(ENTRY_ERROR.MISSING_ID)
+  if (!isRealDate(entry.date)) errors.push(ENTRY_ERROR.BAD_DATE)
   if (!Number.isInteger(entry.amountCents) || entry.amountCents <= 0) {
-    errors.push('Amount must be greater than zero.')
+    errors.push(ENTRY_ERROR.BAD_AMOUNT)
   }
   if (entry.payer !== PERSON.P1 && entry.payer !== PERSON.P2) {
-    errors.push('Payer must be one of the two people.')
+    errors.push(ENTRY_ERROR.BAD_PAYER)
   }
   if (
     typeof entry.payerShare !== 'number' ||
@@ -212,12 +246,17 @@ export function validateEntry(entry) {
     entry.payerShare < 0 ||
     entry.payerShare > 1
   ) {
-    errors.push('Split must be between 0 and 100%.')
+    errors.push(ENTRY_ERROR.BAD_SHARE)
   }
   if (entry.type === ENTRY_TYPE.EXPENSE && !entry.category) {
-    errors.push('Pick a category.')
+    errors.push(ENTRY_ERROR.MISSING_CATEGORY)
   }
   return errors
+}
+
+/** @returns {string[]} human-readable English problems; empty means valid. */
+export function validateEntry(entry) {
+  return validateEntryCodes(entry).map((code) => EN_ENTRY_ERRORS[code])
 }
 
 export function isActive(entry) {

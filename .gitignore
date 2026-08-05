@@ -5,3 +5,6 @@ dist/
 .DS_Store
 *.log
 coverage/
+
+# Visual-check output from scripts/preview.jsx
+scripts/preview-*.html

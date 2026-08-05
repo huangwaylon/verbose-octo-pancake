@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react'
+import { useT } from '../i18n/index.js'
 import { CloseIcon } from './icons.jsx'
 
 /**
@@ -7,6 +8,7 @@ import { CloseIcon } from './icons.jsx'
  * moving focus into the panel on open.
  */
 export function BottomSheet({ title, onClose, children, footer }) {
+  const { t } = useT()
   const panel = useRef(null)
   const titleId = useId()
 
@@ -51,7 +53,7 @@ export function BottomSheet({ title, onClose, children, footer }) {
             type="button"
             className="btn btn--icon btn--ghost"
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t('common.close')}
             data-dismiss
           >
             <CloseIcon />

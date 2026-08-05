@@ -1,91 +1,168 @@
 /* tokens.css — the single source of truth for design values: colors, type, space, motion, z-order. */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
-  /* ---- Color: light theme ---------------------------------------------- */
-  --bg: #f5f7f8;
-  --bg-elev: #ffffff;
-  --bg-sunken: #eaeef1;
+  /* ---- Color: warm neutrals -------------------------------------------
+     Warm rather than cool on purpose. This is a domestic ledger — groceries
+     and meals — and an unbleached off-white (生成り) reads as paper. Cool
+     gray-on-white is also the Bootstrap signature.
 
-  --text: #14181d;
-  --text-muted: #5b6570;
-  --text-faint: #6a747f;
+     The temperature step from --bg to --surface IS the elevation, which is what
+     lets almost every shadow in this app be deleted. */
+  --bg: #f7f5f2;
+  --surface: #ffffff;
+  --sunken: #efeae3;
 
-  --border: #e1e6ea;
-  --border-strong: #c3cbd3;
+  --line: #e4ded6;
+  /* Deliberately darker than --line, and only for form controls and secondary
+     button borders. WCAG 1.4.11 wants 3:1 for the boundary that identifies a
+     control; a --line border on white measures ~1.15:1 and fails. 3.11:1 here.
+     Do not "tidy" this to --line. */
+  --line-input: #9a9186;
 
-  /* Deep teal: money-adjacent and calm, but not the default corporate blue. */
-  --accent: #0f7a6a;
-  --accent-hover: #0b6153;
+  --ink: #1c1a17;
+  --ink-2: #57514a;
+  /* The lightest muted ink that still passes AA at 13px (4.70:1 on --bg).
+     Kanji at low contrast is unreadable in a way Latin is not. Do not lighten. */
+  --ink-3: #756c62;
+  /* Placeholder and disabled text only. Never carries information. */
+  --ink-4: #8e8478;
+
+  --scrim: rgba(28, 26, 23, 0.32);
+
+  /* ---- Accent: 藍 indigo, one hue --------------------------------------
+     Indigo on unbleached linen is a genuinely Japanese pairing, and it is
+     nowhere near Bootstrap's #0d6efd. Desaturated and dark enough to sit as a
+     near-ink. */
+  --accent: #3d4e8b;
+  --accent-hover: #313f73;
   --accent-text: #ffffff;
-  --accent-soft: #eaf6f3;
-  --accent-ring: rgba(15, 122, 106, 0.24);
+  --accent-wash: #edeef7;
+  --accent-ring: rgba(61, 78, 139, 0.22);
 
-  --danger: #c62828;
+  /* The only semantic color. There is deliberately no --success and no
+     --warning: "settled" is stated in words, and money direction is never
+     encoded in hue. */
+  --danger: #a33a2e;
   --danger-text: #ffffff;
-  --danger-ring: rgba(198, 40, 40, 0.2);
+  --danger-ring: rgba(163, 58, 46, 0.2);
 
-  --success: #157f4f;
-  --warning: #a25c00;
+  /* ---- Chart series ----------------------------------------------------
+     Validated with the dataviz palette validator against the white card
+     surface as a 6-slot categorical set on the adjacent pairlist (a donut ring
+     is the circular case of a stacked bar): worst adjacent CVD ΔE 9.1, worst
+     adjacent normal-vision ΔE 19.6. The ring wraps, so slot 6 touches slot 1;
+     that pair was validated separately at ΔE 26.5.
 
-  --overlay: rgba(15, 20, 25, 0.4);
+     THE ORDER IS THE COLORBLINDNESS-SAFETY MECHANISM, not cosmetic. Do not
+     reorder, and do not cycle past slot 6 — a 7th category folds into "Other".
 
-  /* ---- Radii ----------------------------------------------------------- */
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 16px;
+     Slots 3, 4 and 5 sit below 3:1 against white, so the relief rule applies:
+     the legend always carries name + value + share, and identity is never
+     communicated by color alone. */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+
+  /* ---- Radii -----------------------------------------------------------
+     Inner radius <= outer radius minus container padding. Never nest equal
+     radii. --radius-xl is the ceiling on rectangles; fully pill-shaped
+     rectangular buttons read consumer-app rather than refined. */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.375rem;
   --radius-full: 999px;
 
-  /* ---- Space: 4px base, 4/8/12/16/24/32/48/64 -------------------------- */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 48px;
-  --space-8: 64px;
-
-  /* ---- Type ------------------------------------------------------------
-     The big sizes use clamp() so the balance figure reads large on a phone
-     without ballooning on a 27" monitor. */
-  --text-xs: 0.75rem;      /* 12px */
-  --text-sm: 0.875rem;     /* 14px */
-  --text-base: 1rem;       /* 16px — also the iOS no-zoom floor for inputs */
-  --text-lg: 1.125rem;     /* 18px */
-  --text-xl: clamp(1.25rem, 1.14rem + 0.55vw, 1.5rem);
-  --text-2xl: clamp(1.5rem, 1.29rem + 1vw, 2rem);
-  --text-3xl: clamp(2rem, 1.55rem + 2.2vw, 2.75rem);
+  /* ---- Space: 4px base, with a 20px step --------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-7: 2rem;
+  --space-8: 3rem;
+  --space-9: 4rem;
 
   /* ---- Fonts -----------------------------------------------------------
-     No web fonts: zero network cost, no CSP exception. --font-mono is for
-     currency figures; monospace stacks give tabular digits so columns of
-     amounts line up. Pair it with `font-variant-numeric: tabular-nums`. */
+     No web fonts: zero network cost, and font-src is 'self' in the CSP.
+
+     Latin faces come first so digits resolve from SF Pro / Segoe UI / Roboto,
+     which all ship tabular figures; Japanese then falls through to Hiragino on
+     Apple, Yu Gothic on Windows, Noto Sans JP where installed. "Yu Gothic
+     Medium" precedes "Yu Gothic" deliberately — Yu Gothic Regular renders
+     anaemically thin on Windows and Medium is the usable weight.
+
+     --font-mono survives for <code> only. Money is set in the sans with
+     tabular-nums: monospace currency is the loudest tell of a developer-built
+     finance app. */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji",
-    "Segoe UI Emoji";
+    "Helvetica Neue", Arial, "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", "Yu Gothic Medium", "Yu Gothic", YuGothic, "Yu Gothic UI",
+    Meiryo, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas,
     "Roboto Mono", "Liberation Mono", monospace;
 
-  /* ---- Elevation ------------------------------------------------------- */
-  --shadow-1: 0 1px 2px rgba(16, 24, 32, 0.06), 0 1px 3px rgba(16, 24, 32, 0.05);
-  --shadow-2: 0 4px 12px rgba(16, 24, 32, 0.1), 0 16px 40px rgba(16, 24, 32, 0.12);
+  /* ---- Type ------------------------------------------------------------
+     Nothing below 13px anywhere: 12px kanji is mush. Weights are
+     400/500/600/700 only — 550 and 650 are unreliable outside SF Pro, and
+     Hiragino ships W3/W6 with nothing between. */
+  --fs-caption: 0.8125rem; /* 13 */
+  --fs-label: 0.875rem; /* 14 */
+  --fs-body: 1rem; /* 16 — also the iOS no-zoom floor for inputs */
+  --fs-lg: 1.125rem; /* 18 */
+  --fs-xl: 1.5rem; /* 24 */
 
-  /* ---- Metrics --------------------------------------------------------- */
+  /* No line-height below 1.5 on anything that can contain Japanese: CJK glyphs
+     fill the em box. Only the display step goes tighter, because it renders
+     digits exclusively. */
+  --lh-tight: 1.35;
+  --lh-heading: 1.45;
+  --lh-body: 1.65;
+  --lh-prose: 1.8;
+
+  /* ---- Elevation -------------------------------------------------------
+     Shadows appear in exactly four places: the sheet panel, the toast, the FAB,
+     and the segmented control's selected thumb. Nowhere else — not on cards,
+     not on inputs, not on buttons — and never added on hover. */
+  --shadow-raised: 0 1px 2px rgba(28, 26, 23, 0.05);
+  --shadow-overlay: 0 2px 8px rgba(28, 26, 23, 0.06),
+    0 16px 48px -12px rgba(28, 26, 23, 0.22);
+  /* The one colored element casts the one colored shadow. */
+  --shadow-fab: 0 1px 2px rgba(28, 26, 23, 0.1),
+    0 8px 24px -6px rgba(61, 78, 139, 0.38);
+
+  /* ---- Metrics ---------------------------------------------------------
+     --shell-max = --aside-w + gap + 48rem. The main column cap is the number
+     that matters: past ~48rem an expense row's description and amount drift
+     apart into a thin strip with a canyon between them, which is what
+     "stretched on a big monitor" actually looks like. */
   --tap-target: 44px;
   --header-height: 56px;
-  --content-max: 34rem; /* ~544px: one readable column, centered on desktop */
+  --shell-max: 72rem;
+  --column-max: 36rem;
+  --main-max: 46rem;
+  --sheet-max: 30rem;
+  --aside-w: 22rem;
 
   /* ---- Motion ----------------------------------------------------------
      Duration + easing live together so components can write
-     `transition: background var(--transition-fast)`. The reduced-motion
-     block at the bottom of this file zeroes both, which neutralizes every
-     transition in the app without needing !important anywhere. */
+     `transition: background-color var(--transition-fast)`. The reduced-motion
+     block below zeroes both, which neutralizes every transition in the app
+     without needing !important anywhere.
+
+     Only background-color, border-color, color, opacity and transform are ever
+     transitioned. Never box-shadow, width, height, or `all`. */
   --transition-fast: 120ms ease;
   --transition-base: 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  /* ---- Stacking order -------------------------------------------------- */
+  /* ---- Stacking order --------------------------------------------------- */
   --z-header: 100;
   --z-fab: 200;
   --z-sheet: 300;
@@ -99,43 +176,6 @@
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
-}
-
-/* ---- Color: dark theme ------------------------------------------------
-   Genuinely dark surfaces (near-black, slightly blue) rather than mid-gray,
-   with the accent shifted bright so it stays the most salient thing on the
-   screen. Only the tokens are remapped — no component rule is duplicated. */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1215;
-    --bg-elev: #181c21;
-    --bg-sunken: #0a0c0e;
-
-    --text: #e8ecf0;
-    --text-muted: #a2adb8;
-    --text-faint: #7f8b97;
-
-    --border: #262c33;
-    --border-strong: #3a434d;
-
-    --accent: #2fbfa8;
-    --accent-hover: #4fd3bd;
-    --accent-text: #06231f;
-    --accent-soft: #11302c;
-    --accent-ring: rgba(47, 191, 168, 0.3);
-
-    --danger: #f26d6d;
-    --danger-text: #2b0a08;
-    --danger-ring: rgba(242, 109, 109, 0.26);
-
-    --success: #4ecf94;
-    --warning: #e0a63a;
-
-    --overlay: rgba(0, 0, 0, 0.62);
-
-    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5), 0 1px 3px rgba(0, 0, 0, 0.35);
-    --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.55), 0 18px 44px rgba(0, 0, 0, 0.5);
-  }
 }
 
 /* Zeroing the motion tokens is the primary reduced-motion mechanism; see the

@@ -13,6 +13,7 @@ import {
   totalSpend,
 } from './lib/balance.js'
 import { currentMonthKey, todayIso } from './lib/dates.js'
+import { useT } from './i18n/index.js'
 import { readStoredIdentity, resolveIdentity, storeIdentity } from './lib/identity.js'
 import { Header } from './components/Header.jsx'
 import { MonthNav } from './components/MonthNav.jsx'
@@ -33,6 +34,7 @@ import {
 } from './components/Gate.jsx'
 
 export default function App() {
+  const { t } = useT()
   const auth = useAuth()
   const toasts = useToasts()
   const ledger = useLedger({ enabled: auth.status === 'signed-in' })
@@ -52,6 +54,14 @@ export default function App() {
   const monthSpend = useMemo(() => totalSpend(monthEntries), [monthEntries])
   const byCategory = useMemo(() => spendByCategory(monthEntries), [monthEntries])
   const byPerson = useMemo(() => spendByPerson(monthEntries), [monthEntries])
+
+  // Aggregates sum integers across currencies with different scales, which is
+  // arithmetically meaningless, and there are no FX rates anywhere in this app.
+  // Say so rather than presenting a confident wrong total.
+  const mixedCurrencies = useMemo(
+    () => active.some((entry) => entry.currency && entry.currency !== ledger.config.currency),
+    [active, ledger.config.currency],
+  )
 
   // Land on the newest month that actually has data, so a sheet whose last
   // entry was a while ago does not open on an empty screen.
@@ -112,19 +122,19 @@ export default function App() {
       try {
         await ledger.removeEntry(entry.id)
         toasts.push({
-          message: 'Deleted',
+          message: t('toast.deleted'),
           action: {
-            label: 'Undo',
+            label: t('toast.undo'),
             onClick: () => {
               ledger.restoreEntry(entry.id).catch((cause) => toasts.error(cause.message))
             },
           },
         })
       } catch (cause) {
-        toasts.error(cause.message || 'Could not delete that.')
+        toasts.error(cause.message || t('toast.deleteFailed'))
       }
     },
-    [ledger, toasts],
+    [ledger, toasts, t],
   )
 
   const switchSheet = useCallback(async () => {
@@ -151,7 +161,7 @@ export default function App() {
     )
   }
   if (ledger.status === 'idle' || ledger.status === 'loading') {
-    return <LoadingGate label="Loading your sheet" />
+    return <LoadingGate label={t('gate.loadingSheet')} />
   }
   if (!me) return <IdentityGate config={ledger.config} onPick={setMe} />
 
@@ -167,6 +177,11 @@ export default function App() {
 
       <main className="layout">
         <aside className="layout__aside">
+          {mixedCurrencies && (
+            <p className="settings__warning" role="status">
+              {t('warning.mixedCurrencies')}
+            </p>
+          )}
           <BalanceCard
             balance={balance}
             config={ledger.config}
