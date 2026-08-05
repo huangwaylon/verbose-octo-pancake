@@ -14,14 +14,12 @@ called **Google Auth Platform**. Depending on your account you will land in one
 or the other, and old tutorials describe the old one. Where the two differ,
 both labels are given below.
 
-**Before you start, decide two things:**
+**Two values the rest of this document depends on:**
 
-| Decision | Why it matters |
+| Value | Used as |
 | --- | --- |
-| Your GitHub username | It forms your Pages origin, `https://huangwaylon.github.io` |
-| The repo name | `vite.config.js` defaults `base` to `/verbose-octo-pancake/`, so naming the repo **`verbose-octo-pancake`** means zero config. Any other name needs a matching `base`. |
-
-Throughout, replace `huangwaylon` with your actual GitHub username.
+| GitHub username `huangwaylon` | Your Pages origin, `https://huangwaylon.github.io` |
+| Repo name `verbose-octo-pancake` | The Pages path. `vite.config.js` sets `base` to `/verbose-octo-pancake/` to match, so renaming the repo means updating that too. |
 
 ---
 
@@ -226,37 +224,34 @@ npm run dev
 
 Open <http://localhost:5173> and sign in.
 
-## 6. GitHub: repo, Pages, and variables
+## 6. GitHub: Pages and variables
 
-1. Create a new repository named **`verbose-octo-pancake`** (see the table at the top
-   for why the name matters). It can be **public** — there are no secrets in
-   this repo. Being public also means GitHub Actions minutes are free.
-2. Push your code to the `main` branch. The workflow triggers on pushes to
-   `main` only.
-3. Go to **Settings > Pages**. Under **Build and deployment**, set **Source** to
-   **GitHub Actions**. Do not pick "Deploy from a branch" — the included
-   workflow uploads a Pages artifact, which the branch-based mode ignores.
-4. Go to **Settings > Secrets and variables > Actions**, then click the
-   **Variables** tab (not Secrets), then **New repository variable**. Add both:
+The repo already exists at `huangwaylon/verbose-octo-pancake` with the code on
+`main`. It is **public**, which is fine — there are no secrets in it, and public
+repos get free Actions minutes.
+
+1. Go to **Settings > Pages**. Under **Build and deployment**, set **Source** to
+   **GitHub Actions**. Do not pick "Deploy from a branch" — the workflow uploads
+   a Pages artifact, which the branch-based mode ignores. Until you do this, the
+   deploy job fails at the "Configure Pages" step.
+2. Go to **Settings > Secrets and variables > Actions**, click the **Variables**
+   tab (not Secrets), then **New repository variable**. Add both:
 
    | Name | Value |
    | --- | --- |
    | `VITE_GOOGLE_CLIENT_ID` | the client ID from step 4 |
    | `VITE_GOOGLE_API_KEY` | the API key from step 5 |
 
-   Variables, not secrets, on purpose: these are public values that Vite bakes
-   into the bundle. Storing them as secrets would hide them from your
-   collaborator while still publishing them to the world, and would imply a
-   confidentiality the deployed site cannot provide.
+   Variables rather than secrets on purpose — these are public values that Vite
+   bakes into the bundle. See the Security model section of `README.md`.
 
-5. Go to the **Actions** tab and either push a commit or run the **Deploy to
-   GitHub Pages** workflow manually via **Run workflow**. When it finishes, the
-   deploy job prints the live URL.
+3. Go to the **Actions** tab and either push a commit or run **Deploy to GitHub
+   Pages** manually via **Run workflow**. When it finishes, the deploy job prints
+   the live URL.
 
-If you added the variables *after* the first run, re-run the workflow — the
-values are read at build time, so a build that ran without them produces a
-bundle with empty strings in place of the credentials and the app will tell you
-the client ID is missing.
+If you added the variables *after* a run, re-run the workflow. They are read at
+build time, so a build without them ships empty strings and the app reports a
+missing client ID.
 
 ## 7. First run
 
@@ -380,13 +375,7 @@ explicitly.
 They signed in but have not picked the sheet. See step 7.5 — the `drive.file`
 grant is per-person, per-file.
 
-### CI fails at the "Run tests" step with "No test files found"
-
-`npm test` runs `vitest run`, which exits non-zero when `test/` contains no
-`*.test.js` files. If the test directory is empty, either add a test or change
-the `test` script in `package.json` to `vitest run --passWithNoTests`.
-
 ### The deploy job fails with "Missing environment" or a Pages permissions error
 
-**Settings > Pages > Source** is not set to **GitHub Actions** (step 6.3), or
-the first run predates that change. Set it, then re-run the workflow.
+**Settings > Pages > Source** is not set to **GitHub Actions** (step 6.1), or the
+run predates that change. Set it, then re-run the workflow.

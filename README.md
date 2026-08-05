@@ -81,7 +81,7 @@ Row 1 is the header. Data starts at row 2. Columns, in order:
 | --- | --- | --- | --- |
 | A | `id` | `9f1c…` | UUID generated in the browser |
 | B | `type` | `expense` | `expense` or `settlement` |
-| C | `date` | `2026-08-05` | ISO `YYYY-MM-DD`; anything else is treated as unset |
+| C | `date` | `2026-08-05` | ISO `YYYY-MM-DD`, validated as a real calendar day — `2026-02-31` is treated as unset |
 | D | `payer` | `p1` | `p1` or `p2`, resolved to names via the `config` tab |
 | E | `amount` | `42.50` | Written as a plain decimal string, parsed to integer cents in the app |
 | F | `currency` | `USD` | |
@@ -157,18 +157,23 @@ floating point is how you end up a cent adrift after a hundred entries.
 
 ## Features
 
-- Log expenses with date, payer, amount, category, and description.
-- Per-entry split via `payer_share`: even, all-mine, all-theirs, or any fraction.
-- Running balance: one number saying who owes whom.
-- Settlements, modelled as ordinary entries.
-- Create the spreadsheet from inside the app on first run — it writes the header
-  row and seeds the `config` tab, so manual sheet setup is optional. Or pick an
-  existing sheet via the Google Picker.
-- Names, currency, and the category list live in the sheet's `config` tab, so
-  they are editable without a redeploy.
-- Soft delete, with an explicit compact action to reclaim tombstoned rows.
-- Google sign-in with a single narrow scope; no app accounts or passwords.
-- Works on a phone; the sheet remains readable and editable in Google Sheets.
+- Add, edit, and delete expenses: date, payer, amount, category, note.
+- Per-entry split — even, all-mine, all-theirs, or any fraction — with a live
+  breakdown of what each person ends up covering.
+- A running balance: one number saying who owes whom, all-time rather than
+  per-month, because a debt does not reset in January.
+- Settle up, pre-filled with the outstanding amount and the person who owes it.
+- Month-by-month view: entries grouped by day, spend total, what each person
+  paid, and a category breakdown.
+- Delete offers **Undo** instead of a confirmation dialog, which is what soft
+  deletes buy you. An explicit compact action reclaims tombstoned rows.
+- First run creates the spreadsheet for you — header row and `config` tab
+  included — or connects one you already have via the Google Picker.
+- Names, currency, and categories live in the sheet's `config` tab, so changing
+  them needs no redeploy.
+- Google sign-in with a single narrow scope. No app accounts, no passwords.
+- Built for a phone and usable on a monitor: one column that becomes two at
+  `62rem`, light and dark themes, 44px tap targets, reduced-motion support.
 
 ## Quick start
 
@@ -243,13 +248,20 @@ client-side care compensates for it. Both people are full Editors — there are 
 roles, and either can edit or delete the other's entries. For two people who
 share money, that is the intended level of trust.
 
-**The CSP is tight.** `index.html` sets a Content-Security-Policy restricting
-`script-src` to `'self'`, `accounts.google.com`, and `apis.google.com`;
-`connect-src` to `'self'` plus Google's Sheets/API/auth hosts; and `frame-src`
-to Google's auth and docs hosts for the sign-in and picker frames.
-`object-src` and `base-uri` are `'none'`. No third-party CDNs, no analytics, no
-trackers. It does allow `style-src 'unsafe-inline'`, which is a real if minor
-loosening.
+**The CSP is tight.** `index.html` sets a Content-Security-Policy that is a
+deliberate allowlist of Google's hosts, not boilerplate:
+
+| Directive | Allowed |
+| --- | --- |
+| `default-src` | `'self'` |
+| `script-src` | `'self'`, Google's auth/API/static hosts |
+| `connect-src` | `'self'`, Google's Sheets/API/auth hosts |
+| `frame-src` | Google's auth and Docs/Drive hosts, for the sign-in and picker frames |
+| `object-src`, `base-uri`, `form-action` | `'none'` |
+
+No third-party CDNs, no analytics, no trackers, no web fonts. It does allow
+`style-src 'unsafe-inline'`, which is a real if minor loosening. Adding a Google
+host to the app means updating this list.
 
 **What is not protected.** Anyone can load the deployed site and click sign in —
 the page is public. They just cannot get anywhere: Google will only issue a
@@ -263,24 +275,39 @@ people from the other.
 
 ```
 .
-├── .github/workflows/deploy.yml   test + build + deploy to GitHub Pages
+├── .github/workflows/deploy.yml   test + build + deploy to Pages
 ├── .env.example                   the two public build-time variables
-├── index.html                     entry HTML, and the Content-Security-Policy
-├── vite.config.js                 base path for Pages, React plugin, vitest config
+├── CLAUDE.md                      invariants and conventions for contributors
 ├── SETUP.md                       Google Cloud + GitHub walkthrough
+├── index.html                     entry HTML, and the Content-Security-Policy
+├── vite.config.js                 Pages base path, React plugin, vitest config
 ├── src
+│   ├── main.jsx                   mounts App, imports the four stylesheets
+│   ├── App.jsx                    gates, derived data, and the page layout
 │   ├── config.js                  build-time config, OAuth scope, defaults
 │   ├── schema.js                  the sheet contract: columns, ranges, row <-> entry
-│   └── lib
-│       ├── googleAuth.js          GIS token flow; token never leaves memory
-│       └── picker.js              Google Picker, plus spreadsheet creation
-└── test                           vitest specs (test/**/*.test.js)
+│   ├── lib
+│   │   ├── googleAuth.js          GIS token flow; token never leaves memory
+│   │   ├── picker.js              Google Picker, plus spreadsheet creation
+│   │   ├── sheets.js              all Sheets API calls (the CRUD)
+│   │   ├── money.js               integer-cent parsing, formatting, splitting
+│   │   ├── balance.js             who-owes-whom and the month aggregates
+│   │   ├── dates.js               timezone-safe ISO date helpers
+│   │   └── identity.js            which of the two people is signed in
+│   ├── state                      useAuth, useLedger (optimistic CRUD), useToasts
+│   ├── components                 one file per view; icons.jsx is inline SVG
+│   └── styles                     tokens, base, primitives, app
+└── test                           vitest specs, test/**/*.test.{js,jsx}
 ```
 
-`src/schema.js` is the file to read first. Every column name, range, and
-row-to-object mapping is defined there and nowhere else, so the sheet layout has
-exactly one source of truth. The React UI (`src/main.jsx` and components) is
-still being built out; the modules above are the parts that talk to Google.
+Two files are worth reading first. **`src/schema.js`** is the sheet contract:
+every column name, range, and row-to-object mapping is defined there and nowhere
+else, so the layout has exactly one source of truth. **`src/state/useLedger.js`**
+owns the spreadsheet connection and applies every mutation optimistically before
+reconciling it against the sheet.
+
+`CLAUDE.md` lists the invariants that must not be broken — the ones that fail
+silently rather than throwing.
 
 ## Cost
 

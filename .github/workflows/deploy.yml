@@ -39,15 +39,10 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Build
-        # VITE_GOOGLE_CLIENT_ID and VITE_GOOGLE_API_KEY are GitHub Actions
-        # *variables*, not secrets, and that is deliberate. An OAuth web client
-        # ID and a browser API key are public values: Vite inlines them into the
-        # JavaScript bundle, so anyone can read them straight out of the shipped
-        # site. What protects them is the authorized-JavaScript-origins list and
-        # the HTTP-referrer restriction configured in Google Cloud. Putting them
-        # in `secrets` would hide them from collaborators while doing nothing to
-        # hide them from the public, which is worse than useless — it creates a
-        # false impression that the deployed app keeps them confidential.
+        # These are Actions *variables*, not secrets, deliberately. Vite inlines
+        # them into the bundle, so they are public either way; marking them
+        # secret would imply a confidentiality the deployed site cannot provide.
+        # Full reasoning in the Security model section of README.md.
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
           VITE_GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
