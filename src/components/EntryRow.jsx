@@ -1,6 +1,5 @@
-import { ENTRY_TYPE, EVEN_SHARE, PERSON, otherPerson } from '../schema.js'
-import { labelFor } from '../lib/identity.js'
-import { useMoney, useT } from '../i18n/index.js'
+import { ENTRY_TYPE, EVEN_SHARE, otherPerson } from '../schema.js'
+import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { SwapIcon, TrashIcon } from './icons.jsx'
 
 export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
@@ -8,12 +7,9 @@ export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
   // The entry's own currency wins: a sheet holding rows from before a currency
   // change is only rendered correctly per row.
   const money = useMoney(entry.currency || currency)
+  const { label } = usePeopleLabels(config, me)
 
   const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
-  const you = t('common.you')
-  const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
-  const label = (person) => labelFor(config, person, me, you, fallbacks)
-
   const payerLabel = label(entry.payer)
   const otherLabel = label(otherPerson(entry.payer))
 

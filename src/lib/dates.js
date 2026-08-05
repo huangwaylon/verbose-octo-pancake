@@ -6,20 +6,18 @@
  * rather than parsing the string, because `new Date('2026-08-05')` is treated
  * as UTC midnight and shifts to the previous day west of Greenwich.
  *
- * These functions stay pure and know nothing about the i18n catalogs: locale and
- * the three relative-day words arrive as arguments with English defaults. That is
- * what lets them keep their existing single-argument behaviour byte for byte
- * while the UI passes a locale in.
+ * These helpers stay pure and know nothing about the i18n catalogs: the locale
+ * and the three relative-day words arrive as arguments with English defaults.
  */
 
-/** The only English text in this module; callers override it from the catalog. */
-export const EN_DAY_LABELS = { today: 'Today', yesterday: 'Yesterday', none: 'No date' }
+/** The only English text here; callers override it from the catalog. */
+const EN_DAY_LABELS = { today: 'Today', yesterday: 'Yesterday', none: 'No date' }
 
 export function todayIso(now = new Date()) {
   return toIso(now)
 }
 
-export function toIso(date) {
+function toIso(date) {
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
@@ -27,7 +25,7 @@ export function toIso(date) {
 }
 
 /** '2026-08-05' -> '2026-08' */
-export function monthKeyOf(iso) {
+function monthKeyOf(iso) {
   return typeof iso === 'string' ? iso.slice(0, 7) : ''
 }
 
@@ -52,7 +50,7 @@ export function shiftMonth(monthKey, delta) {
  *
  * @param {string} monthKey 'YYYY-MM'
  * @param {object} [opts]
- * @param {string} [opts.locale] undefined means the runtime locale, as before
+ * @param {string} [opts.locale] undefined means the runtime locale
  * @param {Date} [opts.now] injectable so the same-year branch is testable
  */
 export function monthLabel(monthKey, { locale, now = new Date() } = {}) {
@@ -70,9 +68,6 @@ export function monthLabel(monthKey, { locale, now = new Date() } = {}) {
 
 /**
  * 'Today' / 'Yesterday' / 'Mon, Aug 4' — short enough for a narrow phone.
- *
- * Note the signature: `now` moved from a positional second argument into the
- * options object. Only `EntryList` calls this, and with one argument.
  *
  * @param {string} iso
  * @param {object} [opts]

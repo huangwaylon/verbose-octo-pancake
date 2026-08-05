@@ -12,10 +12,12 @@ import { MonthNav } from '../src/components/MonthNav.jsx'
 import {
   ErrorGate,
   IdentityGate,
+  LoadingGate,
   SheetGate,
   SignInGate,
   UnconfiguredGate,
 } from '../src/components/Gate.jsx'
+import { Toasts } from '../src/components/Toasts.jsx'
 
 /**
  * Render smoke tests. These catch the class of bug a build cannot: a component
@@ -81,6 +83,37 @@ describe('gates render', () => {
       <SignInGate onSignIn={noop} status="signed-out" error="Popup blocked" />,
     )
     expect(markup).toContain('Popup blocked')
+  })
+
+  it('announces the wait with the label the caller supplies', () => {
+    // The gate has no string of its own — the caller says what is loading, so
+    // the same spinner can speak for the sheet, the config or the rows.
+    const markup = renderToStaticMarkup(<LoadingGate label="Loading your sheet" />)
+    expect(markup).toContain('aria-busy="true"')
+    expect(markup).toContain('Loading your sheet')
+  })
+})
+
+describe('toasts render', () => {
+  it('renders nothing at all when there is nothing to say', () => {
+    expect(renderToStaticMarkup(<Toasts toasts={[]} onDismiss={noop} />)).toBe('')
+  })
+
+  it('has one tone beyond the default, and it is error', () => {
+    // A failure is the only thing worth colouring; a success needs no relief.
+    const markup = renderToStaticMarkup(
+      <Toasts
+        toasts={[
+          { id: 'a', message: 'Saved' },
+          { id: 'b', message: 'Could not save', tone: 'error' },
+        ]}
+        onDismiss={noop}
+      />,
+    )
+    expect(markup).toContain('Saved')
+    expect(markup).toContain('Could not save')
+    expect(markup.match(/toast--error/g)).toHaveLength(1)
+    expect(markup).not.toContain('toast--success')
   })
 })
 

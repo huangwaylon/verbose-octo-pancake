@@ -1,45 +1,34 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { DEFAULT_CONFIG, STORAGE_KEYS } from '../config.js'
-import { CONFIG_TAB, expensesTab, PERSON, makeEntry, validateEntryCodes } from '../schema.js'
+import { DEFAULT_CONFIG, STORAGE_KEYS, readStored, writeStored } from '../config.js'
+import { CONFIG_TAB, PEOPLE, expensesTab, makeEntry, validateEntryCodes } from '../schema.js'
 import { t } from '../i18n/index.js'
 import * as sheets from '../lib/sheets.js'
 import { createSpreadsheet, pickSpreadsheet } from '../lib/picker.js'
 
+const NEW_SHEET_NAME = 'Shared Finances'
+
+/** Floor between focus-triggered refreshes. Window switching is constant. */
+const REFRESH_THROTTLE_MS = 30_000
+
 /**
- * Turn the first validation failure into a throwable error.
- *
- * The code travels on `i18nKey` so the form can translate it at render time in
- * whatever locale is current, while `message` stays a readable English fallback
- * for anything that only logs the error.
+ * An error the UI can translate at render time, in whatever locale is current,
+ * while `message` stays a readable English fallback for anything that only logs.
  */
-function validationError(codes) {
-  const error = new Error(t(`error.${codes[0]}`))
-  error.i18nKey = `error.${codes[0]}`
+function i18nError(key, vars) {
+  const error = new Error(t(key, vars))
+  error.i18nKey = key
   return error
 }
 
 function readStoredSheet() {
-  try {
-    const id = localStorage.getItem(STORAGE_KEYS.spreadsheetId)
-    if (!id) return null
-    return { id, name: localStorage.getItem(STORAGE_KEYS.spreadsheetName) || 'Shared Finances' }
-  } catch {
-    return null
-  }
+  const id = readStored(STORAGE_KEYS.spreadsheetId)
+  if (!id) return null
+  return { id, name: readStored(STORAGE_KEYS.spreadsheetName) || NEW_SHEET_NAME }
 }
 
 function writeStoredSheet(sheet) {
-  try {
-    if (sheet) {
-      localStorage.setItem(STORAGE_KEYS.spreadsheetId, sheet.id)
-      localStorage.setItem(STORAGE_KEYS.spreadsheetName, sheet.name ?? '')
-    } else {
-      localStorage.removeItem(STORAGE_KEYS.spreadsheetId)
-      localStorage.removeItem(STORAGE_KEYS.spreadsheetName)
-    }
-  } catch {
-    // Storage blocked; the sheet choice just won't survive a reload.
-  }
+  writeStored(STORAGE_KEYS.spreadsheetId, sheet?.id ?? null)
+  writeStored(STORAGE_KEYS.spreadsheetName, sheet ? (sheet.name ?? '') : null)
 }
 
 /** A missing tab or range surfaces as a 400 from the values endpoint. */
@@ -47,18 +36,15 @@ function looksUninitialized(cause) {
   return cause?.status === 400 || cause?.status === 404
 }
 
-/** Floor between focus-triggered refreshes. Window switching is constant. */
-const REFRESH_THROTTLE_MS = 30_000
-
 /**
  * Owns the spreadsheet connection and the entry list.
  *
  * Every mutation is applied to local state first and reconciled against the
- * sheet afterwards, because each write is a ~400ms round trip and the app is
- * mostly used on phone data. A failed write reverts the optimistic change and
- * rethrows so the caller can surface it.
+ * sheet afterwards, because each write is a ~400ms round trip on phone data. A
+ * failed write reverts the optimistic change and rethrows so the caller can
+ * surface it.
  */
-export function useLedger({ enabled }) {
+export function useLedger(enabled) {
   const [spreadsheet, setSpreadsheet] = useState(readStoredSheet)
   const [entries, setEntries] = useState([])
   const [config, setConfig] = useState(DEFAULT_CONFIG)
@@ -115,13 +101,10 @@ export function useLedger({ enabled }) {
   }, [enabled, spreadsheet?.id, load])
 
   /**
-   * Re-read the sheet when the tab regains attention.
-   *
-   * Two people share one spreadsheet and there is no push channel, so without
-   * this whoever leaves the tab open sits on stale data until they think to hit
-   * refresh — the most likely "it's wrong" complaint. Throttled, because
-   * switching windows is something people do constantly and each refresh is a
-   * real API call against a per-user quota.
+   * Re-read the sheet when the tab regains attention. Two people share one
+   * spreadsheet with no push channel, so without this whoever leaves the app
+   * open sits on stale data. Throttled, because switching windows is constant
+   * and every refresh spends per-user quota.
    */
   const lastRefresh = useRef(0)
   useEffect(() => {
@@ -166,45 +149,33 @@ export function useLedger({ enabled }) {
    * Adopt a spreadsheet the user picked in the Google Picker.
    *
    * Refuses anything that is not already a ledger. The picker lists every
-   * spreadsheet you own and selecting one is a single tap, so picking the wrong
-   * file is easy — and `connect` would then have `ensureStructure` add tabs
-   * to it. A sheet with none of the expected tabs is almost certainly not meant
-   * for this app, and writing to it is not recoverable by undo. "Create a new
-   * sheet" is the path that is allowed to build structure.
+   * spreadsheet you own and selecting one is a single tap, so `connect` would
+   * otherwise have `ensureStructure` add three tabs to an unrelated file —
+   * which undo cannot reach. "Create a new sheet" is the path allowed to build
+   * structure.
    */
-  const chooseSheet = useCallback(
-    async (name) => {
-      const picked = await pickSpreadsheet()
-      if (!picked) return null
+  const chooseSheet = useCallback(async () => {
+    const picked = await pickSpreadsheet()
+    if (!picked) return null
 
-      const structure = await sheets.readStructure(picked.id)
-      if (!structure.isLedger) {
-        const error = new Error(
-          t('error.notALedger', {
-            name: picked.name || name || '',
-            expensesP1: expensesTab(PERSON.P1),
-            expensesP2: expensesTab(PERSON.P2),
-            config: CONFIG_TAB,
-          }),
-        )
-        error.i18nKey = 'error.notALedger'
-        throw error
-      }
+    const { isLedger } = await sheets.readStructure(picked.id)
+    if (!isLedger) {
+      throw i18nError('error.notALedger', {
+        expensesP1: expensesTab(PEOPLE[0]),
+        expensesP2: expensesTab(PEOPLE[1]),
+        config: CONFIG_TAB,
+      })
+    }
 
-      await connect(picked)
-      return picked
-    },
-    [connect],
-  )
+    await connect(picked)
+    return picked
+  }, [connect])
 
-  const createSheet = useCallback(
-    async (name = 'Shared Finances') => {
-      const created = await createSpreadsheet(name)
-      await connect(created)
-      return created
-    },
-    [connect],
-  )
+  const createSheet = useCallback(async () => {
+    const created = await createSpreadsheet(NEW_SHEET_NAME)
+    await connect(created)
+    return created
+  }, [connect])
 
   const forgetSheet = useCallback(() => {
     writeStoredSheet(null)
@@ -221,7 +192,7 @@ export function useLedger({ enabled }) {
     async (input) => {
       const entry = makeEntry(input)
       const problems = validateEntryCodes(entry)
-      if (problems.length) throw validationError(problems)
+      if (problems.length) throw i18nError(`error.${problems[0]}`)
 
       setEntries((current) => [...current, { ...entry, pending: true }])
       try {
@@ -242,7 +213,7 @@ export function useLedger({ enabled }) {
     async (input) => {
       const entry = makeEntry(input)
       const problems = validateEntryCodes(entry)
-      if (problems.length) throw validationError(problems)
+      if (problems.length) throw i18nError(`error.${problems[0]}`)
 
       let previous
       setEntries((current) =>
@@ -254,8 +225,8 @@ export function useLedger({ enabled }) {
       )
       try {
         // previous.payer, not entry.payer: it says which tab the row is
-        // CURRENTLY in, which is what updateEntry needs to find it before it
-        // can move the row if the payer changed.
+        // CURRENTLY in, which is what updateEntry needs to find it before it can
+        // move the row if the payer changed.
         await sheets.updateEntry(spreadsheet.id, entry, previous?.payer)
         setEntries((current) =>
           current.map((item) => (item.id === entry.id ? { ...item, pending: false } : item)),
@@ -263,9 +234,7 @@ export function useLedger({ enabled }) {
         return entry
       } catch (cause) {
         if (previous) {
-          setEntries((current) =>
-            current.map((item) => (item.id === entry.id ? previous : item)),
-          )
+          setEntries((current) => current.map((item) => (item.id === entry.id ? previous : item)))
         }
         throw cause
       }
@@ -284,8 +253,7 @@ export function useLedger({ enabled }) {
         }),
       )
       try {
-        if (deletedAt) await sheets.softDeleteEntry(spreadsheet.id, payer, id, deletedAt)
-        else await sheets.restoreEntry(spreadsheet.id, payer, id)
+        await sheets.setDeletedAt(spreadsheet.id, payer, id, deletedAt)
         setEntries((current) =>
           current.map((item) => (item.id === id ? { ...item, pending: false } : item)),
         )
@@ -309,17 +277,16 @@ export function useLedger({ enabled }) {
   const compact = useCallback(async () => {
     if (!entries.some((item) => item.deletedAt)) return { removed: 0 }
 
-    const p1Tab = expensesTab(PERSON.P1)
-    const p2Tab = expensesTab(PERSON.P2)
+    // `values.batchGet` cannot report sheet gids, so a session that only ever
+    // read the sheet has none cached and has to ask for them here.
     let gids = sheetIds
-    if (gids[p1Tab] == null || gids[p2Tab] == null) {
+    const missingGid = () => PEOPLE.some((person) => gids[expensesTab(person)] == null)
+    if (missingGid()) {
       const { sheetIds: refreshed } = await sheets.ensureStructure(spreadsheet.id)
       setSheetIds(refreshed ?? {})
       gids = refreshed ?? {}
     }
-    if (gids[p1Tab] == null || gids[p2Tab] == null) {
-      throw new Error('Could not find the expenses tabs.')
-    }
+    if (missingGid()) throw new Error('Could not find the expenses tabs.')
 
     const result = await sheets.compact(spreadsheet.id, gids)
     await refresh()

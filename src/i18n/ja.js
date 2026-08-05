@@ -26,6 +26,7 @@ export default {
   'common.close': '閉じる',
   'common.retry': 'もう一度試す',
   'common.optional': '任意',
+  'common.peopleSeparator': '・',
 
   'header.refresh': 'シートから再読み込み',
   'header.settings': '設定',
@@ -152,7 +153,6 @@ export default {
   'gate.identityBody':
     '名前ではなく「あなた」と表示するために使います。この端末にのみ保存されます。',
   'gate.identityFine': '表示が違う場合は、シートの{tab}タブで名前を設定してください。',
-  'gate.loading': '読み込み中',
   'gate.loadingSheet': 'シートを読み込んでいます',
   'gate.errorTitle': 'シートを読み込めませんでした',
   'gate.pickDifferent': '別のシートを選ぶ',
@@ -173,5 +173,6 @@ export default {
   'error.badPayer': '支払った人はふたりのどちらかを選んでください。',
   'error.badShare': '分担は 0〜100% の範囲で指定してください。',
   'error.missingCategory': 'カテゴリーを選んでください。',
+  'error.missingCurrency': 'このシートの config タブに通貨が設定されていません。',
   'warning.mixedCurrencies': '通貨の違う記録があるため、合計が正しくない可能性があります。',
 }

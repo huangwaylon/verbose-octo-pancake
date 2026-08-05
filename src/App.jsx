@@ -41,7 +41,7 @@ export default function App() {
   // signed in — see useAuth for why — so the ledger stays enabled and the
   // banner below is the only thing that changes.
   const authed = auth.status === 'signed-in' || auth.status === 'expired'
-  const ledger = useLedger({ enabled: authed })
+  const ledger = useLedger(authed)
   const [reconnecting, setReconnecting] = useState(false)
 
   const reconnect = useCallback(async () => {
@@ -155,7 +155,7 @@ export default function App() {
     [ledger, toasts, t],
   )
 
-  const switchSheet = useCallback(async () => {
+  const switchSheet = useCallback(() => {
     setShowSettings(false)
     ledger.forgetSheet()
   }, [ledger])
@@ -268,7 +268,7 @@ export default function App() {
         </section>
       </main>
 
-      <button type="button" className="fab" onClick={openAdd} aria-label="Add an expense">
+      <button type="button" className="fab" onClick={openAdd} aria-label={t('list.emptyAction')}>
         <PlusIcon width={24} height={24} />
       </button>
 

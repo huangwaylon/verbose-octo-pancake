@@ -1,26 +1,25 @@
 /**
- * Build-time configuration and app-wide constants.
+ * Build-time configuration, app-wide constants, and the localStorage wrappers.
  *
- * Nothing here is secret. The OAuth client ID and API key are public by
- * design — they are restricted by HTTP referrer / authorized JavaScript
- * origin in the Google Cloud console, not by being hidden. See SETUP.md.
+ * Nothing here is secret. The OAuth client ID and API key are public by design —
+ * they are restricted by authorized origin / HTTP referrer in the Google Cloud
+ * console, not by being hidden. See SETUP.md.
  */
 
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
 export const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY ?? ''
 
 /**
- * Three scopes, all non-sensitive, so the consent screen still needs no
- * Google verification review.
+ * Three scopes, all non-sensitive, so the consent screen needs no Google
+ * verification review.
  *
- * `drive.file` grants access only to files the user explicitly picks via the
- * Google Picker — not to every sheet in their Drive. It must never widen to
+ * `drive.file` grants access only to files the user explicitly picks in the
+ * Google Picker, plus files this app creates. It must never widen to
  * `spreadsheets`, which would expose every sheet in the account.
  *
- * `openid` + `userinfo.email` exist solely so `getUserEmail()` can match the
- * signed-in address against the config tab and skip the "which one are you?"
- * prompt. They grant no file access of any kind. Without them the userinfo
- * endpoint returns 401 and identity falls back to a manual choice.
+ * `openid` + `userinfo.email` exist solely so the signed-in address can be
+ * matched against the config tab, skipping the "which one are you?" prompt. They
+ * grant no file access.
  */
 export const OAUTH_SCOPE = [
   'https://www.googleapis.com/auth/drive.file',
@@ -34,20 +33,40 @@ export const STORAGE_KEYS = {
   identity: 'sf.identity',
   token: 'sf.token',
   locale: 'sf.locale',
+  accent: 'sf.accent',
+}
+
+/**
+ * Every localStorage touch in the app goes through these two, because every one
+ * of them can throw: Safari in private browsing rejects writes outright. A
+ * failure is never fatal — the value just does not survive a reload.
+ */
+export function readStored(key) {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+export function writeStored(key, value) {
+  try {
+    if (value == null) localStorage.removeItem(key)
+    else localStorage.setItem(key, value)
+  } catch {
+    // Storage blocked. Nothing to do: this is a cache, never the source of truth.
+  }
 }
 
 /**
  * Used when the sheet has no `config` tab yet, or a key is missing from it.
  *
- * These values are WRITTEN to the shared spreadsheet by `configToRows`, so none
- * of them is localized: two people sharing one sheet may be reading the UI in
- * different languages, and the stored data must not depend on whose device
- * seeded it. Category names are English defaults and are meant to be edited in
- * the sheet's config tab.
+ * These values are WRITTEN to the shared spreadsheet, so none of them is
+ * localized: two people sharing one sheet may read the UI in different
+ * languages, and the stored data must not depend on whose device seeded it.
  *
- * `currency` is per-sheet (here and in the config tab); the UI language is
- * per-device (localStorage). They are deliberately independent — a yen sheet
- * read in English is a normal thing to want.
+ * `currency` is per-sheet; the UI language is per-device. Deliberately
+ * independent — a yen sheet read in English is a normal thing to want.
  */
 export const DEFAULT_CONFIG = {
   person1Name: 'Person 1',
@@ -57,25 +76,15 @@ export const DEFAULT_CONFIG = {
   currency: 'JPY',
   categories: ['Groceries', 'Dining', 'Household', 'Other'],
   /**
-   * The share each person covers on a new expense, before anyone touches the
-   * split control. 0.5 each is an even split; 1 means that person covers it all.
-   *
-   * Per-person rather than one universal number because the split is a standing
-   * arrangement between the two people, not a property of whoever happened to
-   * hold the card. A couple splitting 80/20 wants p1 to bear 80% of an expense
-   * *either* of them paid for, and a single `payer_share` default would invert
-   * that every time the other one paid.
-   *
-   * The pair is not forced to sum to 1: `splitCents` only ever reads the
-   * payer's, so an inconsistent pair is merely two independent defaults, never a
-   * row that loses or invents money.
+   * The share each person covers on a new expense they paid for. Per-person
+   * rather than one universal number: a couple splitting 80/20 wants p1 to bear
+   * 80% of an expense *either* of them paid for, and a single default would
+   * invert that every time the other one paid. The pair need not sum to 1 —
+   * only the payer's is ever read.
    */
   defaultSplitP1: 0.5,
   defaultSplitP2: 0.5,
-  /**
-   * Quick-pick suggestions for the note field — typically the shops you go to
-   * most. Free text is always still allowed.
-   */
+  /** Quick-pick suggestions for the note field. Free text is always allowed. */
   notePresets: [],
 }
 

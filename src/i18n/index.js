@@ -1,24 +1,19 @@
 /**
  * Tiny i18n layer: a module singleton plus a `useSyncExternalStore` hook.
  *
- * Deliberately not a React context, for three reasons:
+ * A singleton rather than a context because non-React modules need the same `t`
+ * (`useLedger`'s errors, toast text), and because `test/render.test.jsx` renders
+ * components bare with no provider to wire up. There is exactly one locale per
+ * tab, so the multi-tenant argument for context does not apply.
  *
- *   1. `test/render.test.jsx` renders components bare, with no provider. A
- *      singleton that defaults to English needs no wiring added to any of those
- *      call sites, and none in `main.jsx` either.
- *   2. Non-React modules need the same `t` — `useLedger` error fallbacks, toast
- *      text. A hook cannot be called there and a context value cannot be read.
- *   3. There is exactly one locale per tab. The multi-tenant argument for
- *      context does not apply.
- *
- * Both catalogs are statically imported. ~2 KB gzipped for the pair is cheaper
- * than the extra round trip and Suspense boundary a dynamic import would cost on
- * a host with no server push. Revisit past ~5 locales.
+ * Both catalogs are statically imported: ~2 KB gzipped for the pair is cheaper
+ * than the round trip and Suspense boundary a dynamic import would cost.
  */
 
 import { useMemo, useSyncExternalStore } from 'react'
-import { STORAGE_KEYS } from '../config.js'
+import { STORAGE_KEYS, readStored, writeStored } from '../config.js'
 import { formatCents } from '../lib/money.js'
+import { nameOf } from '../lib/identity.js'
 import { CATALOGS, DEFAULT_LOCALE, SUPPORTED } from './catalogs.js'
 
 /** `{name}` — the only interpolation syntax. */
@@ -98,12 +93,8 @@ export function translate(locale, key, vars) {
 }
 
 function detectLocale() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEYS.locale)
-    if (SUPPORTED.includes(stored)) return stored
-  } catch {
-    // Storage blocked; fall through to the browser preference.
-  }
+  const stored = readStored(STORAGE_KEYS.locale)
+  if (SUPPORTED.includes(stored)) return stored
   const preferences =
     (typeof navigator !== 'undefined' && (navigator.languages || [navigator.language])) || []
   for (const tag of preferences) {
@@ -123,7 +114,7 @@ export function getLocale() {
   return current
 }
 
-export function onLocaleChange(listener) {
+function onLocaleChange(listener) {
   listeners.add(listener)
   return () => listeners.delete(listener)
 }
@@ -139,11 +130,7 @@ export function setLocale(tag) {
   const next = SUPPORTED.includes(tag) ? tag : DEFAULT_LOCALE
   if (next === current) return
   current = next
-  try {
-    localStorage.setItem(STORAGE_KEYS.locale, next)
-  } catch {
-    // Storage blocked: the choice just will not survive a reload.
-  }
+  writeStored(STORAGE_KEYS.locale, next)
   syncDocumentLocale(next)
   for (const listener of listeners) listener()
 }
@@ -185,6 +172,23 @@ export function useDayLabels() {
     }),
     [locale],
   )
+}
+
+/**
+ * The two people's names, and the same names labelled relative to the viewer so
+ * the UI can say "You". Bound here rather than in `identity.js` so that module
+ * stays pure, and memoised so seven components stop rebuilding the same three
+ * strings on every render.
+ */
+export function usePeopleLabels(config, me) {
+  const { t, locale } = useT()
+  return useMemo(() => {
+    const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
+    const you = t('common.you')
+    const name = (person) => nameOf(config, person, fallbacks)
+    return { name, label: (person) => (person === me ? you : name(person)) }
+    // `locale` is the dependency that matters; `t` is derived from it.
+  }, [config, me, locale])
 }
 
 /**

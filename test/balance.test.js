@@ -59,7 +59,7 @@ describe('owedToPayerCents', () => {
     expect(owedToPayerCents(s)).toBe(5000)
   })
 
-  it('tolerates a numeric-string share, which schema.validateEntry accepts', () => {
+  it('tolerates a numeric-string share, which a form can hand to makeEntry', () => {
     // A form input can hand '0.5' straight to makeEntry; the balance must not
     // crash on it, but genuine junk must still be loud.
     expect(owedToPayerCents(expense('str', 10000, { payerShare: '0.5' }))).toBe(5000)

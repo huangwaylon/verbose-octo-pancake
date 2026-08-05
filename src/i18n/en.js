@@ -29,6 +29,9 @@ export default {
   'common.close': 'Close',
   'common.retry': 'Try again',
   'common.optional': 'optional',
+  // Joins the two names in the header. A separator, so it is a translation
+  // decision: ' & ' in English, a nakaguro in Japanese.
+  'common.peopleSeparator': ' & ',
 
   'header.refresh': 'Refresh from the sheet',
   'header.settings': 'Settings',
@@ -159,7 +162,6 @@ export default {
   'gate.identityTitle': 'Which one are you?',
   'gate.identityBody': 'So the app can say “you” instead of a name. Stored on this device only.',
   'gate.identityFine': 'Set both names in the {tab} tab of your sheet if these look wrong.',
-  'gate.loading': 'Loading',
   'gate.loadingSheet': 'Loading your sheet',
   'gate.errorTitle': 'Could not read the sheet',
   'gate.pickDifferent': 'Pick a different sheet',
@@ -180,6 +182,7 @@ export default {
   'error.badPayer': 'Payer must be one of the two people.',
   'error.badShare': 'Split must be between 0 and 100%.',
   'error.missingCategory': 'Pick a category.',
+  'error.missingCurrency': 'This sheet has no currency set in its config tab.',
   'warning.mixedCurrencies':
     'Some entries use a different currency, so totals may be wrong.',
 }

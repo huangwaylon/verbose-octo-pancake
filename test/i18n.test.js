@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 import { CATALOGS, DEFAULT_LOCALE, LOCALE_LABELS, SUPPORTED } from '../src/i18n/catalogs.js'
 import { getLocale, interpolate, setLocale, t, translate } from '../src/i18n/index.js'
+import { ENTRY_ERROR } from '../src/schema.js'
 
 /**
  * The catalogs are data maintained by hand, so the interesting failures are
@@ -21,9 +22,6 @@ const OTHER_LOCALES = SUPPORTED.filter((tag) => tag !== DEFAULT_LOCALE)
 
 /** Keys whose translation is legitimately identical to the English. */
 const SAME_IN_BOTH = new Set([
-  // Each language is named in its own language in the switcher.
-  'settings.language.en',
-  'settings.language.ja',
   // A percent sign and a bare "0" are the same string in both languages. They
   // stay in the catalog rather than being inlined so the *placement* of the
   // symbol remains a translation decision.
@@ -105,18 +103,18 @@ describe('catalog parity', () => {
   })
 })
 
+function sourceFiles(dir, found = []) {
+  for (const name of readdirSync(dir)) {
+    const path = join(dir, name)
+    if (statSync(path).isDirectory()) sourceFiles(path, found)
+    else if (/\.jsx?$/.test(name)) found.push(path)
+  }
+  return found
+}
+
 describe('catalog usage', () => {
   /** Keys built at runtime from a code, e.g. t(`error.${code}`). */
   const DYNAMIC_PREFIXES = ['error.']
-
-  function sourceFiles(dir, found = []) {
-    for (const name of readdirSync(dir)) {
-      const path = join(dir, name)
-      if (statSync(path).isDirectory()) sourceFiles(path, found)
-      else if (/\.jsx?$/.test(name)) found.push(path)
-    }
-    return found
-  }
 
   const referenced = new Set()
   for (const file of sourceFiles('src')) {
@@ -149,6 +147,44 @@ describe('catalog usage', () => {
 
   it('finds a meaningful number of keys, so the scan itself cannot silently break', () => {
     expect(referenced.size).toBeGreaterThan(60)
+  })
+
+  it('translates every validation code, in every locale', () => {
+    // `error.<code>` is built at runtime, so the dead-key and unknown-key scans
+    // above cannot see it: a new ENTRY_ERROR would otherwise reach a person as
+    // the bare string "badAmount".
+    const untranslated = []
+    for (const code of Object.values(ENTRY_ERROR)) {
+      for (const tag of SUPPORTED) {
+        if (!(`error.${code}` in CATALOGS[tag])) untranslated.push(`${tag}: error.${code}`)
+      }
+    }
+    expect(untranslated).toEqual([])
+  })
+})
+
+describe('no hardcoded user-facing strings in components', () => {
+  /**
+   * An attribute nobody sees rendered is the easiest place to leave English
+   * behind — `aria-label="Add an expense"` shipped on the FAB and no catalog
+   * check could see it, because the string never went near a catalog.
+   */
+  const SPOKEN_ATTRIBUTES = ['aria-label', 'placeholder', 'title']
+
+  it('passes every spoken attribute through t(), not a bare literal', () => {
+    const offenders = []
+    for (const file of sourceFiles('src').filter((path) => path.endsWith('.jsx'))) {
+      const source = readFileSync(file, 'utf8')
+      for (const attribute of SPOKEN_ATTRIBUTES) {
+        // Only the literal form is a failure: the `{t('key')}` expression form is
+        // the fix, and `attr=""` is a deliberate "no accessible name".
+        const literal = new RegExp(`\\b${attribute}=("[^"]+"|'[^']+')`, 'g')
+        for (const match of source.matchAll(literal)) {
+          offenders.push(`${file}: ${attribute}=${match[1]}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
   })
 })
 

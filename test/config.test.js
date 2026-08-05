@@ -135,39 +135,4 @@ describe('default split', () => {
     expect(DEFAULT_CONFIG.defaultSplitP1).toBe(0.5)
     expect(DEFAULT_CONFIG.defaultSplitP2).toBe(0.5)
   })
-
-  describe('sheets written before the split became per-person', () => {
-    it('applies the universal default_split to both people', () => {
-      // It always meant "the payer's share", so the same number for each person
-      // reproduces exactly the old behaviour on an untouched sheet.
-      expect(parseConfigRows(rows([['default_split', '70']]))).toEqual({
-        defaultSplitP1: 0.7,
-        defaultSplitP2: 0.7,
-      })
-    })
-
-    it('lets an explicit per-person key win, whichever order the rows are in', () => {
-      expect(
-        parseConfigRows(
-          rows([
-            ['default_split', '50'],
-            ['default_split_p1', '80'],
-          ]),
-        ),
-      ).toEqual({ defaultSplitP1: 0.8, defaultSplitP2: 0.5 })
-
-      expect(
-        parseConfigRows(
-          rows([
-            ['default_split_p1', '80'],
-            ['default_split', '50'],
-          ]),
-        ),
-      ).toEqual({ defaultSplitP1: 0.8, defaultSplitP2: 0.5 })
-    })
-
-    it('ignores a junk legacy value rather than pinning both people to NaN', () => {
-      expect(parseConfigRows(rows([['default_split', 'fifty']]))).toEqual({})
-    })
-  })
 })

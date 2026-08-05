@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
-import { CONFIG_TAB, PERSON } from '../schema.js'
-import { defaultSplitFor, nameOf } from '../lib/identity.js'
-import { useT } from '../i18n/index.js'
+import { CONFIG_TAB, PEOPLE } from '../schema.js'
+import { defaultSplitFor } from '../lib/identity.js'
+import { usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
 import { LOCALE_LABELS, SUPPORTED } from '../i18n/catalogs.js'
 
@@ -20,10 +20,10 @@ export function SettingsSheet({
 }) {
   const { t, locale, setLocale } = useT()
   const tn = useTNodes()
+  const { name } = usePeopleLabels(config, me)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState(null)
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheet.id}`
-  const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
 
   async function handleCompact() {
     setBusy(true)
@@ -52,7 +52,7 @@ export function SettingsSheet({
         <div className="field">
           <span className="field__label">{t('settings.youAre')}</span>
           <div className="segmented">
-            {[PERSON.P1, PERSON.P2].map((person) => (
+            {PEOPLE.map((person) => (
               <label className="segmented__option" key={person}>
                 <input
                   type="radio"
@@ -61,7 +61,7 @@ export function SettingsSheet({
                   checked={me === person}
                   onChange={() => onSetMe(person)}
                 />
-                {nameOf(config, person, fallbacks)}
+                {name(person)}
               </label>
             ))}
           </div>
@@ -114,9 +114,9 @@ export function SettingsSheet({
           </p>
           <div className="row">
             <span className="pill pill--muted">{config.currency}</span>
-            {config.categories.map((name) => (
-              <span className="pill pill--muted" key={name}>
-                {name}
+            {config.categories.map((category) => (
+              <span className="pill pill--muted" key={category}>
+                {category}
               </span>
             ))}
           </div>
@@ -126,10 +126,10 @@ export function SettingsSheet({
           <span className="field__label">{t('settings.defaultSplit')}</span>
           {/* One line per person: the whole point of the setting is that the two
               numbers can differ, so a single figure would hide half of it. */}
-          {[PERSON.P1, PERSON.P2].map((person) => (
+          {PEOPLE.map((person) => (
             <p className="settings__value" key={person}>
               {t('settings.defaultSplitValue', {
-                name: nameOf(config, person, fallbacks),
+                name: name(person),
                 percent: Math.round(defaultSplitFor(config, person) * 100),
               })}
             </p>

@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { CONFIG_TAB, PERSON } from '../schema.js'
-import { nameOf } from '../lib/identity.js'
-import { useT } from '../i18n/index.js'
+import { CONFIG_TAB, PEOPLE } from '../schema.js'
+import { usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
 import { WalletIcon } from './icons.jsx'
 
@@ -114,20 +113,21 @@ export function SheetGate({ onCreate, onChoose, error }) {
 export function IdentityGate({ config, onPick }) {
   const { t } = useT()
   const tn = useTNodes()
-  const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
+  // No `me` yet — that is what this gate is asking — so both read as real names.
+  const { name } = usePeopleLabels(config, null)
 
   return (
     <Panel title={t('gate.identityTitle')}>
       <p className="gate__text">{t('gate.identityBody')}</p>
       <div className="gate__actions">
-        {[PERSON.P1, PERSON.P2].map((person) => (
+        {PEOPLE.map((person) => (
           <button
             key={person}
             type="button"
             className="btn btn--primary btn--block"
             onClick={() => onPick(person)}
           >
-            {nameOf(config, person, fallbacks)}
+            {name(person)}
           </button>
         ))}
       </div>
@@ -137,11 +137,10 @@ export function IdentityGate({ config, onPick }) {
 }
 
 export function LoadingGate({ label }) {
-  const { t } = useT()
   return (
     <div className="gate" aria-busy="true">
       <span className="spinner spinner--lg" />
-      <span className="visually-hidden">{label ?? t('gate.loading')}</span>
+      <span className="visually-hidden">{label}</span>
     </div>
   )
 }

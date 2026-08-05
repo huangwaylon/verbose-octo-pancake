@@ -2,10 +2,9 @@
  * The sheet contract: column order, ranges, and row <-> entry mapping.
  *
  * Everything that touches the Google Sheet goes through here, so the column
- * layout is defined in exactly one place. Values are always read and written
- * as raw strings (valueInputOption: RAW) — a description like "=SUM(A:A)" or
- * "+1 pizza" must never be interpreted as a formula, and dates must not be
- * silently reformatted per locale.
+ * layout is defined in exactly one place. Values are read and written as raw
+ * strings (valueInputOption: RAW): a description like "=SUM(A:A)" must never be
+ * interpreted as a formula, and dates must not be reformatted per locale.
  */
 
 import { centsToSheetString, parseAmountToCents } from './lib/money.js'
@@ -14,6 +13,9 @@ export const PERSON = {
   P1: 'p1',
   P2: 'p2',
 }
+
+/** Iteration order for the two people. Both tabs, both settings rows, both radios. */
+export const PEOPLE = [PERSON.P1, PERSON.P2]
 
 export function otherPerson(person) {
   return person === PERSON.P1 ? PERSON.P2 : PERSON.P1
@@ -70,11 +72,10 @@ export const EVEN_SHARE = 0.5
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 /**
- * Shape *and* calendar validity. The regex alone happily accepts 2026-02-31
- * and 2026-13-45, which would then surface as a bogus month like "2026-13" in
- * the month switcher.
+ * Shape *and* calendar validity. The regex alone accepts 2026-02-31 and
+ * 2026-13-45, which would surface as a bogus month in the month switcher.
  */
-export function isRealDate(value) {
+function isRealDate(value) {
   if (!ISO_DATE.test(value ?? '')) return false
   const [year, month, day] = value.split('-').map(Number)
   if (month < 1 || month > 12 || day < 1) return false
@@ -89,23 +90,34 @@ export function isRealDate(value) {
 /**
  * Range for a single row's worth of columns within one person's tab, e.g.
  * rowRange('p1', 7) -> "expenses_p1!A7:K7". Only ever call this with a row
- * number resolved from a *fresh* read — row positions shift whenever the
- * sheet is edited directly in the Sheets UI.
+ * number resolved from a *fresh* read — row positions shift whenever the sheet
+ * is edited directly in the Sheets UI.
  */
 export function rowRange(person, rowNumber) {
   return `${expensesTab(person)}!A${rowNumber}:${LAST_COLUMN}${rowNumber}`
 }
 
-/** Column letter for a named field, e.g. columnLetter('deleted_at') -> 'K'. */
-export function columnLetter(field) {
+/** 0-based position of a named column, e.g. columnIndex('deleted_at') -> 10. */
+export function columnIndex(field) {
   const index = EXPENSE_COLUMNS.indexOf(field)
   if (index < 0) throw new Error(`Unknown column: ${field}`)
-  return String.fromCharCode(65 + index)
+  return index
+}
+
+/** Column letter for a named field, e.g. columnLetter('deleted_at') -> 'K'. */
+export function columnLetter(field) {
+  return String.fromCharCode(65 + columnIndex(field))
 }
 
 export function cellRange(person, rowNumber, field) {
   const letter = columnLetter(field)
   return `${expensesTab(person)}!${letter}${rowNumber}:${letter}${rowNumber}`
+}
+
+/** A cell as trimmed text. Sheets returns numbers as numbers and gaps as holes. */
+export function cellText(row, index) {
+  const value = row?.[index]
+  return typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim()
 }
 
 /**
@@ -114,30 +126,24 @@ export function cellRange(person, rowNumber, field) {
  * The payer is not a column — it is which of the two per-person tabs the row
  * came from — so the caller passes it in rather than it being read here.
  *
- * @param {string[]} row      Cell values as returned by values.get
- * @param {number}   index    0-based offset within that tab's data range
- * @param {string}   payer    'p1' or 'p2': whichever tab this row was read from
- * @returns {object|null}     null for blank or structurally invalid rows
+ * @param {string[]} row       Cell values as returned by values.get
+ * @param {number}   index     0-based offset within that tab's data range
+ * @param {string}   payer     'p1' or 'p2': whichever tab this row was read from
+ * @param {string}   currency  the sheet's currency, used only when a row's own
+ *   currency cell is blank (a row somebody added by hand). It MUST be resolved
+ *   before the amount: "1250" is ¥1250 or $12.50 depending on nothing else.
+ * @returns {object|null}      null for blank or structurally invalid rows
  */
-export function rowToEntry(row, index, payer) {
+export function rowToEntry(row, index, payer, currency) {
   if (!Array.isArray(row)) return null
 
-  const get = (field) => {
-    const value = row[EXPENSE_COLUMNS.indexOf(field)]
-    return typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim()
-  }
+  const get = (field) => cellText(row, columnIndex(field))
 
   const id = get('id')
   if (!id) return null
 
-  // MUST be read before the amount. The stored string "1250" means ¥1250 or
-  // $12.50 depending entirely on this cell, so decoding in the other order is a
-  // silent 100x corruption. A blank cell keeps meaning USD — that fallback is
-  // what migrates every pre-existing sheet for free, so do not point it at
-  // DEFAULT_CONFIG.currency.
-  const currency = get('currency') || 'USD'
-
-  const amountCents = parseAmountToCents(get('amount'), currency)
+  const rowCurrency = get('currency') || currency
+  const amountCents = parseAmountToCents(get('amount'), rowCurrency)
   if (amountCents == null) return null
 
   const type = get('type') === ENTRY_TYPE.SETTLEMENT ? ENTRY_TYPE.SETTLEMENT : ENTRY_TYPE.EXPENSE
@@ -158,7 +164,7 @@ export function rowToEntry(row, index, payer) {
     date: isRealDate(date) ? date : '',
     payer: payer === PERSON.P2 ? PERSON.P2 : PERSON.P1,
     amountCents,
-    currency,
+    currency: rowCurrency,
     category: get('category'),
     description: get('description'),
     payerShare,
@@ -171,17 +177,20 @@ export function rowToEntry(row, index, payer) {
 
 /**
  * Map an entry object back to a raw sheet row (always EXPENSE_COLUMNS.length
- * strings). The payer is not written here — it is expressed by which
- * person's tab the caller writes this row into.
+ * strings). The payer is not written here — it is expressed by which person's
+ * tab the caller writes this row into.
  */
 export function entryToRow(entry) {
+  // Loud rather than silent: without a currency the amount would be encoded at
+  // the two-digit default, so a ¥1250 entry would land in the sheet as "12.50"
+  // and read back as ¥13. `validateEntryCodes` is what callers check first.
+  if (!entry.currency) throw new TypeError('entry.currency is required to encode an amount')
   const byField = {
     id: entry.id,
     type: entry.type,
     date: entry.date,
-    // Always the entry's OWN currency, never config.currency: a sheet holding
-    // both USD and JPY rows stays correct only if each row is encoded at its own
-    // scale.
+    // The entry's OWN currency, never the config's: a sheet holding both USD and
+    // JPY rows stays correct only if each row is encoded at its own scale.
     amount: centsToSheetString(entry.amountCents, entry.currency),
     currency: entry.currency,
     category: entry.category,
@@ -209,7 +218,7 @@ export function makeEntry(input, now = new Date().toISOString()) {
     date: input.date ?? '',
     payer: input.payer === PERSON.P2 ? PERSON.P2 : PERSON.P1,
     amountCents: input.amountCents ?? 0,
-    currency: input.currency || 'USD',
+    currency: input.currency ?? '',
     category: input.category ?? '',
     description: input.description ?? '',
     payerShare:
@@ -217,8 +226,8 @@ export function makeEntry(input, now = new Date().toISOString()) {
         ? type === ENTRY_TYPE.SETTLEMENT
           ? 0
           : EVEN_SHARE
-        : // Coerced here so a form input handing over '0.5' becomes a real
-          // number before it can reach validation or the balance math.
+        : // Coerced so a form handing over '0.5' becomes a number before it can
+          // reach validation or the balance math.
           Number(input.payerShare),
     createdAt: input.createdAt || now,
     updatedAt: now,
@@ -228,10 +237,9 @@ export function makeEntry(input, now = new Date().toISOString()) {
 }
 
 /**
- * Validation failure codes. These, not the English sentences, are the stable
- * contract: `useLedger` attaches one to the thrown error as `i18nKey` so the UI
- * can translate it, and `validateEntry` maps them back to English for callers
- * (and tests) that want a readable string.
+ * Validation failure codes. These, not English sentences, are the stable
+ * contract: `useLedger` attaches one to the thrown error as `i18nKey` and the UI
+ * translates it against `error.<code>`.
  */
 export const ENTRY_ERROR = {
   MISSING_ID: 'missingId',
@@ -240,15 +248,7 @@ export const ENTRY_ERROR = {
   BAD_PAYER: 'badPayer',
   BAD_SHARE: 'badShare',
   MISSING_CATEGORY: 'missingCategory',
-}
-
-const EN_ENTRY_ERRORS = {
-  missingId: 'Missing id.',
-  badDate: 'Date must be a real day, as YYYY-MM-DD.',
-  badAmount: 'Amount must be greater than zero.',
-  badPayer: 'Payer must be one of the two people.',
-  badShare: 'Split must be between 0 and 100%.',
-  missingCategory: 'Pick a category.',
+  MISSING_CURRENCY: 'missingCurrency',
 }
 
 /** @returns {string[]} failure codes from ENTRY_ERROR; empty means valid. */
@@ -273,12 +273,9 @@ export function validateEntryCodes(entry) {
   if (entry.type === ENTRY_TYPE.EXPENSE && !entry.category) {
     errors.push(ENTRY_ERROR.MISSING_CATEGORY)
   }
+  // Refuse rather than assume a scale: the amount is meaningless without it.
+  if (!entry.currency) errors.push(ENTRY_ERROR.MISSING_CURRENCY)
   return errors
-}
-
-/** @returns {string[]} human-readable English problems; empty means valid. */
-export function validateEntry(entry) {
-  return validateEntryCodes(entry).map((code) => EN_ENTRY_ERRORS[code])
 }
 
 export function isActive(entry) {

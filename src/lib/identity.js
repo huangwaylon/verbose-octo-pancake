@@ -9,28 +9,19 @@
  */
 
 import { EVEN_SHARE, PERSON } from '../schema.js'
-import { STORAGE_KEYS } from '../config.js'
+import { STORAGE_KEYS, readStored, writeStored } from '../config.js'
 
 export function readStoredIdentity() {
-  try {
-    const value = localStorage.getItem(STORAGE_KEYS.identity)
-    return value === PERSON.P1 || value === PERSON.P2 ? value : null
-  } catch {
-    return null
-  }
+  const value = readStored(STORAGE_KEYS.identity)
+  return value === PERSON.P1 || value === PERSON.P2 ? value : null
 }
 
 export function storeIdentity(person) {
-  try {
-    if (person) localStorage.setItem(STORAGE_KEYS.identity, person)
-    else localStorage.removeItem(STORAGE_KEYS.identity)
-  } catch {
-    // Private browsing with storage blocked: identity just won't persist.
-  }
+  writeStored(STORAGE_KEYS.identity, person)
 }
 
 /** @returns {'p1'|'p2'|null} null means "ask them". */
-export function resolveIdentity(config, email, stored = readStoredIdentity()) {
+export function resolveIdentity(config, email, stored) {
   const normalized = typeof email === 'string' ? email.trim().toLowerCase() : ''
   if (normalized) {
     if (config?.person1Email?.trim().toLowerCase() === normalized) return PERSON.P1
@@ -40,29 +31,18 @@ export function resolveIdentity(config, email, stored = readStoredIdentity()) {
 }
 
 /**
- * The two people's display names.
- *
- * `fallbacks` and `youLabel` are optional parameters rather than catalog lookups,
- * so this module stays pure and independently testable. Components pass the
- * translated strings in.
+ * The two people's display names. `fallbacks` arrives as a parameter rather than
+ * a catalog lookup, so this module stays pure and independently testable.
  */
 export function nameOf(config, person, fallbacks = { p1: 'Person 1', p2: 'Person 2' }) {
   if (person === PERSON.P2) return config?.person2Name || fallbacks.p2
   return config?.person1Name || fallbacks.p1
 }
 
-/** Label a person relative to the viewer, so the UI can say "You". */
-export function labelFor(config, person, me, youLabel = 'You', fallbacks) {
-  return person === me ? youLabel : nameOf(config, person, fallbacks)
-}
-
 /**
- * The share `person` covers by default on an expense they paid for.
- *
- * Keyed on the payer because `payer_share` is the payer's own share: with 0.8
- * for p1 and 0.2 for p2, p1 bears 80% of the cost whichever of the two actually
- * paid. A single universal default cannot express that — it would flip the
- * arrangement round every time the other person paid.
+ * The share `person` covers by default on an expense they paid for. Keyed on the
+ * payer because `payer_share` is the payer's own share: with 0.8 for p1 and 0.2
+ * for p2, p1 bears 80% of the cost whichever of them actually paid.
  *
  * Falls back to an even split per person, so a config tab carrying only one of
  * the two keys still behaves sensibly for the other.

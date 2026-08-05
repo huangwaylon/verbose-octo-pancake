@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 
 const DEFAULT_DURATION = 4000
 const UNDO_DURATION = 7000
+const ERROR_DURATION = 6000
 
 /**
  * A tiny toast stack. Used for two things: reporting write failures, and
@@ -29,13 +30,12 @@ export function useToasts() {
         id,
         setTimeout(() => dismiss(id), ttl),
       )
-      return id
     },
     [dismiss],
   )
 
   const error = useCallback(
-    (message) => push({ message, tone: 'error', duration: 6000 }),
+    (message) => push({ message, tone: 'error', duration: ERROR_DURATION }),
     [push],
   )
 

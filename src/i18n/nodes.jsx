@@ -11,25 +11,19 @@ import { Fragment } from 'react'
 import { VAR_PATTERN, translate, useT } from './index.js'
 
 /**
- * @param {string} locale
- * @param {string} key
- * @param {Record<string, import('react').ReactNode>} nodes
- * @returns {import('react').ReactNode[]} alternating text and substituted nodes
+ * @returns {(key: string, nodes: Record<string, import('react').ReactNode>) =>
+ *   import('react').ReactNode[]} alternating text and substituted nodes
  */
-function translateNodes(locale, key, nodes) {
-  const template = translate(locale, key)
-  // String.split with a capturing group alternates: even index is literal text,
-  // odd index is the captured placeholder name.
-  const parts = String(template).split(VAR_PATTERN)
-  return parts.map((part, index) => {
-    if (index % 2 === 0) return part
-    const node = nodes?.[part]
-    return <Fragment key={`${key}-${index}`}>{node ?? `{${part}}`}</Fragment>
-  })
-}
-
-/** Hook form, so a component re-renders when the locale changes. */
 export function useTNodes() {
   const { locale } = useT()
-  return (key, nodes) => translateNodes(locale, key, nodes)
+  return (key, nodes) => {
+    // String.split with a capturing group alternates: even index is literal
+    // text, odd index is the captured placeholder name.
+    const parts = String(translate(locale, key)).split(VAR_PATTERN)
+    return parts.map((part, index) => {
+      if (index % 2 === 0) return part
+      const node = nodes?.[part]
+      return <Fragment key={`${key}-${index}`}>{node ?? `{${part}}`}</Fragment>
+    })
+  }
 }

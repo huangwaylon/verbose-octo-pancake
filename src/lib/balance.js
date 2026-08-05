@@ -44,10 +44,10 @@ function hasDate(entry) {
  * @returns {number} integer cents (0 when the payer covered their own share)
  */
 export function owedToPayerCents(entry) {
-  // `payerShare` is coerced because schema.validateEntry accepts a numeric
-  // *string* (its range check relies on JS coercion), so a share can reach us
-  // as '0.5' from a form input. Genuinely non-numeric shares still throw in
-  // splitCents rather than silently becoming 0 and moving money.
+  // Coerced because `makeEntry` is the only thing that normalises a form's
+  // '0.5' into a number, and this runs over rows straight from the sheet too.
+  // Genuinely non-numeric shares still throw in splitCents rather than
+  // silently becoming 0 and moving money.
   return splitCents(entry.amountCents, Number(entry.payerShare)).otherCents
 }
 

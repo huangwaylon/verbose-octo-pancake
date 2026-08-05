@@ -6,9 +6,7 @@ export function Toasts({ toasts, onDismiss }) {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className={`toast${toast.tone === 'error' ? ' toast--error' : ''}${
-            toast.tone === 'success' ? ' toast--success' : ''
-          }`}
+          className={`toast${toast.tone === 'error' ? ' toast--error' : ''}`}
         >
           <span>{toast.message}</span>
           {toast.action ? (

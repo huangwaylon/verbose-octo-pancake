@@ -1,6 +1,5 @@
-import { labelFor } from '../lib/identity.js'
-import { PERSON } from '../schema.js'
-import { useMoney, useT } from '../i18n/index.js'
+import { PEOPLE, PERSON } from '../schema.js'
+import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { DonutChart } from './DonutChart.jsx'
 
 /**
@@ -12,16 +11,13 @@ import { DonutChart } from './DonutChart.jsx'
  * chart — so that gets a meter bar plus the two figures.
  */
 export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, currency }) {
-  // Both hooks run before the early return below: hook order must not depend on
-  // props.
+  // Every hook runs before the early return below: hook order must not depend
+  // on props.
   const { t } = useT()
   const money = useMoney(currency)
+  const { label } = usePeopleLabels(config, me)
 
   if (!monthSpend) return null
-
-  const you = t('common.you')
-  const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
-  const label = (person) => labelFor(config, person, me, you, fallbacks)
 
   const paid1 = byPerson[PERSON.P1] ?? 0
   const paid2 = byPerson[PERSON.P2] ?? 0
@@ -59,7 +55,7 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
           </div>
         )}
         <div className="summary__people">
-          {[PERSON.P1, PERSON.P2].map((person) => (
+          {PEOPLE.map((person) => (
             <span className="summary__person" key={person}>
               <span
                 className={`summary__person-swatch${

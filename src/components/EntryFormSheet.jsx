@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { centsToSheetString, minorDigits, parseAmountToCents, splitCents } from '../lib/money.js'
-import { ENTRY_TYPE, EVEN_SHARE, PERSON, otherPerson } from '../schema.js'
-import { labelFor, defaultSplitFor } from '../lib/identity.js'
-import { useMoney, useT } from '../i18n/index.js'
+import { ENTRY_TYPE, EVEN_SHARE, PEOPLE, PERSON, otherPerson } from '../schema.js'
+import { defaultSplitFor } from '../lib/identity.js'
+import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { TrashIcon } from './icons.jsx'
 
 /**
@@ -62,9 +62,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
   const payerShare = isSettlement ? 0 : splitMode === 'even' ? EVEN_SHARE : sharePercent / 100
   const notePresets = Array.isArray(config.notePresets) ? config.notePresets : []
 
-  const you = t('common.you')
-  const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
-  const label = (person) => labelFor(config, person, me, you, fallbacks)
+  const { label } = usePeopleLabels(config, me)
   const payerLabel = label(payer)
   const otherLabel = label(otherPerson(payer))
 
@@ -166,7 +164,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
             {isSettlement ? t('form.paidBy') : t('form.whoPaid')}
           </span>
           <div className="segmented">
-            {[PERSON.P1, PERSON.P2].map((person) => (
+            {PEOPLE.map((person) => (
               <label className="segmented__option" key={person}>
                 <input
                   type="radio"

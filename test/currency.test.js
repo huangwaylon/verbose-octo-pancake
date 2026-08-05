@@ -43,7 +43,9 @@ describe('minorDigits', () => {
     expect(minorDigits(' JPY ')).toBe(0)
   })
 
-  it('answers 2 for unknown, empty and non-string input, which is what keeps legacy rows correct', () => {
+  it('answers 2 for unknown, empty and non-string input rather than throwing', () => {
+    // The code comes from a hand-edited config cell, so it can be anything at
+    // all; the ISO 4217 default keeps the boundary usable.
     expect(minorDigits('NOTACURRENCY')).toBe(2)
     expect(minorDigits('')).toBe(2)
     expect(minorDigits(null)).toBe(2)
@@ -99,7 +101,6 @@ describe('writing to the sheet', () => {
 
   it('keeps two decimals for ordinary currencies', () => {
     expect(centsToSheetString(4210, 'USD')).toBe('42.10')
-    expect(centsToSheetString(4210)).toBe('42.10')
   })
 
   it('writes three decimals for a three-decimal currency', () => {
@@ -136,7 +137,7 @@ describe('formatting', () => {
     expect(ja).not.toMatch(/[.,]\d{2}$/)
   })
 
-  it('leaves ordinary currencies exactly as before', () => {
+  it('renders an ordinary currency with its two decimals', () => {
     expect(formatCents(4210, 'USD', { locale: 'en' })).toBe('$42.10')
   })
 
@@ -194,18 +195,30 @@ describe('schema rows carry their own currency', () => {
   ]
 
   it('reads a JPY row as whole yen', () => {
-    const entry = rowToEntry(row('1250', 'JPY'), 0, 'p1')
+    const entry = rowToEntry(row('1250', 'JPY'), 0, 'p1', 'JPY')
     expect(entry.amountCents).toBe(1250)
     expect(entry.currency).toBe('JPY')
   })
 
   it('reads a USD row as cents', () => {
-    const entry = rowToEntry(row('42.10', 'USD'), 0, 'p1')
+    const entry = rowToEntry(row('42.10', 'USD'), 0, 'p1', 'USD')
     expect(entry.amountCents).toBe(4210)
   })
 
-  it('treats a blank currency cell as USD, which is what migrates old sheets', () => {
-    const entry = rowToEntry(row('42.10', ''), 0, 'p1')
+  it('decodes a blank currency cell at the sheet currency it was passed', () => {
+    // A row somebody typed straight into Sheets has no currency cell, and the
+    // same text is a hundred times apart on the two sheets: ¥1250 or $1250.00.
+    const jpy = rowToEntry(row('1250', ''), 0, 'p1', 'JPY')
+    expect(jpy.amountCents).toBe(1250)
+    expect(jpy.currency).toBe('JPY')
+
+    const usd = rowToEntry(row('1250', ''), 0, 'p1', 'USD')
+    expect(usd.amountCents).toBe(125000)
+    expect(usd.currency).toBe('USD')
+  })
+
+  it("lets a row's own currency beat the sheet's, so a mixed sheet stays correct", () => {
+    const entry = rowToEntry(row('42.10', 'USD'), 0, 'p1', 'JPY')
     expect(entry.amountCents).toBe(4210)
     expect(entry.currency).toBe('USD')
   })
@@ -230,7 +243,7 @@ describe('schema rows carry their own currency', () => {
       ['42.10', 'USD', 4210],
       ['1.234', 'KWD', 1234],
     ]) {
-      const entry = rowToEntry(row(amount, currency), 0, 'p1')
+      const entry = rowToEntry(row(amount, currency), 0, 'p1', currency)
       expect(entry.amountCents).toBe(expected)
       expect(entryToRow(entry)[3]).toBe(amount)
     }

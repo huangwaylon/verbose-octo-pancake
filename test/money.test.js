@@ -9,70 +9,70 @@ import {
 
 describe('parseAmountToCents — formats a human actually types', () => {
   it('parses plain integers and decimals', () => {
-    expect(parseAmountToCents('42')).toBe(4200)
-    expect(parseAmountToCents('42.10')).toBe(4210)
-    expect(parseAmountToCents('0')).toBe(0)
-    expect(parseAmountToCents('0.00')).toBe(0)
-    expect(parseAmountToCents('0.01')).toBe(1)
+    expect(parseAmountToCents('42', 'USD')).toBe(4200)
+    expect(parseAmountToCents('42.10', 'USD')).toBe(4210)
+    expect(parseAmountToCents('0', 'USD')).toBe(0)
+    expect(parseAmountToCents('0.00', 'USD')).toBe(0)
+    expect(parseAmountToCents('0.01', 'USD')).toBe(1)
   })
 
   it('parses the sloppy shapes a phone keyboard produces', () => {
-    expect(parseAmountToCents('.5')).toBe(50)
-    expect(parseAmountToCents('42.')).toBe(4200)
-    expect(parseAmountToCents('.05')).toBe(5)
-    expect(parseAmountToCents('.5')).toBe(parseAmountToCents('0.50'))
+    expect(parseAmountToCents('.5', 'USD')).toBe(50)
+    expect(parseAmountToCents('42.', 'USD')).toBe(4200)
+    expect(parseAmountToCents('.05', 'USD')).toBe(5)
+    expect(parseAmountToCents('.5', 'USD')).toBe(parseAmountToCents('0.50', 'USD'))
   })
 
   it('strips surrounding whitespace and currency symbols', () => {
-    expect(parseAmountToCents(' $42.10 ')).toBe(4210)
-    expect(parseAmountToCents('€42,10')).toBe(4210)
-    expect(parseAmountToCents('£1,234.56')).toBe(123456)
-    expect(parseAmountToCents(' 42.10 ')).toBe(4210)
-    expect(parseAmountToCents('42.10 $')).toBe(4210)
+    expect(parseAmountToCents(' $42.10 ', 'USD')).toBe(4210)
+    expect(parseAmountToCents('€42,10', 'USD')).toBe(4210)
+    expect(parseAmountToCents('£1,234.56', 'USD')).toBe(123456)
+    expect(parseAmountToCents(' 42.10 ', 'USD')).toBe(4210)
+    expect(parseAmountToCents('42.10 $', 'USD')).toBe(4210)
   })
 
   it('treats a comma before one or two digits as a decimal separator', () => {
-    expect(parseAmountToCents('42,10')).toBe(4210)
-    expect(parseAmountToCents('42,1')).toBe(4210)
-    expect(parseAmountToCents('0,99')).toBe(99)
-    expect(parseAmountToCents(',5')).toBe(50)
+    expect(parseAmountToCents('42,10', 'USD')).toBe(4210)
+    expect(parseAmountToCents('42,1', 'USD')).toBe(4210)
+    expect(parseAmountToCents('0,99', 'USD')).toBe(99)
+    expect(parseAmountToCents(',5', 'USD')).toBe(50)
   })
 
   it('treats a comma before exactly three digits as a thousands separator', () => {
-    expect(parseAmountToCents('1,234')).toBe(123400)
-    expect(parseAmountToCents('1,234,567')).toBe(123456700)
-    expect(parseAmountToCents('12,345')).toBe(1234500)
+    expect(parseAmountToCents('1,234', 'USD')).toBe(123400)
+    expect(parseAmountToCents('1,234,567', 'USD')).toBe(123456700)
+    expect(parseAmountToCents('12,345', 'USD')).toBe(1234500)
   })
 
   it('lets the last separator win when both . and , appear', () => {
     // US style
-    expect(parseAmountToCents('1,234.56')).toBe(123456)
+    expect(parseAmountToCents('1,234.56', 'USD')).toBe(123456)
     // European style — same amount
-    expect(parseAmountToCents('1.234,56')).toBe(123456)
-    expect(parseAmountToCents('1,234.56')).toBe(parseAmountToCents('1.234,56'))
+    expect(parseAmountToCents('1.234,56', 'USD')).toBe(123456)
+    expect(parseAmountToCents('1,234.56', 'USD')).toBe(parseAmountToCents('1.234,56', 'USD'))
     // French style, space grouping
-    expect(parseAmountToCents('1 234,56')).toBe(123456)
-    expect(parseAmountToCents('1.234.567,89')).toBe(123456789)
-    expect(parseAmountToCents('1,234,567.89')).toBe(123456789)
+    expect(parseAmountToCents('1 234,56', 'USD')).toBe(123456)
+    expect(parseAmountToCents('1.234.567,89', 'USD')).toBe(123456789)
+    expect(parseAmountToCents('1,234,567.89', 'USD')).toBe(123456789)
   })
 
   it('reads a lone dot as a decimal point even before three digits', () => {
     // "1.234" is a US decimal, so it must round to 1.23 and NOT become 1234.
-    expect(parseAmountToCents('1.234')).toBe(123)
+    expect(parseAmountToCents('1.234', 'USD')).toBe(123)
     // Repeated dots can only be grouping.
-    expect(parseAmountToCents('1.234.567')).toBe(123456700)
+    expect(parseAmountToCents('1.234.567', 'USD')).toBe(123456700)
   })
 
   it('rounds half-up at the third decimal without float error', () => {
-    expect(parseAmountToCents('1.005')).toBe(101)
-    expect(parseAmountToCents('1.004')).toBe(100)
-    expect(parseAmountToCents('1.0049')).toBe(100)
-    expect(parseAmountToCents('1.0051')).toBe(101)
-    expect(parseAmountToCents('0.005')).toBe(1)
-    expect(parseAmountToCents('0.004')).toBe(0)
-    expect(parseAmountToCents('1.995')).toBe(200)
-    expect(parseAmountToCents('0.999')).toBe(100)
-    expect(parseAmountToCents('9.999')).toBe(1000)
+    expect(parseAmountToCents('1.005', 'USD')).toBe(101)
+    expect(parseAmountToCents('1.004', 'USD')).toBe(100)
+    expect(parseAmountToCents('1.0049', 'USD')).toBe(100)
+    expect(parseAmountToCents('1.0051', 'USD')).toBe(101)
+    expect(parseAmountToCents('0.005', 'USD')).toBe(1)
+    expect(parseAmountToCents('0.004', 'USD')).toBe(0)
+    expect(parseAmountToCents('1.995', 'USD')).toBe(200)
+    expect(parseAmountToCents('0.999', 'USD')).toBe(100)
+    expect(parseAmountToCents('9.999', 'USD')).toBe(1000)
   })
 
   it('beats naive float rounding, which loses a cent on these', () => {
@@ -86,13 +86,13 @@ describe('parseAmountToCents — formats a human actually types', () => {
       ['1.255', 126],
     ]) {
       expect(Math.round(Number(text) * 100)).toBe(cents - 1)
-      expect(parseAmountToCents(text)).toBe(cents)
+      expect(parseAmountToCents(text, 'USD')).toBe(cents)
     }
   })
 
   it('returns null for empty and non-string input', () => {
     for (const bad of ['', '   ', null, undefined, {}, [], true, false, NaN, Infinity, -Infinity]) {
-      expect(parseAmountToCents(bad)).toBeNull()
+      expect(parseAmountToCents(bad, 'USD')).toBeNull()
     }
   })
 
@@ -116,40 +116,40 @@ describe('parseAmountToCents — formats a human actually types', () => {
       '=42',
       '42%',
     ]) {
-      expect(parseAmountToCents(bad)).toBeNull()
+      expect(parseAmountToCents(bad, 'USD')).toBeNull()
     }
   })
 
   it('returns null for malformed grouping instead of guessing', () => {
     for (const bad of ['12,34.5', '1,2,3', '1,,234', ',234', '1,23,456', '12.34.5']) {
-      expect(parseAmountToCents(bad)).toBeNull()
+      expect(parseAmountToCents(bad, 'USD')).toBeNull()
     }
   })
 
   it('returns null for negatives — direction lives on the payer, not the amount', () => {
     for (const bad of ['-1', '-0.01', '-42.10', ' -$42.10 ', '−42.10', '(42.10)', -5, -0.5]) {
-      expect(parseAmountToCents(bad)).toBeNull()
+      expect(parseAmountToCents(bad, 'USD')).toBeNull()
     }
   })
 
   it('accepts finite numbers as well as strings', () => {
-    expect(parseAmountToCents(42)).toBe(4200)
-    expect(parseAmountToCents(42.1)).toBe(4210)
-    expect(parseAmountToCents(0)).toBe(0)
-    expect(parseAmountToCents(0.1 + 0.2)).toBe(30)
+    expect(parseAmountToCents(42, 'USD')).toBe(4200)
+    expect(parseAmountToCents(42.1, 'USD')).toBe(4210)
+    expect(parseAmountToCents(0, 'USD')).toBe(0)
+    expect(parseAmountToCents(0.1 + 0.2, 'USD')).toBe(30)
   })
 
   it('refuses absurd magnitudes rather than returning an unsafe integer', () => {
-    expect(parseAmountToCents('99999999999999999999')).toBeNull()
-    expect(parseAmountToCents('1e21')).toBeNull()
+    expect(parseAmountToCents('99999999999999999999', 'USD')).toBeNull()
+    expect(parseAmountToCents('1e21', 'USD')).toBeNull()
     // ...but a realistically large amount still parses exactly.
-    expect(parseAmountToCents('9999999999.99')).toBe(999999999999)
-    expect(Number.isSafeInteger(parseAmountToCents('9999999999.99'))).toBe(true)
+    expect(parseAmountToCents('9999999999.99', 'USD')).toBe(999999999999)
+    expect(Number.isSafeInteger(parseAmountToCents('9999999999.99', 'USD'))).toBe(true)
   })
 
   it('never returns NaN', () => {
     for (const input of ['abc', '', '.', ',', '1,2,3', null, {}]) {
-      const result = parseAmountToCents(input)
+      const result = parseAmountToCents(input, 'USD')
       expect(Number.isNaN(result)).toBe(false)
       expect(result).toBeNull()
     }
@@ -158,23 +158,23 @@ describe('parseAmountToCents — formats a human actually types', () => {
 
 describe('centsToSheetString', () => {
   it('writes a locale-independent fixed-2-decimal string', () => {
-    expect(centsToSheetString(4210)).toBe('42.10')
-    expect(centsToSheetString(0)).toBe('0.00')
-    expect(centsToSheetString(1)).toBe('0.01')
-    expect(centsToSheetString(99)).toBe('0.99')
-    expect(centsToSheetString(100)).toBe('1.00')
-    expect(centsToSheetString(123456789)).toBe('1234567.89')
+    expect(centsToSheetString(4210, 'USD')).toBe('42.10')
+    expect(centsToSheetString(0, 'USD')).toBe('0.00')
+    expect(centsToSheetString(1, 'USD')).toBe('0.01')
+    expect(centsToSheetString(99, 'USD')).toBe('0.99')
+    expect(centsToSheetString(100, 'USD')).toBe('1.00')
+    expect(centsToSheetString(123456789, 'USD')).toBe('1234567.89')
   })
 
   it('handles negatives', () => {
-    expect(centsToSheetString(-1)).toBe('-0.01')
-    expect(centsToSheetString(-4210)).toBe('-42.10')
-    expect(centsToSheetString(-100)).toBe('-1.00')
+    expect(centsToSheetString(-1, 'USD')).toBe('-0.01')
+    expect(centsToSheetString(-4210, 'USD')).toBe('-42.10')
+    expect(centsToSheetString(-100, 'USD')).toBe('-1.00')
   })
 
   it('never emits a currency symbol, grouping, or a comma', () => {
     for (const cents of [0, 1, 999, 100000, 123456789]) {
-      const s = centsToSheetString(cents)
+      const s = centsToSheetString(cents, 'USD')
       expect(s).not.toMatch(/[,$€£\s]/)
       expect(s).toMatch(/^-?\d+\.\d{2}$/)
     }
@@ -182,7 +182,7 @@ describe('centsToSheetString', () => {
 
   it('throws rather than emitting "NaN" into a sheet cell', () => {
     for (const bad of [NaN, Infinity, -Infinity, 4.5, '4210', null, undefined]) {
-      expect(() => centsToSheetString(bad)).toThrow(TypeError)
+      expect(() => centsToSheetString(bad, 'USD')).toThrow(TypeError)
     }
   })
 })
@@ -190,23 +190,23 @@ describe('centsToSheetString', () => {
 describe('centsToSheetString <-> parseAmountToCents round trip', () => {
   it('round-trips every representative value', () => {
     for (const cents of [0, 1, 5, 99, 100, 101, 999, 1000, 4210, 100000, 123456789]) {
-      expect(parseAmountToCents(centsToSheetString(cents))).toBe(cents)
+      expect(parseAmountToCents(centsToSheetString(cents, 'USD'), 'USD')).toBe(cents)
     }
   })
 
   it('round-trips a wide sweep of values', () => {
     for (let cents = 0; cents < 2000; cents += 7) {
-      expect(parseAmountToCents(centsToSheetString(cents))).toBe(cents)
+      expect(parseAmountToCents(centsToSheetString(cents, 'USD'), 'USD')).toBe(cents)
     }
     for (let cents = 999900; cents < 1000100; cents += 13) {
-      expect(parseAmountToCents(centsToSheetString(cents))).toBe(cents)
+      expect(parseAmountToCents(centsToSheetString(cents, 'USD'), 'USD')).toBe(cents)
     }
   })
 
   it('is idempotent under a second write, as a sheet read-modify-write would be', () => {
     for (const cents of [1, 99, 4210, 123456789]) {
-      const once = centsToSheetString(cents)
-      const twice = centsToSheetString(parseAmountToCents(once))
+      const once = centsToSheetString(cents, 'USD')
+      const twice = centsToSheetString(parseAmountToCents(once, 'USD'), 'USD')
       expect(twice).toBe(once)
     }
   })
@@ -332,16 +332,26 @@ describe('formatCents', () => {
   })
 
   it('throws on non-integer cents', () => {
-    expect(() => formatCents(NaN)).toThrow(TypeError)
-    expect(() => formatCents(1.5)).toThrow(TypeError)
-    expect(() => formatCents('4210')).toThrow(TypeError)
-    expect(() => formatCents(undefined)).toThrow(TypeError)
+    expect(() => formatCents(NaN, 'USD')).toThrow(TypeError)
+    expect(() => formatCents(1.5, 'USD')).toThrow(TypeError)
+    expect(() => formatCents('4210', 'USD')).toThrow(TypeError)
+    expect(() => formatCents(undefined, 'USD')).toThrow(TypeError)
   })
 
   it('is never used for sheet values — its output is not re-parseable as a bare amount', () => {
     // Guards against someone swapping formatCents in for centsToSheetString.
     expect(formatCents(123456789, 'USD', { locale: 'en-US' })).not.toBe(
-      centsToSheetString(123456789),
+      centsToSheetString(123456789, 'USD'),
     )
+  })
+})
+
+describe('a caller that forgets the currency', () => {
+  // Passing the currency is the contract, but a display path that misses it must
+  // degrade to the two-decimal default rather than take the render down with it.
+  it('still writes and formats an amount instead of throwing', () => {
+    expect(centsToSheetString(4210)).toBe('42.10')
+    expect(() => formatCents(4210)).not.toThrow()
+    expect(formatCents(4210)).toContain('42.10')
   })
 })
