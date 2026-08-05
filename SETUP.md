@@ -268,8 +268,11 @@ missing client ID.
 2. Choose one of:
    - **Create a new sheet** — the app creates the spreadsheet, writes the
      `expenses` header row, and seeds the `config` tab. Nothing to do by hand.
-   - **Pick an existing sheet** — the Google Picker opens; choose your sheet.
-     The app adds the tabs and header row if they are missing.
+   - **Pick an existing sheet** — the Google Picker opens; choose your sheet. It
+     must already have `expenses` and `config` tabs, or the app declines and
+     changes nothing: the picker lists every spreadsheet you own, and adding tabs
+     to the wrong one is not undoable. Use **Create a new sheet** for a fresh
+     ledger.
 3. Open the sheet in Google Sheets and share it with the other person's Google
    account as an **Editor** (**Share** > enter their address > Editor > Send).
    Leave general access as **Restricted**. Never set it to *Anyone with the
@@ -279,6 +282,11 @@ missing client ID.
    names, and `person1_email` / `person2_email` to the two Google addresses so
    the app can tell who is using it without asking. `currency` defaults to `JPY`;
    change it and the comma-separated `categories` list while you are there.
+   Optionally add two more rows:
+   - `default_split` — the payer's share on a new expense, as a percentage (`50`)
+     or a fraction (`0.5`). Useful if you never split evenly.
+   - `note_presets` — a comma-separated list of the shops you use most, e.g.
+     `OK Mart, Ozeki, Life`. They become one-tap chips on the note field.
 5. **Have the other person sign in and pick the same sheet themselves.** This
    step is easy to miss. The `drive.file` grant is per-person, per-file — your
    authorisation does not carry over to them. Until they pick the sheet in the

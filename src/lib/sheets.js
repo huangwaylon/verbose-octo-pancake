@@ -29,15 +29,45 @@ const RAW = 'RAW'
 const ID_COLUMN = columnLetter('id')
 const ID_COLUMN_RANGE = `${EXPENSES_TAB}!${ID_COLUMN}${FIRST_DATA_ROW}:${ID_COLUMN}`
 
-/** Sheet key <-> config field. One list so the two directions cannot drift. */
+/**
+ * Sheet key <-> config field, plus how to read the value. One list so the two
+ * directions cannot drift.
+ *
+ * `list` and `fraction` values are not plain strings, so they need explicit
+ * parsers; everything else is text.
+ */
 const CONFIG_FIELDS = [
-  ['person1_name', 'person1Name'],
-  ['person2_name', 'person2Name'],
-  ['person1_email', 'person1Email'],
-  ['person2_email', 'person2Email'],
-  ['currency', 'currency'],
-  ['categories', 'categories'],
+  ['person1_name', 'person1Name', 'text'],
+  ['person2_name', 'person2Name', 'text'],
+  ['person1_email', 'person1Email', 'text'],
+  ['person2_email', 'person2Email', 'text'],
+  ['currency', 'currency', 'text'],
+  ['categories', 'categories', 'list'],
+  ['default_split', 'defaultSplit', 'fraction'],
+  ['note_presets', 'notePresets', 'list'],
 ]
+
+function parseList(value) {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+/**
+ * A share written either as a percentage ("50") or a fraction ("0.5").
+ *
+ * Anything above 1 is read as a percentage, because a spreadsheet is a place
+ * where people naturally write 50 rather than 0.5, and nobody means "1%" when
+ * they type 1. Returns null for junk so the caller falls back to the default
+ * rather than putting NaN into the split control.
+ */
+function parseFraction(value) {
+  const raw = Number.parseFloat(value)
+  if (!Number.isFinite(raw) || raw < 0) return null
+  const fraction = raw > 1 ? raw / 100 : raw
+  return Math.min(1, Math.max(0, fraction))
+}
 
 /** Filled by ensureStructure / readSheetIds so loadAll can hand them back. */
 const sheetIdCache = new Map()
@@ -121,27 +151,36 @@ function cellText(row, index) {
   return text(row?.[index])
 }
 
-function parseConfigRows(rows) {
-  const keyToField = new Map(CONFIG_FIELDS)
+/**
+ * Config tab rows -> a partial config object. Exported for testing: it is pure,
+ * and the percentage-vs-fraction rule for `default_split` is exactly the kind of
+ * thing that needs cases pinned to it.
+ *
+ * A key that is absent, or present with a blank value, is simply omitted so the
+ * caller's defaults win.
+ */
+export function parseConfigRows(rows) {
+  const byKey = new Map(CONFIG_FIELDS.map(([key, field, kind]) => [key, { field, kind }]))
   const parsed = {}
 
   for (const row of rows) {
-    const field = keyToField.get(cellText(row, 0).toLowerCase())
-    if (!field) continue
+    const spec = byKey.get(cellText(row, 0).toLowerCase())
+    if (!spec) continue
     const value = cellText(row, 1)
     if (!value) continue
-    parsed[field] =
-      field === 'categories'
-        ? value
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean)
-        : value
+
+    if (spec.kind === 'list') {
+      const list = parseList(value)
+      // An empty list must not shadow the default; a blank cell means "unset".
+      if (list.length) parsed[spec.field] = list
+    } else if (spec.kind === 'fraction') {
+      const fraction = parseFraction(value)
+      if (fraction != null) parsed[spec.field] = fraction
+    } else {
+      parsed[spec.field] = value
+    }
   }
 
-  if (Array.isArray(parsed.categories) && parsed.categories.length === 0) {
-    delete parsed.categories
-  }
   return parsed
 }
 
@@ -182,7 +221,9 @@ export async function loadAll(spreadsheetId) {
 
   const config = {
     ...DEFAULT_CONFIG,
+    // Cloned so a caller mutating the arrays cannot corrupt the shared defaults.
     categories: [...DEFAULT_CONFIG.categories],
+    notePresets: [...DEFAULT_CONFIG.notePresets],
     ...parseConfigRows(configRows),
   }
 
@@ -311,6 +352,26 @@ async function readSheetIds(spreadsheetId) {
   }
   sheetIdCache.set(spreadsheetId, sheetIds)
   return sheetIds
+}
+
+/**
+ * Report which of the app's tabs a spreadsheet already has, WITHOUT writing
+ * anything.
+ *
+ * This is the guard in front of `ensureStructure`. Picking a file in the Google
+ * Picker is one tap and the list is every spreadsheet you own, so picking the
+ * wrong one is easy — and `ensureStructure` would then add two tabs to somebody's
+ * unrelated spreadsheet. Callers on the picker path must check this first and
+ * refuse rather than adopt a file that was never a ledger.
+ *
+ * @returns {Promise<{sheetIds: Record<string, number>, hasExpenses: boolean,
+ *   hasConfig: boolean, isLedger: boolean}>}
+ */
+export async function readStructure(spreadsheetId) {
+  const sheetIds = await readSheetIds(spreadsheetId)
+  const hasExpenses = EXPENSES_TAB in sheetIds
+  const hasConfig = CONFIG_TAB in sheetIds
+  return { sheetIds, hasExpenses, hasConfig, isLedger: hasExpenses && hasConfig }
 }
 
 /**

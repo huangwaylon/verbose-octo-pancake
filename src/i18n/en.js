@@ -93,6 +93,7 @@ export default {
   'form.category': 'Category',
   'form.note': 'Note',
   'form.notePlaceholder': 'Weekly shop',
+  'form.notePresets': 'Frequent notes',
   'form.split': 'Split',
   'form.splitEven': 'Even',
   'form.splitCustom': 'Custom',
@@ -113,6 +114,10 @@ export default {
   'settings.openSheet': 'Open in Google Sheets',
   'settings.switchSheet': 'Switch sheet',
   'settings.configTitle': 'Names, currency & categories',
+  'settings.defaultSplit': 'Default split',
+  'settings.defaultSplitValue': '{percent}% to the payer',
+  'settings.notePresets': 'Frequent notes',
+  'settings.notePresetsEmpty': 'None yet — add a {key} row to the config tab.',
   'settings.configHint':
     'These come from the {tab} tab of your sheet. Edit them there and refresh.',
   'settings.deletedRows': 'Deleted rows',
@@ -160,6 +165,8 @@ export default {
   'error.readSheet': 'Could not read the sheet.',
   'error.prepareSheet': 'Could not prepare the sheet.',
   'error.signIn': 'Sign-in failed.',
+  'error.notALedger':
+    'That spreadsheet has no {expenses} or {config} tab, so it is not a Shared Finances ledger and this app will not modify it. Pick a different sheet, or use "Create a new sheet".',
   'error.sessionExpired': 'Your Google session ended. Sign in again to pick up where you left off.',
   'error.missingId': 'Missing id.',
   'error.badDate': 'Date must be a real day, as YYYY-MM-DD.',

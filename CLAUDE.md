@@ -109,6 +109,21 @@ file to this app under `drive.file`. `setOrigin` is required because Pages serve
 the app from a sub-path and the Picker otherwise infers the wrong origin. Omitting
 either produces an opaque "invalid API key". Both live in `src/lib/picker.js`.
 
+**Only `createSheet` may build structure; the picker path must never write.**
+`ensureStructure` adds the `expenses` and `config` tabs, so calling it on an
+arbitrary picked file scribbles two tabs into somebody's unrelated spreadsheet —
+not something undo can reach. `chooseSheet` therefore calls the read-only
+`readStructure` first and refuses anything where `isLedger` is false. If you add
+another path that adopts an existing spreadsheet, it needs the same guard.
+
+**Config values are not all strings.** `CONFIG_FIELDS` in `src/lib/sheets.js`
+carries a kind per key — `text`, `list`, or `fraction` — and `parseConfigRows`
+omits a key whose value is blank or unparseable so the caller's defaults win. An
+empty list must never be returned in place of a default, or the category picker
+ends up empty. `default_split` accepts a percentage or a fraction (anything above
+1 is a percentage) and must never yield NaN: that reaches `splitCents` and moves
+money wrongly. `test/config.test.js` pins these.
+
 **Refreshes on focus are throttled.** Two people share one sheet with no push
 channel, so `useLedger` re-reads on `focus` and `visibilitychange`. Window
 switching is constant and every refresh spends per-user quota, hence the 30s

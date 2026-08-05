@@ -123,6 +123,32 @@ export function SettingsSheet({
         </div>
 
         <div className="field">
+          <span className="field__label">{t('settings.defaultSplit')}</span>
+          <p className="settings__value">
+            {t('settings.defaultSplitValue', {
+              percent: Math.round((config.defaultSplit ?? 0.5) * 100),
+            })}
+          </p>
+        </div>
+
+        <div className="field">
+          <span className="field__label">{t('settings.notePresets')}</span>
+          {config.notePresets?.length ? (
+            <div className="row">
+              {config.notePresets.map((note) => (
+                <span className="pill pill--muted" key={note}>
+                  {note}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="field__hint">
+              {tn('settings.notePresetsEmpty', { key: <code>note_presets</code> })}
+            </p>
+          )}
+        </div>
+
+        <div className="field">
           <span className="field__label">{t('settings.deletedRows')}</span>
           <p className="field__hint">{t('settings.deletedRowsHint')}</p>
           <button

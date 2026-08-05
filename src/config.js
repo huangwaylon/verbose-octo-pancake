@@ -56,6 +56,16 @@ export const DEFAULT_CONFIG = {
   person2Email: '',
   currency: 'JPY',
   categories: ['Groceries', 'Dining', 'Household', 'Other'],
+  /**
+   * The payer's share applied to a new expense before anyone touches the split
+   * control. 0.5 is an even split; 1 means the payer covers it all.
+   */
+  defaultSplit: 0.5,
+  /**
+   * Quick-pick suggestions for the note field — typically the shops you go to
+   * most. Free text is always still allowed.
+   */
+  notePresets: [],
 }
 
 export function isConfigured() {

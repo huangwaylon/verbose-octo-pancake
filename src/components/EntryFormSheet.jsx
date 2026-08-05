@@ -29,15 +29,17 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
   const [date, setDate] = useState(entry.date)
   const [category, setCategory] = useState(entry.category || config.categories[0] || '')
   const [description, setDescription] = useState(entry.description ?? '')
-  const [splitMode, setSplitMode] = useState(
-    entry.payerShare === EVEN_SHARE || entry.payerShare == null ? 'even' : 'custom',
-  )
-  const [sharePercent, setSharePercent] = useState(Math.round((entry.payerShare ?? 0.5) * 100))
+  // The configured default counts as "even" for control purposes only when it
+  // really is even; any other default opens the custom control showing it.
+  const initialShare = entry.payerShare ?? config.defaultSplit ?? EVEN_SHARE
+  const [splitMode, setSplitMode] = useState(initialShare === EVEN_SHARE ? 'even' : 'custom')
+  const [sharePercent, setSharePercent] = useState(Math.round(initialShare * 100))
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
   const cents = parseAmountToCents(amount, entryCurrency)
   const payerShare = isSettlement ? 0 : splitMode === 'even' ? EVEN_SHARE : sharePercent / 100
+  const notePresets = Array.isArray(config.notePresets) ? config.notePresets : []
 
   const you = t('common.you')
   const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
@@ -208,7 +210,38 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                 placeholder={t('form.notePlaceholder')}
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
+                /* A datalist rather than a <select>: it gives a native dropdown
+                   of the frequent shops while leaving the field free text, so a
+                   one-off note needs no escape hatch. Browsers without datalist
+                   support degrade to a plain input, losing nothing. */
+                list={notePresets.length ? 'note-presets' : undefined}
               />
+              {notePresets.length > 0 && (
+                <datalist id="note-presets">
+                  {notePresets.map((preset) => (
+                    <option key={preset} value={preset} />
+                  ))}
+                </datalist>
+              )}
+              {/* Tappable chips as well as the datalist: on a phone a datalist
+                  offers no visual affordance at all, and the whole point of the
+                  presets is to be faster than typing "OK Mart" again. */}
+              {notePresets.length > 0 && (
+                <div className="row" role="group" aria-label={t('form.notePresets')}>
+                  {notePresets.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className={`btn btn--sm ${
+                        description === preset ? 'btn--primary' : 'btn--ghost'
+                      }`}
+                      onClick={() => setDescription(description === preset ? '' : preset)}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="field">

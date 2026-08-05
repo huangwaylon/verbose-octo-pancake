@@ -88,10 +88,12 @@ export default function App() {
         amountCents: 0,
         category: '',
         description: '',
-        payerShare: EVEN_SHARE,
+        // From the sheet's config tab, so a couple who never split evenly does
+        // not re-adjust the control on every entry.
+        payerShare: ledger.config.defaultSplit ?? EVEN_SHARE,
       },
     })
-  }, [me])
+  }, [me, ledger.config.defaultSplit])
 
   const openSettle = useCallback(() => {
     setDraft({

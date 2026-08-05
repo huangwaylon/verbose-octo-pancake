@@ -11,6 +11,7 @@ import { DonutChart, MAX_SLICES, foldTail } from '../src/components/DonutChart.j
 import { BalanceCard } from '../src/components/BalanceCard.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
+import { EntryFormSheet } from '../src/components/EntryFormSheet.jsx'
 
 /** The locale is a module singleton, so every test that changes it restores it. */
 afterEach(() => {
@@ -134,6 +135,58 @@ describe('DonutChart', () => {
     expect(markup).toContain('Groceries')
     expect(markup).toContain('¥75')
     expect(markup).toContain('75%')
+  })
+})
+
+describe('entry form: presets and default split', () => {
+  const draft = (entry) => ({ mode: 'add', entry: { type: ENTRY_TYPE.EXPENSE, date: '2026-08-05', payer: PERSON.P1, amountCents: 0, category: '', description: '', ...entry } })
+
+  const render = (cfg, entry) =>
+    renderToStaticMarkup(
+      <EntryFormSheet
+        draft={draft(entry)}
+        config={{ ...config, ...cfg }}
+        me={PERSON.P1}
+        currency="JPY"
+        onSubmit={noop}
+        onDelete={noop}
+        onClose={noop}
+      />,
+    )
+
+  it('offers each configured note as a datalist option and a chip', () => {
+    const markup = render({ notePresets: ['OK Mart', 'Ozeki', 'Life'] })
+    expect(markup).toContain('id="note-presets"')
+    expect(markup).toContain('list="note-presets"')
+    for (const shop of ['OK Mart', 'Ozeki', 'Life']) {
+      expect(markup).toContain(shop)
+    }
+  })
+
+  it('leaves the note a plain text input when nothing is configured', () => {
+    const markup = render({ notePresets: [] })
+    expect(markup).not.toContain('note-presets')
+  })
+
+  it('opens on the even control when the configured default is an even split', () => {
+    const markup = render({ defaultSplit: 0.5 }, { payerShare: 0.5 })
+    // The custom slider only renders in custom mode.
+    expect(markup).not.toContain('type="range"')
+  })
+
+  it('opens on the custom control showing a non-even configured default', () => {
+    const markup = render({ defaultSplit: 0.7 }, { payerShare: 0.7 })
+    expect(markup).toContain('type="range"')
+    expect(markup).toContain('70%')
+  })
+
+  it('renders a settlement without any split or note controls', () => {
+    const markup = render(
+      { notePresets: ['OK Mart'] },
+      { type: ENTRY_TYPE.SETTLEMENT, payerShare: 0, amountCents: 625 },
+    )
+    expect(markup).not.toContain('note-presets')
+    expect(markup).not.toContain('type="range"')
   })
 })
 

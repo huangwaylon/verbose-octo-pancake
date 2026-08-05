@@ -105,6 +105,17 @@ Plain key/value pairs in columns A and B — no header row:
 | `person2_email` | `sam@example.com` |
 | `currency` | `JPY` |
 | `categories` | `Groceries, Dining, Household, Other` |
+| `default_split` | `50` |
+| `note_presets` | `OK Mart, Ozeki, Life` |
+
+`default_split` is the payer's share applied to a new expense before anyone
+touches the split control — for a couple who never split evenly, it saves an
+adjustment on every entry. Write it as a percentage (`50`) or a fraction (`0.5`);
+anything above 1 is read as a percentage, because a spreadsheet is where people
+naturally write 50. Junk is ignored rather than allowed to become a NaN split.
+
+`note_presets` is the shops you go to most. They appear as tappable chips and as a
+native dropdown on the note field, which stays free text either way.
 
 The emails let the app tell which of the two people is signed in. Missing keys
 fall back to the defaults in `src/config.js`, where the default currency is
@@ -194,8 +205,12 @@ currency.
   appear without you thinking to refresh. Throttled to once every 30 seconds.
 - First run creates the spreadsheet for you — header row and `config` tab
   included — or connects one you already have via the Google Picker.
-- Names, currency, and categories live in the sheet's `config` tab, so changing
-  them needs no redeploy.
+- Names, currency, categories, the default split, and your frequent shop names
+  all live in the sheet's `config` tab, so changing them needs no redeploy.
+- **Refuses to touch a spreadsheet that is not already a ledger.** The picker
+  lists every spreadsheet you own and choosing one is a single tap, so the app
+  checks for the `expenses` and `config` tabs before writing anything and declines
+  rather than adding tabs to an unrelated file.
 - Google sign-in with narrow, non-sensitive scopes. No app accounts, no
   passwords.
 - Built for a phone and usable on a monitor: one column that becomes two at

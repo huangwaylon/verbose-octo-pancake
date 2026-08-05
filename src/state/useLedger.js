@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { DEFAULT_CONFIG, STORAGE_KEYS } from '../config.js'
-import { EXPENSES_TAB, makeEntry, validateEntryCodes } from '../schema.js'
+import { EXPENSES_TAB, CONFIG_TAB, makeEntry, validateEntryCodes } from '../schema.js'
 import { t } from '../i18n/index.js'
 import * as sheets from '../lib/sheets.js'
 import { createSpreadsheet, pickSpreadsheet } from '../lib/picker.js'
@@ -162,11 +162,39 @@ export function useLedger({ enabled }) {
     [load],
   )
 
-  const chooseSheet = useCallback(async () => {
-    const picked = await pickSpreadsheet()
-    if (picked) await connect(picked)
-    return picked
-  }, [connect])
+  /**
+   * Adopt a spreadsheet the user picked in the Google Picker.
+   *
+   * Refuses anything that is not already a ledger. The picker lists every
+   * spreadsheet you own and selecting one is a single tap, so picking the wrong
+   * file is easy — and `connect` would then have `ensureStructure` add two tabs
+   * to it. A sheet that has neither tab is almost certainly not meant for this
+   * app, and writing to it is not recoverable by undo. "Create a new sheet" is
+   * the path that is allowed to build structure.
+   */
+  const chooseSheet = useCallback(
+    async (name) => {
+      const picked = await pickSpreadsheet()
+      if (!picked) return null
+
+      const structure = await sheets.readStructure(picked.id)
+      if (!structure.isLedger) {
+        const error = new Error(
+          t('error.notALedger', {
+            name: picked.name || name || '',
+            expenses: EXPENSES_TAB,
+            config: CONFIG_TAB,
+          }),
+        )
+        error.i18nKey = 'error.notALedger'
+        throw error
+      }
+
+      await connect(picked)
+      return picked
+    },
+    [connect],
+  )
 
   const createSheet = useCallback(
     async (name = 'Shared Finances') => {

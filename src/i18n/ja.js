@@ -87,6 +87,7 @@ export default {
   'form.category': 'カテゴリー',
   'form.note': 'メモ',
   'form.notePlaceholder': 'いつもの買い物',
+  'form.notePresets': 'よく使うメモ',
   'form.split': '分担',
   'form.splitEven': '半分ずつ',
   'form.splitCustom': 'カスタム',
@@ -107,6 +108,10 @@ export default {
   'settings.openSheet': 'Google スプレッドシートで開く',
   'settings.switchSheet': 'シートを切り替える',
   'settings.configTitle': '名前・通貨・カテゴリー',
+  'settings.defaultSplit': '既定の分担',
+  'settings.defaultSplitValue': '支払った人が{percent}%',
+  'settings.notePresets': 'よく使うメモ',
+  'settings.notePresetsEmpty': 'まだありません。configタブに{key}の行を追加してください。',
   'settings.configHint':
     'これらはシートの{tab}タブから読み込まれます。変更したらタブを編集して再読み込みしてください。',
   'settings.deletedRows': '削除ずみの行',
@@ -153,6 +158,8 @@ export default {
   'error.readSheet': 'シートを読み込めませんでした。',
   'error.prepareSheet': 'シートを準備できませんでした。',
   'error.signIn': 'ログインできませんでした。',
+  'error.notALedger':
+    'このスプレッドシートには{expenses}タブも{config}タブもないため、家計シェアのシートではないと判断し、変更しません。別のシートを選ぶか、「新しいシートを作る」を使ってください。',
   'error.sessionExpired': 'Google のセッションが終了しました。もう一度ログインすると、続きから再開できます。',
   'error.missingId': 'ID がありません。',
   'error.badDate': '日付は YYYY-MM-DD 形式の実在する日を入力してください。',
