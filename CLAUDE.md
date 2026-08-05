@@ -7,7 +7,10 @@ Guidance for Claude Code working in this repository.
 A static React app for two people to track shared grocery/food expenses. A
 single Google Sheet is the database. The browser talks straight to the Sheets
 API with a short-lived OAuth token; there is no backend and no secret anywhere.
-Deployed to GitHub Pages by `.github/workflows/deploy.yml` on push to `main`.
+The interface is English or Japanese, and the default currency is JPY — both of
+which shape the type system and the money layer, so read the i18n and money
+invariants before touching either. Deployed to GitHub Pages by
+`.github/workflows/deploy.yml` on push to `main`.
 
 For the data model, security reasoning, and cost breakdown, see `README.md`.
 For the Google Cloud walkthrough, see `SETUP.md`. Do not restate either here.
@@ -80,35 +83,36 @@ reconsider.
 that parses as UTC midnight and shifts to the previous day in western timezones.
 Use the helpers in `src/lib/dates.js`, which build dates from explicit parts.
 
-**The access token is persisted, deliberately.** `src/lib/googleAuth.js` caches it
-in `localStorage` and clears it only on explicit sign-out, so a refresh does not
-force another sign-in. This reverses an earlier invariant and the trade-off is
-real: a stored bearer token is readable by any XSS on this origin and survives
-the tab. It is accepted because the token flow cannot renew without a click, so
-the alternative was re-authenticating on every page load. The cache is bounded by
-Google anyway — the token lasts about an hour and there is no refresh token to
-extend it, so this removes the re-login on refresh but cannot make a session
-outlive the token. Anything malformed or expired in storage is discarded on load
-rather than trusted.
+**The access token is cached in `localStorage`, and cleared only on explicit
+sign-out.** Anything malformed or expired is discarded on load rather than
+trusted. This is a deliberate trade-off against XSS, not an oversight — the
+reasoning is in `README.md`, and the ceiling is Google's: the token lasts about an
+hour and the browser flow issues no refresh token, so no cache can make a session
+outlive it.
 
 **Never request a token outside a user gesture.** `requestAccessToken` always
-opens a popup, even with `prompt: ''`. Calling it on mount or from a background
-refresh is guaranteed to fail with `Failed to open popup window` and, before the
-fix, silently broke every write an hour into a session. `requestToken` clears the
-token and notifies listeners on failure so the UI drops back to the sign-in
-screen.
+opens a popup, even with `prompt: ''`, and a popup with no click behind it is
+blocked. `requestToken` therefore clears the token and notifies listeners on
+failure, so the UI drops back to the sign-in screen instead of failing writes in
+the background. `useAuth` distinguishes that collapse from a deliberate sign-out
+and explains itself; a silent bounce to the sign-in screen is indistinguishable
+from the app logging you out at random.
 
-**The OAuth scope grants no file access beyond `drive.file`.** The other two
-scopes, `openid` and `userinfo.email`, exist only to identify which of the two
-people is signed in. Never widen the Drive scope to `spreadsheets` — that would
-grant access to every sheet in the user's Drive. This is why the Google Picker
-exists.
+**The OAuth scope grants no file access beyond `drive.file`.** The other two,
+`openid` and `userinfo.email`, only identify which of the two people is signed in.
+Never widen the Drive scope to `spreadsheets` — that would expose every sheet in
+the account. This is why the Picker exists.
 
 **The Picker needs `setAppId` and `setOrigin`.** `setAppId` (the Cloud project
 number, derived from the client ID prefix) is what makes Drive grant the picked
-file to this app under `drive.file`. `setOrigin` is required because the app is
-served from a sub-path on GitHub Pages and the Picker otherwise infers the wrong
-origin. Both live in `src/lib/picker.js`.
+file to this app under `drive.file`. `setOrigin` is required because Pages serves
+the app from a sub-path and the Picker otherwise infers the wrong origin. Omitting
+either produces an opaque "invalid API key". Both live in `src/lib/picker.js`.
+
+**Refreshes on focus are throttled.** Two people share one sheet with no push
+channel, so `useLedger` re-reads on `focus` and `visibilitychange`. Window
+switching is constant and every refresh spends per-user quota, hence the 30s
+floor — do not remove it.
 
 ## Conventions
 
@@ -195,7 +199,7 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
   thumb) and never on hover. Cards are a white plane plus one hairline; the
   temperature step from `--bg` to `--surface` is the elevation.
 - **`--line-input` is deliberately darker than `--line`.** WCAG 1.4.11 wants 3:1
-  for the boundary identifying a control; `--line` on white is ~1.15:1 and fails.
+  for the boundary identifying a control; `--line` on white is 1.34:1 and fails.
   Do not "tidy" the two together.
 - **Never drop a form control below 16px.** Mobile Safari zooms on focus below
   that and will not zoom back out.
@@ -226,8 +230,8 @@ npx vite-node scripts/preview.jsx     # writes scripts/preview-{en,ja}.html
 
 Open those, or load them in `<iframe>`s at 390/768/1440 and screenshot — an
 iframe gets its own viewport, so media queries resolve honestly, which
-`--window-size` on headless Chrome does not reliably do. The invisible-donut bug
-was invisible to 231 passing tests.
+`--window-size` on headless Chrome does not reliably do. The whole suite passed
+green while the donut chart rendered white-on-white and invisible.
 
 ## Gotchas
 
@@ -259,8 +263,8 @@ was invisible to 231 passing tests.
 - **`drive.file` is a per-person, per-file grant.** Sharing the sheet in Google
   Sheets is not enough — each person must pick it through the Picker on their own
   device. This is the most common "it's broken for them" report.
-- **`getUserEmail()` fails soft, returning `null`.** It works when the consent
-  screen actually has `openid` and `userinfo.email` registered; with `drive.file`
-  alone the endpoint 401s. Because a mismatched consent screen is a live
-  possibility, identity still falls back to a manual choice stored in
-  `localStorage`. Treat the manual path as first-class, not an error case.
+- **`getUserEmail()` fails soft, returning `null`.** It needs `openid` and
+  `userinfo.email` on the consent screen; with `drive.file` alone the endpoint
+  401s. Since a mismatched consent screen is always possible, identity still falls
+  back to a manual choice in `localStorage`. Treat the manual path as
+  first-class, not an error case.

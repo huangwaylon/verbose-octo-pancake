@@ -8,7 +8,7 @@
  */
 
 import { Fragment } from 'react'
-import { VAR_PATTERN, getLocale, translate, useT } from './index.js'
+import { VAR_PATTERN, translate, useT } from './index.js'
 
 /**
  * @param {string} locale
@@ -16,7 +16,7 @@ import { VAR_PATTERN, getLocale, translate, useT } from './index.js'
  * @param {Record<string, import('react').ReactNode>} nodes
  * @returns {import('react').ReactNode[]} alternating text and substituted nodes
  */
-export function translateNodes(locale, key, nodes) {
+function translateNodes(locale, key, nodes) {
   const template = translate(locale, key)
   // String.split with a capturing group alternates: even index is literal text,
   // odd index is the captured placeholder name.
@@ -26,11 +26,6 @@ export function translateNodes(locale, key, nodes) {
     const node = nodes?.[part]
     return <Fragment key={`${key}-${index}`}>{node ?? `{${part}}`}</Fragment>
   })
-}
-
-/** Locale-bound form, for non-hook call sites. */
-export function tNodes(key, nodes) {
-  return translateNodes(getLocale(), key, nodes)
 }
 
 /** Hook form, so a component re-renders when the locale changes. */

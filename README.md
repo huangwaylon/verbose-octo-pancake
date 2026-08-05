@@ -190,6 +190,8 @@ currency.
 - **Japanese yen by default**, with correct zero-decimal handling.
 - Delete offers **Undo** instead of a confirmation dialog, which is what soft
   deletes buy you. An explicit compact action reclaims tombstoned rows.
+- Re-reads the sheet when you come back to the tab, so the other person's entries
+  appear without you thinking to refresh. Throttled to once every 30 seconds.
 - First run creates the spreadsheet for you — header row and `config` tab
   included — or connects one you already have via the Google Picker.
 - Names, currency, and categories live in the sheet's `config` tab, so changing
@@ -274,7 +276,7 @@ storage is discarded on load rather than trusted.
 **There is no bank connection anywhere in this design.** No Plaid, no Open
 Banking, no institution credentials, no account or card numbers, no read-only
 brokerage tokens. Entries are typed in by hand. The worst case for a full
-compromise of this app is that someone learns you spent $42.50 on groceries — it
+compromise of this app is that someone learns you spent ¥1,250 on groceries — it
 cannot move money and it has no path to a financial institution.
 
 **Access control is Google's, and depends on you.** The sheet should be shared
@@ -318,16 +320,17 @@ people from the other.
 ├── SETUP.md                       Google Cloud + GitHub walkthrough
 ├── index.html                     entry HTML, and the Content-Security-Policy
 ├── vite.config.js                 Pages base path, React plugin, vitest config
+├── scripts/preview.jsx            renders the UI to static HTML for a visual check
 ├── src
-│   ├── main.jsx                   mounts App, imports the four stylesheets
+│   ├── main.jsx                   mounts App, imports the stylesheets, sets <html lang>
 │   ├── App.jsx                    gates, derived data, and the page layout
 │   ├── config.js                  build-time config, OAuth scope, defaults
 │   ├── schema.js                  the sheet contract: columns, ranges, row <-> entry
 │   ├── lib
-│   │   ├── googleAuth.js          GIS token flow; token never leaves memory
+│   │   ├── googleAuth.js          GIS token flow; caches the token in localStorage
 │   │   ├── picker.js              Google Picker, plus spreadsheet creation
 │   │   ├── sheets.js              all Sheets API calls (the CRUD)
-│   │   ├── money.js               integer-cent parsing, formatting, splitting
+│   │   ├── money.js               integer minor units: parse, format, split, ISO 4217 exponent
 │   │   ├── balance.js             who-owes-whom and the month aggregates
 │   │   ├── dates.js               timezone-safe ISO date helpers
 │   │   └── identity.js            which of the two people is signed in

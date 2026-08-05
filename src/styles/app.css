@@ -332,14 +332,6 @@
   height: auto;
 }
 
-/* The per-slice stroke is set inline by the component, not here: a CSS rule on
-   this class would WIN over an SVG presentation attribute and paint every slice
-   the same color. The 2px gap between fills comes from the dash geometry, so it
-   needs no stroke of its own. */
-.chart__slice {
-  stroke-linecap: butt;
-}
-
 .chart__legend {
   flex: 1 1 auto;
   display: flex;

@@ -277,13 +277,20 @@ missing client ID.
    readable.
 4. In the `config` tab, set `person1_name` and `person2_name` to your actual
    names, and `person1_email` / `person2_email` to the two Google addresses so
-   the app can tell who is using it. Adjust `currency` and the comma-separated
-   `categories` list while you are there.
+   the app can tell who is using it without asking. `currency` defaults to `JPY`;
+   change it and the comma-separated `categories` list while you are there.
 5. **Have the other person sign in and pick the same sheet themselves.** This
    step is easy to miss. The `drive.file` grant is per-person, per-file — your
    authorisation does not carry over to them. Until they pick the sheet in the
    picker on their own device, their browser has no access to it even though
    Google Sheets shows them as an Editor.
+
+The interface language is chosen per device in **Settings**, not in the sheet, so
+the two of you can read the same ledger in different languages.
+
+First run makes several Sheets calls in sequence to create the tabs, seed the
+config and read it back, so expect it to sit on a spinner for a few seconds
+longer than a normal load. Subsequent loads are one round trip.
 
 ---
 
@@ -385,18 +392,24 @@ A white page with no console errors and no network requests usually means the
 CSP in `index.html` blocked the bundle — the Console tab reports CSP violations
 explicitly.
 
-### The picker never opens
+### The picker says "invalid API key", or never opens
 
-- **Google Picker API not enabled.** The most common cause; step 2. The console
-  error is a 403 from `apis.google.com/js/api.js`-loaded code, which is not
-  obviously about the Picker.
-- **Popup blocked.** The picker is a popup-adjacent iframe and must be triggered
-  by a real click. If it works on the second click, a blocker is involved.
+The app now passes `setAppId` and `setOrigin` (see `src/lib/picker.js`), which is
+what a working picker needs on the `drive.file` scope. If it still fails, the
+picker reports its own errors and the app surfaces them on screen and logs the
+raw payload as `[picker] error payload:` — read that before guessing. Then:
+
+- **Google Picker API not enabled.** The most common cause; step 2. Nothing fails
+  until you open the picker, which is why it gets missed.
+- **The API key's restrictions omit Picker.** Step 5 requires all three of Sheets,
+  Drive and Picker. A key allowed for only Sheets and Drive fails here and the
+  message blames the key, not the missing entry.
+- **Popup blocked.** The picker must be triggered by a real click. If it works on
+  the second click, a blocker is involved.
 - **Missing API key.** The console will say `Missing VITE_GOOGLE_API_KEY` — the
   build did not receive the variable.
-- **CSP.** `frame-src` must include `https://docs.google.com`, which is where
-  the picker iframe is hosted. It does by default; only relevant if you edited
-  `index.html`.
+- **CSP.** `frame-src` must include `https://docs.google.com`, where the picker
+  iframe is hosted. It does by default; only relevant if you edited `index.html`.
 
 ### The other person sees an empty app
 
@@ -405,47 +418,23 @@ grant is per-person, per-file.
 
 ### CI fails at "Install dependencies" with "Exit handler never called!"
 
-```
-npm error Exit handler never called!
-npm error This is an error with npm itself.
-```
-
-**This message is misleading.** It is npm's generic surface for a crash during
-install, and the real error only appears in `~/.npm/_logs`, not in the step
-output. The actual cause here was:
-
-```
-FetchError: request to https://npm.apple.com/yallist/-/yallist-3.1.1.tgz
-  failed, reason: getaddrinfo ENOTFOUND npm.apple.com
-```
-
-`package-lock.json` had been generated on a machine where
-`NPM_CONFIG_REGISTRY` pointed at a private Apple mirror, so all 149 `resolved`
-URLs referenced `npm.apple.com` and `artifacts.apple.com`. Those hosts do not
-resolve on a GitHub runner, so every tarball fetch failed.
-
-**Fix — regenerate the lockfile against the public registry:**
+That message is npm's generic surface for a crash during install; the real error
+only lands in `~/.npm/_logs`, never in the step output. The cause is almost
+certainly a `package-lock.json` generated against a private registry, whose hosts
+do not resolve on a GitHub runner:
 
 ```sh
 rm -rf node_modules package-lock.json
 npm install --registry=https://registry.npmjs.org
+grep -c 'apple.com' package-lock.json   # must be 0
 ```
 
-Then confirm no private URLs survived:
+`test/lockfile.test.js` fails the build if a private-registry URL reappears. Full
+reasoning, including why a repo `.npmrc` cannot prevent it, is in `CLAUDE.md`.
 
-```sh
-grep -c 'registry.npmjs.org' package-lock.json   # should equal your dep count
-grep -c 'apple.com' package-lock.json            # must be 0
-```
-
-`npm test` now includes `test/lockfile.test.js`, which fails the build if a
-private-registry URL ever reappears. A repo-level `.npmrc` would not help —
-npm ranks environment variables above project `.npmrc`.
-
-**If a different install failure ever appears:** the failed run uploads a
-`npm-debug-log` artifact (bottom of the run summary page). Read it. The step
-output alone is not enough to diagnose this class of crash, and guessing from it
-wastes far more time than downloading the log.
+**For any other install failure:** the failed run uploads an `npm-debug-log`
+artifact at the bottom of the run summary. Read it — the step output alone cannot
+diagnose this class of crash.
 
 ### The deploy job fails with "Missing environment" or a Pages permissions error
 
