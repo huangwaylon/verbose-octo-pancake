@@ -66,11 +66,18 @@ export function SignInGate({ onSignIn, status, error }) {
 export function SheetGate({ onCreate, onChoose, error }) {
   const { t } = useT()
   const [busy, setBusy] = useState(null)
+  const [failure, setFailure] = useState(null)
 
   async function run(kind, action) {
     setBusy(kind)
+    setFailure(null)
     try {
       await action()
+    } catch (cause) {
+      // Without this the rejection was an unhandled promise and the person saw
+      // nothing at all — the Picker failing silently is the single most
+      // confusing state this screen can be in.
+      setFailure(cause?.message || String(cause))
     } finally {
       setBusy(null)
     }
@@ -99,7 +106,7 @@ export function SheetGate({ onCreate, onChoose, error }) {
           {t('gate.chooseSheet')}
         </button>
       </div>
-      {error && <p className="field__error">{error}</p>}
+      {(failure || error) && <p className="field__error">{failure || error}</p>}
     </Panel>
   )
 }

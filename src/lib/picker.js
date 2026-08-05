@@ -92,6 +92,11 @@ export async function pickSpreadsheet() {
       settled = true
       resolve(value)
     }
+    const fail = (message) => {
+      if (settled) return
+      settled = true
+      reject(new Error(message))
+    }
 
     try {
       const appId = projectNumber()
@@ -112,8 +117,23 @@ export async function pickSpreadsheet() {
           if (data.action === picker.Action.PICKED) {
             const doc = data.docs?.[0]
             finish(doc ? { id: doc.id, name: doc.name ?? '' } : null)
-          } else if (data.action === picker.Action.CANCEL) {
+            return
+          }
+          if (data.action === picker.Action.CANCEL) {
             finish(null)
+            return
+          }
+          // The Picker reports its own failures through this same callback, and
+          // without this branch an error left the promise pending forever and
+          // the UI stuck on a spinner with nothing to diagnose. The shape is not
+          // documented, so log the raw payload and surface whatever it carries.
+          if (data.action === 'error' || data.action === 'loaded:error' || data.error) {
+            console.error('[picker] error payload:', data)
+            fail(
+              `The Google Picker failed: ${
+                data.error ?? data.message ?? JSON.stringify(data)
+              }. Check that the Picker API is enabled and that the API key allows it.`,
+            )
           }
         })
 
@@ -124,6 +144,18 @@ export async function pickSpreadsheet() {
 
       const dialog = builder.build()
       dialog.setVisible(true)
+
+      // Belt and braces: if the Picker neither opens nor reports anything — the
+      // symptom when its iframe is blocked outright — do not leave the caller
+      // waiting on a promise that will never settle.
+      setTimeout(() => {
+        if (!settled) {
+          fail(
+            'The Google Picker did not respond. It is usually a blocked popup or iframe, ' +
+              'or an API key that does not allow the Picker API.',
+          )
+        }
+      }, 60_000)
     } catch (error) {
       reject(error instanceof Error ? error : new Error(String(error)))
     }
