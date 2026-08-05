@@ -392,15 +392,41 @@ A white page with no console errors and no network requests usually means the
 CSP in `index.html` blocked the bundle — the Console tab reports CSP violations
 explicitly.
 
-### The picker says "invalid API key", or never opens
+### The picker says "The API developer key is invalid" (Brave, Safari, hardened Firefox)
 
-The app now passes `setAppId` and `setOrigin` (see `src/lib/picker.js`), which is
-what a working picker needs on the `drive.file` scope. If it still fails, the
-picker reports its own errors and the app surfaces them on screen and logs the
-raw payload as `[picker] error payload:` — read that before guessing. Then:
+If it also asked you to **sign in to your Google Account** inside the picker
+window while the app itself was already signed in, this is your *browser*, not
+your configuration — and the key is fine. Verify by opening the same URL in
+Chrome; if the picker lists your spreadsheets there, nothing in Google Cloud
+needs changing.
 
-- **Google Picker API not enabled.** The most common cause; step 2. Nothing fails
-  until you open the picker, which is why it gets missed.
+The picker renders in an iframe from `docs.google.com`, which is third-party to
+the page. Two common privacy defaults break it:
+
+- **Third-party cookies blocked** — the iframe cannot see your Google session, so
+  it asks you to sign in and then cannot authorise the key.
+- **The `Referer` header stripped** — the API key is restricted by HTTP referrer
+  (step 5). A request that arrives with no referrer is rejected, and Google
+  reports that as an invalid key rather than a missing header.
+
+In Brave, lower the Shields for the site (the lion icon in the address bar) or
+allow third-party cookies for it. The alternative is to remove the referrer
+restriction from the API key, which trades a real if modest protection for
+browser compatibility — your call, and worth understanding rather than doing
+reflexively.
+
+**Create a new sheet** does not use the picker at all, so it keeps working in
+these browsers.
+
+### The picker never opens
+
+The app passes `setAppId` and `setOrigin` (see `src/lib/picker.js`), which is what
+a working picker needs on the `drive.file` scope. The picker reports its own
+errors, and the app surfaces them on screen and logs the raw payload as
+`[picker] error payload:` — read that before guessing. Then:
+
+- **Google Picker API not enabled.** Step 2. Nothing fails until you open the
+  picker, which is why it gets missed.
 - **The API key's restrictions omit Picker.** Step 5 requires all three of Sheets,
   Drive and Picker. A key allowed for only Sheets and Drive fails here and the
   message blames the key, not the missing entry.

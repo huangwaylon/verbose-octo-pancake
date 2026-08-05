@@ -12,6 +12,23 @@ import { getAccessToken } from './googleAuth.js'
 const GAPI_SRC = 'https://apis.google.com/js/api.js'
 const SHEETS_API = 'https://sheets.googleapis.com/v4/spreadsheets'
 
+/** The picker renders in an iframe from this host; used to detect that it opened. */
+const PICKER_HOST = 'docs.google.com/picker'
+
+/** How long to wait for that iframe to exist before calling it blocked. */
+const OPEN_TIMEOUT_MS = 15_000
+
+/**
+ * Last-resort bound for a picker that opened but never reports anything.
+ *
+ * Generous on purpose: choosing a file from a long list is unbounded, and a
+ * premature reject discards the eventual pick. But it cannot be infinite either —
+ * a browser that blocks third-party cookies renders Google's own error *inside*
+ * the iframe, so the iframe exists, the callback never fires, and without this
+ * the caller waits forever on a spinner.
+ */
+const RESPONSE_TIMEOUT_MS = 300_000
+
 /**
  * The Cloud project number, which is the numeric prefix of the OAuth client ID
  * ("726967089583-abc....apps.googleusercontent.com" -> "726967089583").
@@ -145,17 +162,31 @@ export async function pickSpreadsheet() {
       const dialog = builder.build()
       dialog.setVisible(true)
 
-      // Belt and braces: if the Picker neither opens nor reports anything — the
-      // symptom when its iframe is blocked outright — do not leave the caller
-      // waiting on a promise that will never settle.
+      // Guard against the picker never appearing at all — its iframe blocked, or
+      // the developer key rejected before anything renders. Deliberately checks
+      // for the iframe rather than timing the interaction: a blanket timeout
+      // fires while someone is still scrolling a long list of spreadsheets, and
+      // once the promise settles their eventual pick is silently discarded.
+      // There is no upper bound on how long choosing a file may take.
       setTimeout(() => {
-        if (!settled) {
-          fail(
-            'The Google Picker did not respond. It is usually a blocked popup or iframe, ' +
-              'or an API key that does not allow the Picker API.',
-          )
-        }
-      }, 60_000)
+        if (settled) return
+        const opened = document.querySelector(`iframe[src*="${PICKER_HOST}"]`)
+        if (opened) return
+        fail(
+          'The Google Picker did not open. That is usually a blocked iframe or ' +
+            'third-party cookies being blocked, or an API key that does not allow ' +
+            'the Picker API.',
+        )
+      }, OPEN_TIMEOUT_MS)
+
+      setTimeout(() => {
+        if (settled) return
+        fail(
+          'The Google Picker opened but never returned a choice. If it showed an ' +
+            'error, a browser blocking third-party cookies is the usual cause — ' +
+            'allow them for this site, or use a different browser.',
+        )
+      }, RESPONSE_TIMEOUT_MS)
     } catch (error) {
       reject(error instanceof Error ? error : new Error(String(error)))
     }
