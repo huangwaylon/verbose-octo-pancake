@@ -19,31 +19,50 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # A hung npm install once burned 1m11s before crashing; without a cap a
-    # wedged step can occupy a runner for hours.
+    # A wedged install burned 1m11s before crashing; without a cap a stuck step
+    # can hold a runner for hours.
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Node 24, not 22, deliberately. npm 10.9.8 — the version Node 22 bundles
+      # — crashes on GitHub-hosted runners with "npm error Exit handler never
+      # called!". That is an internal npm fault, not a problem with
+      # package-lock.json: this exact lockfile installs cleanly on npm 10.9.2
+      # and 11.16 on macOS, and on npm 10.9.8 on linux/x64 in Docker as both
+      # root and non-root. It reproduces only on the runner. Node 24 ships
+      # npm 11.17, which is unaffected, and gets there without having to
+      # bootstrap through the broken npm. Local development runs Node 26/npm 11.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 22
-          cache: npm
+          node-version: 24
 
+      # No `cache: npm`: a restored ~/.npm was one of the suspects for the crash
+      # above, and installing 98 packages cold takes about five seconds.
       - name: Install dependencies
-        # `npm ci` has failed here with "npm error Exit handler never called!",
-        # an npm-internal crash rather than a problem with package-lock.json —
-        # the same lockfile installs cleanly on both npm 10 and npm 11. The
-        # usual triggers are a registry flake or a corrupt restored ~/.npm
-        # cache, so retry once from a cleared cache before failing the deploy.
         run: |
           npm ci --no-audit --no-fund && exit 0
-          echo "::warning::npm ci failed; clearing the npm cache and retrying once"
-          npm cache clean --force
+          echo "::warning::npm ci failed; falling back to npm install"
           rm -rf node_modules
-          npm ci --no-audit --no-fund
+          npm install --no-audit --no-fund
+
+      # An npm-internal crash prints no stack trace to the step log — it only
+      # writes one to ~/.npm/_logs. Without this there is nothing to diagnose.
+      - name: Collect npm logs
+        if: failure()
+        run: |
+          mkdir -p /tmp/npm-logs
+          cp -r "$HOME/.npm/_logs/." /tmp/npm-logs/ 2>/dev/null || true
+
+      - name: Upload npm logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-debug-log
+          path: /tmp/npm-logs
+          if-no-files-found: ignore
 
       - name: Run tests
         run: npm test

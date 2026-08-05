@@ -110,6 +110,10 @@ amounts so rounding is genuinely exercised.
 
 ## Gotchas
 
+- **CI pins `node-version: 24`, and must not go back to 22.** Node 22 bundles
+  npm 10.9.8, which crashes on GitHub-hosted runners with "Exit handler never
+  called!" — an npm-internal fault, not a lockfile problem. Node 24 ships
+  npm 11.17. Reverting this to the older LTS breaks every deploy.
 - **`vite.config.js` hardcodes `base: '/verbose-octo-pancake/'`** to match the
   repo name, because project Pages sites serve from `/<repo>/`. Renaming the
   repo without updating this produces a blank page. Build with `VITE_BASE=/` for

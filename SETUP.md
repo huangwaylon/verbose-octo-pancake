@@ -403,17 +403,18 @@ npm error This is an error with npm itself.
 ```
 
 This is a crash inside npm, not a problem with your repo or
-`package-lock.json` — the same lockfile installs cleanly on both npm 10 and
-npm 11. The usual causes are a transient npm-registry failure on the runner or a
-corrupt `~/.npm` cache restored by `actions/setup-node`.
+`package-lock.json`. It is specific to **npm 10.9.8**, the version Node 22
+bundles, running on a GitHub-hosted runner. The same lockfile installs cleanly
+on npm 10.9.2 and 11.16 on macOS, and on npm 10.9.8 on linux/x64 in Docker as
+both root and non-root — it reproduces only on the runner.
 
-The workflow already retries once from a cleared cache, so a one-off flake now
-recovers on its own. If it fails twice in a row:
+The workflow pins `node-version: 24`, which ships npm 11.17 and is unaffected.
+If you change that line, do not go back to 22.
 
-1. Re-run the job — this is genuinely intermittent.
-2. Invalidate the cached `~/.npm`: bump anything that changes the cache key, or
-   delete the entry under **Actions > Caches** in the repo sidebar.
-3. Check <https://www.githubstatus.com/> for a registry or Actions incident.
+If it somehow recurs: the failed run now uploads a **`npm-debug-log`** artifact
+(bottom of the run summary page). npm writes its stack trace there and nowhere
+else, so read it rather than guessing — the step output alone is not enough to
+diagnose this class of failure.
 
 ### The deploy job fails with "Missing environment" or a Pages permissions error
 
