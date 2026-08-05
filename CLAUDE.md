@@ -120,9 +120,19 @@ another path that adopts an existing spreadsheet, it needs the same guard.
 carries a kind per key — `text`, `list`, or `fraction` — and `parseConfigRows`
 omits a key whose value is blank or unparseable so the caller's defaults win. An
 empty list must never be returned in place of a default, or the category picker
-ends up empty. `default_split` accepts a percentage or a fraction (anything above
-1 is a percentage) and must never yield NaN: that reaches `splitCents` and moves
-money wrongly. `test/config.test.js` pins these.
+ends up empty. `default_split_p1` / `default_split_p2` accept a percentage or a
+fraction (anything above 1 is a percentage) and must never yield NaN: that
+reaches `splitCents` and moves money wrongly. `test/config.test.js` pins these.
+
+**The default split is per person, keyed on the payer.** `defaultSplitFor(config,
+person)` in `src/lib/identity.js` is the only place that decides it. The two
+values are independent and need not sum to 1 — only the payer's is ever read, so
+never mirror one from the other. A new entry carries `payerShare: null` meaning
+"follow the payer's default", and `EntryFormSheet` re-derives it when the payer
+control changes; an entry being edited carries its stored share and must keep it,
+because a saved row records a decision someone already made. The superseded
+universal `default_split` key is still read and mapped to both people, so sheets
+created before the change keep working; it is never written.
 
 **Refreshes on focus are throttled.** Two people share one sheet with no push
 channel, so `useLedger` re-reads on `focus` and `visibilitychange`. Window

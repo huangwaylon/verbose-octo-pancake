@@ -43,9 +43,16 @@ const CONFIG_FIELDS = [
   ['person2_email', 'person2Email', 'text'],
   ['currency', 'currency', 'text'],
   ['categories', 'categories', 'list'],
-  ['default_split', 'defaultSplit', 'fraction'],
+  ['default_split_p1', 'defaultSplitP1', 'fraction'],
+  ['default_split_p2', 'defaultSplitP2', 'fraction'],
   ['note_presets', 'notePresets', 'list'],
 ]
+
+/**
+ * The universal split key that `default_split_p1`/`_p2` replaced. Still read, so
+ * a sheet created before the change keeps working untouched; never written.
+ */
+const LEGACY_SPLIT_KEY = 'default_split'
 
 function parseList(value) {
   return value
@@ -153,7 +160,7 @@ function cellText(row, index) {
 
 /**
  * Config tab rows -> a partial config object. Exported for testing: it is pure,
- * and the percentage-vs-fraction rule for `default_split` is exactly the kind of
+ * and the percentage-vs-fraction rule for the split keys is exactly the kind of
  * thing that needs cases pinned to it.
  *
  * A key that is absent, or present with a blank value, is simply omitted so the
@@ -162,11 +169,24 @@ function cellText(row, index) {
 export function parseConfigRows(rows) {
   const byKey = new Map(CONFIG_FIELDS.map(([key, field, kind]) => [key, { field, kind }]))
   const parsed = {}
+  // The pre-split-per-person key. Read after the loop so an explicit
+  // default_split_p1/p2 always wins over it.
+  let legacySplit = null
 
   for (const row of rows) {
-    const spec = byKey.get(cellText(row, 0).toLowerCase())
-    if (!spec) continue
+    const key = cellText(row, 0).toLowerCase()
     const value = cellText(row, 1)
+
+    // Sheets seeded before the split became per-person carry one universal
+    // `default_split`. It meant "the payer's share", so it maps to the same
+    // number for both people — which is exactly what it already did.
+    if (key === LEGACY_SPLIT_KEY) {
+      if (value) legacySplit = parseFraction(value)
+      continue
+    }
+
+    const spec = byKey.get(key)
+    if (!spec) continue
     if (!value) continue
 
     if (spec.kind === 'list') {
@@ -179,6 +199,11 @@ export function parseConfigRows(rows) {
     } else {
       parsed[spec.field] = value
     }
+  }
+
+  if (legacySplit != null) {
+    parsed.defaultSplitP1 ??= legacySplit
+    parsed.defaultSplitP2 ??= legacySplit
   }
 
   return parsed

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { CONFIG_TAB, PERSON } from '../schema.js'
-import { nameOf } from '../lib/identity.js'
+import { defaultSplitFor, nameOf } from '../lib/identity.js'
 import { useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
 import { LOCALE_LABELS, SUPPORTED } from '../i18n/catalogs.js'
@@ -124,11 +124,17 @@ export function SettingsSheet({
 
         <div className="field">
           <span className="field__label">{t('settings.defaultSplit')}</span>
-          <p className="settings__value">
-            {t('settings.defaultSplitValue', {
-              percent: Math.round((config.defaultSplit ?? 0.5) * 100),
-            })}
-          </p>
+          {/* One line per person: the whole point of the setting is that the two
+              numbers can differ, so a single figure would hide half of it. */}
+          {[PERSON.P1, PERSON.P2].map((person) => (
+            <p className="settings__value" key={person}>
+              {t('settings.defaultSplitValue', {
+                name: nameOf(config, person, fallbacks),
+                percent: Math.round(defaultSplitFor(config, person) * 100),
+              })}
+            </p>
+          ))}
+          <p className="field__hint">{t('settings.defaultSplitHint')}</p>
         </div>
 
         <div className="field">

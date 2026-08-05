@@ -8,7 +8,7 @@
  * first-class path, not an error case.
  */
 
-import { PERSON } from '../schema.js'
+import { EVEN_SHARE, PERSON } from '../schema.js'
 import { STORAGE_KEYS } from '../config.js'
 
 export function readStoredIdentity() {
@@ -54,4 +54,20 @@ export function nameOf(config, person, fallbacks = { p1: 'Person 1', p2: 'Person
 /** Label a person relative to the viewer, so the UI can say "You". */
 export function labelFor(config, person, me, youLabel = 'You', fallbacks) {
   return person === me ? youLabel : nameOf(config, person, fallbacks)
+}
+
+/**
+ * The share `person` covers by default on an expense they paid for.
+ *
+ * Keyed on the payer because `payer_share` is the payer's own share: with 0.8
+ * for p1 and 0.2 for p2, p1 bears 80% of the cost whichever of the two actually
+ * paid. A single universal default cannot express that — it would flip the
+ * arrangement round every time the other person paid.
+ *
+ * Falls back to an even split per person, so a config tab carrying only one of
+ * the two keys still behaves sensibly for the other.
+ */
+export function defaultSplitFor(config, person) {
+  const value = person === PERSON.P2 ? config?.defaultSplitP2 : config?.defaultSplitP1
+  return Number.isFinite(value) ? value : EVEN_SHARE
 }

@@ -283,8 +283,11 @@ missing client ID.
    the app can tell who is using it without asking. `currency` defaults to `JPY`;
    change it and the comma-separated `categories` list while you are there.
    Optionally add two more rows:
-   - `default_split` — the payer's share on a new expense, as a percentage (`50`)
-     or a fraction (`0.5`). Useful if you never split evenly.
+   - `default_split_p1` / `default_split_p2` — each person's own share on a new
+     expense, as a percentage (`80`) or a fraction (`0.8`). The payer's key is
+     the one that applies, so `80` and `20` means person 1 covers 80% of what
+     they paid for and person 2 covers 20% of what they paid for. Useful if you
+     never split evenly.
    - `note_presets` — a comma-separated list of the shops you use most, e.g.
      `OK Mart, Ozeki, Life`. They become one-tap chips on the note field.
 5. **Have the other person sign in and pick the same sheet themselves.** This

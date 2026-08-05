@@ -109,7 +109,9 @@ export default {
   'settings.switchSheet': 'シートを切り替える',
   'settings.configTitle': '名前・通貨・カテゴリー',
   'settings.defaultSplit': '既定の分担',
-  'settings.defaultSplitValue': '支払った人が{percent}%',
+  'settings.defaultSplitValue': '{name}が支払ったとき、{name}の負担は{percent}%',
+  'settings.defaultSplitHint':
+    '新しい記録での、その人自身の負担です。configタブのdefault_split_p1とdefault_split_p2で設定します。',
   'settings.notePresets': 'よく使うメモ',
   'settings.notePresetsEmpty': 'まだありません。configタブに{key}の行を追加してください。',
   'settings.configHint':

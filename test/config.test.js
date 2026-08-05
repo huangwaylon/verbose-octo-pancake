@@ -67,46 +67,107 @@ describe('note presets', () => {
 })
 
 describe('default split', () => {
+  // The parser reads each person's key independently, so the shared
+  // percentage-vs-fraction rules are pinned once against p1.
+  const p1 = (value) => parseConfigRows(rows([['default_split_p1', value]])).defaultSplitP1
+
   it('reads a percentage, which is what people write in a spreadsheet', () => {
-    expect(parseConfigRows(rows([['default_split', '60']]))).toEqual({ defaultSplit: 0.6 })
-    expect(parseConfigRows(rows([['default_split', '100']]))).toEqual({ defaultSplit: 1 })
+    expect(p1('60')).toBe(0.6)
+    expect(p1('100')).toBe(1)
   })
 
   it('reads a fraction too', () => {
-    expect(parseConfigRows(rows([['default_split', '0.6']]))).toEqual({ defaultSplit: 0.6 })
-    expect(parseConfigRows(rows([['default_split', '0.5']]))).toEqual({ defaultSplit: 0.5 })
+    expect(p1('0.6')).toBe(0.6)
+    expect(p1('0.5')).toBe(0.5)
   })
 
   it('treats 1 as all-to-the-payer, not one percent', () => {
-    expect(parseConfigRows(rows([['default_split', '1']]))).toEqual({ defaultSplit: 1 })
+    expect(p1('1')).toBe(1)
   })
 
   it('reads 0 as none-to-the-payer', () => {
-    expect(parseConfigRows(rows([['default_split', '0']]))).toEqual({ defaultSplit: 0 })
+    expect(p1('0')).toBe(0)
   })
 
   it('clamps above 100%', () => {
-    expect(parseConfigRows(rows([['default_split', '150']]))).toEqual({ defaultSplit: 1 })
+    expect(p1('150')).toBe(1)
   })
 
   it('omits junk rather than producing NaN', () => {
     // NaN would reach splitCents and throw, or worse, move money incorrectly.
     for (const junk of ['abc', '', '-20', 'fifty']) {
-      expect(parseConfigRows(rows([['default_split', junk]])).defaultSplit).toBeUndefined()
+      expect(p1(junk)).toBeUndefined()
     }
   })
 
   it('tolerates a percent sign', () => {
-    expect(parseConfigRows(rows([['default_split', '60%']]))).toEqual({ defaultSplit: 0.6 })
+    expect(p1('60%')).toBe(0.6)
   })
 
   it('always yields a finite fraction within [0,1] for any input it accepts', () => {
     for (const value of ['0', '1', '0.001', '50', '99.9', '100', '1000', '0.5%']) {
-      const { defaultSplit } = parseConfigRows(rows([['default_split', value]]))
-      if (defaultSplit === undefined) continue
-      expect(Number.isFinite(defaultSplit)).toBe(true)
-      expect(defaultSplit).toBeGreaterThanOrEqual(0)
-      expect(defaultSplit).toBeLessThanOrEqual(1)
+      const share = p1(value)
+      if (share === undefined) continue
+      expect(Number.isFinite(share)).toBe(true)
+      expect(share).toBeGreaterThanOrEqual(0)
+      expect(share).toBeLessThanOrEqual(1)
     }
+  })
+
+  it('keeps the two people independent', () => {
+    expect(
+      parseConfigRows(
+        rows([
+          ['default_split_p1', '80'],
+          ['default_split_p2', '20'],
+        ]),
+      ),
+    ).toEqual({ defaultSplitP1: 0.8, defaultSplitP2: 0.2 })
+  })
+
+  it('leaves the other person to the default when only one key is set', () => {
+    // Not mirrored to 1 - x: the two are independent settings, and inventing
+    // the other half would silently commit someone to a split they never wrote.
+    expect(parseConfigRows(rows([['default_split_p1', '80']]))).toEqual({ defaultSplitP1: 0.8 })
+  })
+
+  it('defaults to an even split for both people', () => {
+    expect(DEFAULT_CONFIG.defaultSplitP1).toBe(0.5)
+    expect(DEFAULT_CONFIG.defaultSplitP2).toBe(0.5)
+  })
+
+  describe('sheets written before the split became per-person', () => {
+    it('applies the universal default_split to both people', () => {
+      // It always meant "the payer's share", so the same number for each person
+      // reproduces exactly the old behaviour on an untouched sheet.
+      expect(parseConfigRows(rows([['default_split', '70']]))).toEqual({
+        defaultSplitP1: 0.7,
+        defaultSplitP2: 0.7,
+      })
+    })
+
+    it('lets an explicit per-person key win, whichever order the rows are in', () => {
+      expect(
+        parseConfigRows(
+          rows([
+            ['default_split', '50'],
+            ['default_split_p1', '80'],
+          ]),
+        ),
+      ).toEqual({ defaultSplitP1: 0.8, defaultSplitP2: 0.5 })
+
+      expect(
+        parseConfigRows(
+          rows([
+            ['default_split_p1', '80'],
+            ['default_split', '50'],
+          ]),
+        ),
+      ).toEqual({ defaultSplitP1: 0.8, defaultSplitP2: 0.5 })
+    })
+
+    it('ignores a junk legacy value rather than pinning both people to NaN', () => {
+      expect(parseConfigRows(rows([['default_split', 'fifty']]))).toEqual({})
+    })
   })
 })

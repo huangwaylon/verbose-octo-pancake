@@ -168,16 +168,35 @@ describe('entry form: presets and default split', () => {
     expect(markup).not.toContain('note-presets')
   })
 
-  it('opens on the even control when the configured default is an even split', () => {
-    const markup = render({ defaultSplit: 0.5 }, { payerShare: 0.5 })
+  it('opens on the even control when the payer’s configured default is even', () => {
+    const markup = render({ defaultSplitP1: 0.5 }, { payerShare: null })
     // The custom slider only renders in custom mode.
     expect(markup).not.toContain('type="range"')
   })
 
-  it('opens on the custom control showing a non-even configured default', () => {
-    const markup = render({ defaultSplit: 0.7 }, { payerShare: 0.7 })
+  it('opens on the custom control showing the payer’s non-even default', () => {
+    const markup = render({ defaultSplitP1: 0.7 }, { payerShare: null })
     expect(markup).toContain('type="range"')
     expect(markup).toContain('70%')
+  })
+
+  it('applies each payer’s own default, so 80/20 does not invert when p2 pays', () => {
+    // The whole point of the per-person setting: p1 bears 80% of what p1 paid,
+    // p2 bears 20% of what p2 paid. One universal number cannot express that.
+    const cfg = { defaultSplitP1: 0.8, defaultSplitP2: 0.2 }
+    expect(render(cfg, { payer: PERSON.P1, payerShare: null })).toContain('80%')
+    expect(render(cfg, { payer: PERSON.P2, payerShare: null })).toContain('20%')
+  })
+
+  it('shows a saved entry’s own share rather than the payer’s default', () => {
+    // Editing an existing row must not silently re-split it.
+    const markup = render({ defaultSplitP1: 0.8 }, { payerShare: 0.35 })
+    expect(markup).toContain('35%')
+  })
+
+  it('falls back to an even split when the payer has no configured default', () => {
+    const markup = render({ defaultSplitP1: undefined }, { payerShare: null })
+    expect(markup).not.toContain('type="range"')
   })
 
   it('renders a settlement without any split or note controls', () => {

@@ -115,7 +115,9 @@ export default {
   'settings.switchSheet': 'Switch sheet',
   'settings.configTitle': 'Names, currency & categories',
   'settings.defaultSplit': 'Default split',
-  'settings.defaultSplitValue': '{percent}% to the payer',
+  'settings.defaultSplitValue': '{name} covers {percent}% of what they pay for',
+  'settings.defaultSplitHint':
+    'Each person’s own share on a new expense. Set default_split_p1 and default_split_p2 in the config tab.',
   'settings.notePresets': 'Frequent notes',
   'settings.notePresetsEmpty': 'None yet — add a {key} row to the config tab.',
   'settings.configHint':

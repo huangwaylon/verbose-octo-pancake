@@ -2,9 +2,18 @@ import { useMemo, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { centsToSheetString, minorDigits, parseAmountToCents, splitCents } from '../lib/money.js'
 import { ENTRY_TYPE, EVEN_SHARE, PERSON, otherPerson } from '../schema.js'
-import { labelFor } from '../lib/identity.js'
+import { labelFor, defaultSplitFor } from '../lib/identity.js'
 import { useMoney, useT } from '../i18n/index.js'
 import { TrashIcon } from './icons.jsx'
+
+/**
+ * A share as the two split controls see it. An even share drives the segmented
+ * control to "Even" and hides the slider; anything else opens Custom showing
+ * that number, which is what makes a configured 80% land ready to submit.
+ */
+function toSplit(share) {
+  return { mode: share === EVEN_SHARE ? 'even' : 'custom', percent: Math.round(share * 100) }
+}
 
 /**
  * Add or edit a single entry. Doubles as the "settle up" form: a settlement is
@@ -29,11 +38,23 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
   const [date, setDate] = useState(entry.date)
   const [category, setCategory] = useState(entry.category || config.categories[0] || '')
   const [description, setDescription] = useState(entry.description ?? '')
-  // The configured default counts as "even" for control purposes only when it
-  // really is even; any other default opens the custom control showing it.
-  const initialShare = entry.payerShare ?? config.defaultSplit ?? EVEN_SHARE
-  const [splitMode, setSplitMode] = useState(initialShare === EVEN_SHARE ? 'even' : 'custom')
-  const [sharePercent, setSharePercent] = useState(Math.round(initialShare * 100))
+  /**
+   * `null` means "follow the payer's configured default", which is what a new
+   * entry starts as. Switching the payer control then re-derives the split,
+   * because the default is a property of the person, not of the form: with
+   * 80/20, p1 owes 80% of what they paid and p2 owes 20% of what *they* paid.
+   *
+   * An entry being edited carries an explicit share instead, so it opens on the
+   * number actually stored and changing its payer leaves that number alone —
+   * a saved row records a decision someone already made.
+   */
+  const storedShare = Number.isFinite(entry.payerShare) ? entry.payerShare : null
+  const [override, setOverride] = useState(storedShare == null ? null : toSplit(storedShare))
+  const configuredShare = defaultSplitFor(config, payer)
+  const { mode: splitMode, percent: sharePercent } = override ?? toSplit(configuredShare)
+  // Dragging the slider or hitting a preset pins the entry to that number,
+  // which also stops it snapping back when the payer control is switched.
+  const setSharePercent = (percent) => setOverride({ mode: 'custom', percent })
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
@@ -258,8 +279,15 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                       value={value}
                       checked={splitMode === value}
                       onChange={() => {
-                        setSplitMode(value)
-                        if (value === 'even') setSharePercent(50)
+                        // Custom re-opens on the payer's configured default
+                        // rather than a hardcoded 50, so a couple on 80/20 who
+                        // tap Even and back does not have to drag the slider
+                        // to where the sheet already says it should be.
+                        setOverride(
+                          value === 'even'
+                            ? { mode: 'even', percent: 50 }
+                            : { mode: 'custom', percent: Math.round(configuredShare * 100) },
+                        )
                       }}
                     />
                     {optionLabel}
@@ -291,8 +319,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                     >
                       {t('form.splitAll', { name: otherLabel })}
                     </button>
-                  </div>
-                  <label className="split-control__slider">
+                  </div>                  <label className="split-control__slider">
                     <span className="field__hint">
                       {t('form.splitShare', { name: payerLabel })}
                     </span>

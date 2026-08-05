@@ -57,10 +57,21 @@ export const DEFAULT_CONFIG = {
   currency: 'JPY',
   categories: ['Groceries', 'Dining', 'Household', 'Other'],
   /**
-   * The payer's share applied to a new expense before anyone touches the split
-   * control. 0.5 is an even split; 1 means the payer covers it all.
+   * The share each person covers on a new expense, before anyone touches the
+   * split control. 0.5 each is an even split; 1 means that person covers it all.
+   *
+   * Per-person rather than one universal number because the split is a standing
+   * arrangement between the two people, not a property of whoever happened to
+   * hold the card. A couple splitting 80/20 wants p1 to bear 80% of an expense
+   * *either* of them paid for, and a single `payer_share` default would invert
+   * that every time the other one paid.
+   *
+   * The pair is not forced to sum to 1: `splitCents` only ever reads the
+   * payer's, so an inconsistent pair is merely two independent defaults, never a
+   * row that loses or invents money.
    */
-  defaultSplit: 0.5,
+  defaultSplitP1: 0.5,
+  defaultSplitP2: 0.5,
   /**
    * Quick-pick suggestions for the note field — typically the shops you go to
    * most. Free text is always still allowed.

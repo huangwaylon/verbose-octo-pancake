@@ -105,14 +105,30 @@ Plain key/value pairs in columns A and B — no header row:
 | `person2_email` | `sam@example.com` |
 | `currency` | `JPY` |
 | `categories` | `Groceries, Dining, Household, Other` |
-| `default_split` | `50` |
+| `default_split_p1` | `80` |
+| `default_split_p2` | `20` |
 | `note_presets` | `OK Mart, Ozeki, Life` |
 
-`default_split` is the payer's share applied to a new expense before anyone
-touches the split control — for a couple who never split evenly, it saves an
-adjustment on every entry. Write it as a percentage (`50`) or a fraction (`0.5`);
-anything above 1 is read as a percentage, because a spreadsheet is where people
-naturally write 50. Junk is ignored rather than allowed to become a NaN split.
+`default_split_p1` / `default_split_p2` are each person's own share of a new
+expense, before anyone touches the split control — for a couple who never split
+evenly, it saves an adjustment on every entry. The key that applies is the
+*payer's*: with `80` and `20`, person 1 covers 80% of an expense they paid for
+and person 2 covers 20% of one they paid for. That is why there are two keys and
+not one — a single number would invert the arrangement every time the other
+person paid.
+
+The pair need not sum to 100. Only the payer's key is ever read, so an
+inconsistent pair is just two independent defaults, never a row that loses or
+invents money. A missing key falls back to an even split for that person alone,
+rather than being mirrored from the other.
+
+Write each as a percentage (`80`) or a fraction (`0.8`); anything above 1 is read
+as a percentage, because a spreadsheet is where people naturally write 80. Junk
+is ignored rather than allowed to become a NaN split.
+
+A sheet still carrying the older single `default_split` key keeps working: it
+meant "the payer's share", so it is read as the same value for both people,
+which is exactly what it already did. An explicit per-person key overrides it.
 
 `note_presets` is the shops you go to most. They appear as tappable chips and as a
 native dropdown on the note field, which stays free text either way.

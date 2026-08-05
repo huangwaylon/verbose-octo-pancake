@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from './state/useAuth.js'
 import { useLedger } from './state/useLedger.js'
 import { useToasts } from './state/useToasts.js'
-import { ENTRY_TYPE, EVEN_SHARE, PERSON, isActive } from './schema.js'
+import { ENTRY_TYPE, PERSON, isActive } from './schema.js'
 import {
   computeBalance,
   filterByMonth,
@@ -79,21 +79,23 @@ export default function App() {
   }, [])
 
   const openAdd = useCallback(() => {
+    const payer = me ?? PERSON.P1
     setDraft({
       mode: 'add',
       entry: {
         type: ENTRY_TYPE.EXPENSE,
         date: todayIso(),
-        payer: me ?? PERSON.P1,
+        payer,
         amountCents: 0,
         category: '',
         description: '',
-        // From the sheet's config tab, so a couple who never split evenly does
-        // not re-adjust the control on every entry.
-        payerShare: ledger.config.defaultSplit ?? EVEN_SHARE,
+        // Left unset: the form derives it from the config tab per payer, and
+        // re-derives when the payer control changes. Seeding it here would pin
+        // the opening payer's share onto whoever it is switched to.
+        payerShare: null,
       },
     })
-  }, [me, ledger.config.defaultSplit])
+  }, [me])
 
   const openSettle = useCallback(() => {
     setDraft({
