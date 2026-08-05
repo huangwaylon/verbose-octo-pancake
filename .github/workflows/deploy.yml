@@ -19,6 +19,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A hung npm install once burned 1m11s before crashing; without a cap a
+    # wedged step can occupy a runner for hours.
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,7 +33,17 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # `npm ci` has failed here with "npm error Exit handler never called!",
+        # an npm-internal crash rather than a problem with package-lock.json —
+        # the same lockfile installs cleanly on both npm 10 and npm 11. The
+        # usual triggers are a registry flake or a corrupt restored ~/.npm
+        # cache, so retry once from a cleared cache before failing the deploy.
+        run: |
+          npm ci --no-audit --no-fund && exit 0
+          echo "::warning::npm ci failed; clearing the npm cache and retrying once"
+          npm cache clean --force
+          rm -rf node_modules
+          npm ci --no-audit --no-fund
 
       - name: Run tests
         run: npm test

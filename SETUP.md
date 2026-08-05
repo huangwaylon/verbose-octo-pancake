@@ -337,6 +337,26 @@ immediately closing.
 - If the message says referrer restrictions "cannot be used with this API", the
   key's **API restrictions** list is missing the Picker API.
 
+### 404 for `/src/main.jsx` on the deployed site
+
+The site is serving the **raw repository**, not the built bundle. `index.html` at
+the repo root contains `<script src="/src/main.jsx">`, which only works under the
+Vite dev server — Vite rewrites it to a hashed `/assets/index-*.js` path at build
+time. Seeing `main.jsx` requested at all is the tell.
+
+**Cause:** **Settings > Pages > Source** is set to **Deploy from a branch**, so
+Pages publishes the repo tree verbatim and ignores the workflow's artifact
+entirely. Set Source to **GitHub Actions** (step 6.1) and re-run the workflow.
+
+To confirm which mode you are in, without guessing:
+
+```sh
+curl -s https://huangwaylon.github.io/verbose-octo-pancake/ | grep -o 'src="[^"]*"'
+```
+
+`src="/src/main.jsx"` means branch mode. A hashed
+`src="/verbose-octo-pancake/assets/index-….js"` means the workflow deployed.
+
 ### Blank page after deploy
 
 Almost always the `base` path. Open devtools > Console; if you see 404s for
@@ -374,6 +394,26 @@ explicitly.
 
 They signed in but have not picked the sheet. See step 7.5 — the `drive.file`
 grant is per-person, per-file.
+
+### CI fails at "Install dependencies" with "Exit handler never called!"
+
+```
+npm error Exit handler never called!
+npm error This is an error with npm itself.
+```
+
+This is a crash inside npm, not a problem with your repo or
+`package-lock.json` — the same lockfile installs cleanly on both npm 10 and
+npm 11. The usual causes are a transient npm-registry failure on the runner or a
+corrupt `~/.npm` cache restored by `actions/setup-node`.
+
+The workflow already retries once from a cleared cache, so a one-off flake now
+recovers on its own. If it fails twice in a row:
+
+1. Re-run the job — this is genuinely intermittent.
+2. Invalidate the cached `~/.npm`: bump anything that changes the cache key, or
+   delete the entry under **Actions > Caches** in the repo sidebar.
+3. Check <https://www.githubstatus.com/> for a registry or Actions incident.
 
 ### The deploy job fails with "Missing environment" or a Pages permissions error
 
