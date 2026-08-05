@@ -28,7 +28,7 @@ jobs:
 
       # Node 24 ships npm 11. Note that the npm version was never the cause of
       # the "Exit handler never called!" install failures — see the lockfile
-      # registry note in SETUP.md — but there is no reason to go back to 22.
+      # registry gotcha in CLAUDE.md — but there is no reason to go back to 22.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
