@@ -133,7 +133,6 @@ export default function App() {
   }, [ledger])
 
   if (auth.status === 'unconfigured') return <UnconfiguredGate />
-  if (auth.status === 'restoring') return <LoadingGate label="Signing in" />
   if (auth.status !== 'signed-in') {
     return <SignInGate onSignIn={auth.signIn} status={auth.status} error={auth.error} />
   }

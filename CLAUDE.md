@@ -60,10 +60,23 @@ Use the helpers in `src/lib/dates.js`, which build dates from explicit parts.
 
 **The access token stays in memory.** Module-scoped in `src/lib/googleAuth.js`,
 never in `localStorage` or `sessionStorage`. A persisted bearer token is
-readable by any XSS and outlives the tab; GIS re-issues silently anyway.
+readable by any XSS and outlives the tab. Note that it cannot be re-issued
+silently either — GIS only hands out tokens through a popup, and a popup outside
+a user gesture is blocked — so a session ends when the token expires and the
+user has to click sign in again. That is inherent to the flow, not a bug.
 
-**The OAuth scope stays `drive.file`.** Widening it to `spreadsheets` would grant
-access to every sheet in the user's Drive. This is why the Google Picker exists.
+**Never request a token outside a user gesture.** `requestAccessToken` always
+opens a popup, even with `prompt: ''`. Calling it on mount or from a background
+refresh is guaranteed to fail with `Failed to open popup window` and, before the
+fix, silently broke every write an hour into a session. `requestToken` clears the
+token and notifies listeners on failure so the UI drops back to the sign-in
+screen.
+
+**The OAuth scope grants no file access beyond `drive.file`.** The other two
+scopes, `openid` and `userinfo.email`, exist only to identify which of the two
+people is signed in. Never widen the Drive scope to `spreadsheets` — that would
+grant access to every sheet in the user's Drive. This is why the Google Picker
+exists.
 
 ## Conventions
 
@@ -138,6 +151,8 @@ amounts so rounding is genuinely exercised.
 - **`drive.file` is a per-person, per-file grant.** Sharing the sheet in Google
   Sheets is not enough — each person must pick it through the Picker on their own
   device. This is the most common "it's broken for them" report.
-- **`getUserEmail()` fails soft, returning `null`.** The `drive.file` scope does
-  not guarantee userinfo access, so identity falls back to a manual choice stored
-  in `localStorage`. Treat the manual path as first-class, not an error case.
+- **`getUserEmail()` fails soft, returning `null`.** It works when the consent
+  screen actually has `openid` and `userinfo.email` registered; with `drive.file`
+  alone the endpoint 401s. Because a mismatched consent screen is a live
+  possibility, identity still falls back to a manual choice stored in
+  `localStorage`. Treat the manual path as first-class, not an error case.

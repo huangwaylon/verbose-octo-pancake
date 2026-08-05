@@ -10,10 +10,23 @@ export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
 export const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY ?? ''
 
 /**
+ * Three scopes, all non-sensitive, so the consent screen still needs no
+ * Google verification review.
+ *
  * `drive.file` grants access only to files the user explicitly picks via the
- * Google Picker — not to every sheet in their Drive.
+ * Google Picker — not to every sheet in their Drive. It must never widen to
+ * `spreadsheets`, which would expose every sheet in the account.
+ *
+ * `openid` + `userinfo.email` exist solely so `getUserEmail()` can match the
+ * signed-in address against the config tab and skip the "which one are you?"
+ * prompt. They grant no file access of any kind. Without them the userinfo
+ * endpoint returns 401 and identity falls back to a manual choice.
  */
-export const OAUTH_SCOPE = 'https://www.googleapis.com/auth/drive.file'
+export const OAUTH_SCOPE = [
+  'https://www.googleapis.com/auth/drive.file',
+  'openid',
+  'https://www.googleapis.com/auth/userinfo.email',
+].join(' ')
 
 export const STORAGE_KEYS = {
   spreadsheetId: 'sf.spreadsheetId',

@@ -75,27 +75,35 @@ you try to open the picker.
 5. **Contact information:** your email address again.
 6. Accept the Google API Services User Data Policy and click **Create**.
 
-### Add the scope
+### Add the scopes
 
 In the new console this is **Google Auth Platform > Data access**; in the old
 one it is step 2 of the consent screen wizard, **Scopes**.
 
 1. Click **Add or remove scopes**.
-2. The scope you want is not in the common list. Paste it into the
-   **Manually add scopes** box at the bottom:
+2. `openid` and `.../auth/userinfo.email` are in the common list and can be
+   ticked there. `drive.file` is not — paste it into the **Manually add scopes**
+   box at the bottom. Either way, all three must end up in the table:
    ```
    https://www.googleapis.com/auth/drive.file
+   openid
+   https://www.googleapis.com/auth/userinfo.email
    ```
 3. Click **Add to table**, then **Update**, then **Save**.
 
-That is the only scope the app requests. `drive.file` grants per-file access:
-the app can read and write files you explicitly pick in the Google Picker, plus
-files it creates itself, and nothing else in your Drive. It cannot list your
-other spreadsheets. This is deliberate, and it is also why the app has a picker
-at all.
+`drive.file` is the one that matters, and it grants per-file access: the app can
+read and write files you explicitly pick in the Google Picker, plus files it
+creates itself, and nothing else in your Drive. It cannot list your other
+spreadsheets. This is deliberate, and it is also why the app has a picker at all.
 
-`drive.file` is a **non-sensitive** scope, which is what keeps the next part
-simple.
+`openid` and `userinfo.email` reveal only which account is signed in, so the app
+can match it against the emails in the sheet's `config` tab and skip asking which
+of the two people you are. They grant no file access whatsoever. Omit them and
+the app still works — `getUserEmail()` just 401s, and everyone picks their name
+by hand once per device.
+
+All three are **non-sensitive** scopes, which is what keeps the next part simple:
+no Google verification review.
 
 ### Add both of you as Test users
 

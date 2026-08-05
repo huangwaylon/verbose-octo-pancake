@@ -2,9 +2,17 @@
  * Google Identity Services OAuth, browser-only.
  *
  * There is no backend and no client secret, so this uses the implicit token
- * flow: GIS hands us a short-lived access token in memory and we re-acquire it
- * silently when it expires. No refresh token exists to store, and we
- * deliberately never persist the access token (see `accessToken` below).
+ * flow: GIS hands us a short-lived access token in memory. No refresh token
+ * exists to store, and we deliberately never persist the access token (see
+ * `accessToken` below).
+ *
+ * IMPORTANT: there is no such thing as a silent token grab here.
+ * `requestAccessToken` always opens a popup, even with `prompt: ''`, and a
+ * popup that is not the direct result of a click is blocked by every browser.
+ * So every token — including the one that replaces an expired token an hour
+ * in — has to originate from a real user gesture. When a request fails for
+ * want of one, we clear the token and notify listeners so the UI falls back to
+ * the sign-in screen rather than failing writes in the background.
  */
 
 import { GOOGLE_CLIENT_ID, OAUTH_SCOPE } from '../config.js'
@@ -122,6 +130,16 @@ function requestToken(prompt) {
           client.requestAccessToken({ prompt })
         }),
     )
+    .catch((error) => {
+      // Most failures here mean "a popup was needed and could not be opened",
+      // which is unrecoverable without a fresh user gesture. Drop any token we
+      // were holding and tell listeners, so the UI renders the sign-in screen
+      // and the retry arrives from a real click instead of looping.
+      accessToken = null
+      expiresAt = 0
+      notify()
+      throw error
+    })
     .finally(() => {
       pendingRequest = null
     })
@@ -142,11 +160,13 @@ function describeError(error) {
 }
 
 /**
- * Acquire an access token.
+ * Acquire an access token. Must be called from a user gesture — see the popup
+ * note at the top of this file.
  *
- * @param {{silent?: boolean}} [options] `silent: true` uses prompt '' so an
- *   already-consenting user is not shown any UI; it rejects rather than
- *   falling back to a popup, which would be blocked outside a user gesture.
+ * @param {{silent?: boolean}} [options] `silent: true` uses prompt '' to skip
+ *   the consent dialog for an already-consenting user. It does NOT avoid the
+ *   popup, so it still fails outside a click; it is only used to re-issue a
+ *   token after a 401, where a gesture is already in scope.
  */
 export function signIn({ silent = false } = {}) {
   return requestToken(silent ? '' : 'consent')
@@ -192,9 +212,13 @@ export function onAuthChange(listener) {
 }
 
 /**
- * Best-effort account email, used to guess which of the two people is using
- * the app. The `drive.file` scope alone does not include userinfo access, so
- * this fails soft and returns null; the UI falls back to asking manually.
+ * The signed-in account's email, used to match against the config tab and pick
+ * which of the two people this is.
+ *
+ * Works because OAUTH_SCOPE includes `openid` and `userinfo.email`; with
+ * `drive.file` alone this endpoint returns 401. It still fails soft and
+ * returns null — a consent screen missing those two scopes is a live
+ * possibility — so the manual "which one are you?" fallback stays first-class.
  */
 export async function getUserEmail() {
   try {

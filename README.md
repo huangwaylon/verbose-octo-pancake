@@ -61,9 +61,9 @@ around that last point rather than pretending otherwise.
                              │   └──────────────────────┘   │
                              └──────────────────────────────┘
 
-  scope: drive.file only ──► the app can touch the one sheet you pick
-                             in the Google Picker (or that it created),
-                             and nothing else in your Drive.
+  scope: drive.file      ──► the app can touch the one sheet you pick
+         (+ openid/email)     in the Google Picker (or that it created),
+                              and nothing else in your Drive.
 ```
 
 Every arrow is browser-to-Google. GitHub Pages only ever serves files; it never
@@ -171,7 +171,8 @@ floating point is how you end up a cent adrift after a hundred entries.
   included — or connects one you already have via the Google Picker.
 - Names, currency, and categories live in the sheet's `config` tab, so changing
   them needs no redeploy.
-- Google sign-in with a single narrow scope. No app accounts, no passwords.
+- Google sign-in with narrow, non-sensitive scopes. No app accounts, no
+  passwords.
 - Built for a phone and usable on a monitor: one column that becomes two at
   `62rem`, light and dark themes, 44px tap targets, reduced-motion support.
 
@@ -220,19 +221,23 @@ They are stored as GitHub Actions repository *variables*, not secrets, for the
 same reason: marking a value secret when the build publishes it to the world
 implies a confidentiality that does not exist.
 
-**The scope is one line and it is the important line.** The app requests only
-`https://www.googleapis.com/auth/drive.file`. That grants access to files the
-user explicitly picks in the Google Picker plus files the app itself created —
-not "read your Google Drive". The app cannot enumerate your other spreadsheets.
-This is also why each person has to pick the sheet themselves once: the grant is
-per-person, per-file.
+**The scope is the important line.** The app requests three scopes, all
+non-sensitive. `https://www.googleapis.com/auth/drive.file` grants access to
+files the user explicitly picks in the Google Picker plus files the app itself
+created — not "read your Google Drive". The app cannot enumerate your other
+spreadsheets. This is also why each person has to pick the sheet themselves
+once: the grant is per-person, per-file. The other two, `openid` and
+`userinfo.email`, reveal only the signed-in address, so the app can tell which of
+the two people is using it; they grant no file access at all.
 
 **Tokens are held in memory only.** The access token lives in a module-scoped
 variable in `src/lib/googleAuth.js` and is never written to `localStorage` or
 `sessionStorage`. A persisted bearer token is readable by any XSS on the origin
-and outlives the tab; GIS can silently re-issue a token anyway, so persisting it
-would be pure downside. There is no refresh token, because the browser flow does
-not issue one. Closing the tab discards the credential.
+and outlives the tab. There is no refresh token, because the browser flow does
+not issue one, and there is no silent renewal either: GIS only issues a token
+through a popup, and browsers block popups that are not the direct result of a
+click. So a session lasts about an hour, after which the app returns you to the
+sign-in screen for one more click. Closing the tab discards the credential.
 
 **There is no bank connection anywhere in this design.** No Plaid, no Open
 Banking, no institution credentials, no account or card numbers, no read-only
