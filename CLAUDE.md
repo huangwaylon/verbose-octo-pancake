@@ -110,10 +110,24 @@ amounts so rounding is genuinely exercised.
 
 ## Gotchas
 
-- **CI pins `node-version: 24`, and must not go back to 22.** Node 22 bundles
-  npm 10.9.8, which crashes on GitHub-hosted runners with "Exit handler never
-  called!" — an npm-internal fault, not a lockfile problem. Node 24 ships
-  npm 11.17. Reverting this to the older LTS breaks every deploy.
+- **Never run a bare `npm install` on a machine with a private registry.** This
+  repo is developed where `NPM_CONFIG_REGISTRY` points at an internal Apple
+  mirror, and `npm install` bakes that host into all 149 `resolved` URLs in
+  `package-lock.json`. The result works locally and fails everywhere else with
+  `getaddrinfo ENOTFOUND`, which npm reports only as the useless "Exit handler
+  never called!". Always regenerate with an explicit override:
+
+  ```sh
+  rm -rf node_modules package-lock.json
+  npm install --registry=https://registry.npmjs.org
+  ```
+
+  A repo `.npmrc` cannot prevent this — npm ranks env vars above project
+  `.npmrc`. `test/lockfile.test.js` fails the build if it happens again.
+- **Docker on this machine is not a valid stand-in for CI.** Containers inherit
+  the host's DNS, so internal Apple hosts resolve inside them. To reproduce a
+  GitHub runner, blackhole them:
+  `docker run --add-host npm.apple.com:127.0.0.1 --add-host artifacts.apple.com:127.0.0.1 …`
 - **`vite.config.js` hardcodes `base: '/verbose-octo-pancake/'`** to match the
   repo name, because project Pages sites serve from `/<repo>/`. Renaming the
   repo without updating this produces a blank page. Build with `VITE_BASE=/` for

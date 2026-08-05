@@ -26,30 +26,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Node 24, not 22, deliberately. npm 10.9.8 — the version Node 22 bundles
-      # — crashes on GitHub-hosted runners with "npm error Exit handler never
-      # called!". That is an internal npm fault, not a problem with
-      # package-lock.json: this exact lockfile installs cleanly on npm 10.9.2
-      # and 11.16 on macOS, and on npm 10.9.8 on linux/x64 in Docker as both
-      # root and non-root. It reproduces only on the runner. Node 24 ships
-      # npm 11.17, which is unaffected, and gets there without having to
-      # bootstrap through the broken npm. Local development runs Node 26/npm 11.
+      # Node 24 ships npm 11. Note that the npm version was never the cause of
+      # the "Exit handler never called!" install failures — see the lockfile
+      # registry note in SETUP.md — but there is no reason to go back to 22.
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
+          cache: npm
 
-      # No `cache: npm`: a restored ~/.npm was one of the suspects for the crash
-      # above, and installing 98 packages cold takes about five seconds.
       - name: Install dependencies
-        run: |
-          npm ci --no-audit --no-fund && exit 0
-          echo "::warning::npm ci failed; falling back to npm install"
-          rm -rf node_modules
-          npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       # An npm-internal crash prints no stack trace to the step log — it only
-      # writes one to ~/.npm/_logs. Without this there is nothing to diagnose.
+      # writes one to ~/.npm/_logs. Uploading it is what finally identified the
+      # private-registry URLs baked into package-lock.json, so it stays.
       - name: Collect npm logs
         if: failure()
         run: |

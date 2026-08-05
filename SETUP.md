@@ -402,19 +402,42 @@ npm error Exit handler never called!
 npm error This is an error with npm itself.
 ```
 
-This is a crash inside npm, not a problem with your repo or
-`package-lock.json`. It is specific to **npm 10.9.8**, the version Node 22
-bundles, running on a GitHub-hosted runner. The same lockfile installs cleanly
-on npm 10.9.2 and 11.16 on macOS, and on npm 10.9.8 on linux/x64 in Docker as
-both root and non-root — it reproduces only on the runner.
+**This message is misleading.** It is npm's generic surface for a crash during
+install, and the real error only appears in `~/.npm/_logs`, not in the step
+output. The actual cause here was:
 
-The workflow pins `node-version: 24`, which ships npm 11.17 and is unaffected.
-If you change that line, do not go back to 22.
+```
+FetchError: request to https://npm.apple.com/yallist/-/yallist-3.1.1.tgz
+  failed, reason: getaddrinfo ENOTFOUND npm.apple.com
+```
 
-If it somehow recurs: the failed run now uploads a **`npm-debug-log`** artifact
-(bottom of the run summary page). npm writes its stack trace there and nowhere
-else, so read it rather than guessing — the step output alone is not enough to
-diagnose this class of failure.
+`package-lock.json` had been generated on a machine where
+`NPM_CONFIG_REGISTRY` pointed at a private Apple mirror, so all 149 `resolved`
+URLs referenced `npm.apple.com` and `artifacts.apple.com`. Those hosts do not
+resolve on a GitHub runner, so every tarball fetch failed.
+
+**Fix — regenerate the lockfile against the public registry:**
+
+```sh
+rm -rf node_modules package-lock.json
+npm install --registry=https://registry.npmjs.org
+```
+
+Then confirm no private URLs survived:
+
+```sh
+grep -c 'registry.npmjs.org' package-lock.json   # should equal your dep count
+grep -c 'apple.com' package-lock.json            # must be 0
+```
+
+`npm test` now includes `test/lockfile.test.js`, which fails the build if a
+private-registry URL ever reappears. A repo-level `.npmrc` would not help —
+npm ranks environment variables above project `.npmrc`.
+
+**If a different install failure ever appears:** the failed run uploads a
+`npm-debug-log` artifact (bottom of the run summary page). Read it. The step
+output alone is not enough to diagnose this class of crash, and guessing from it
+wastes far more time than downloading the log.
 
 ### The deploy job fails with "Missing environment" or a Pages permissions error
 
