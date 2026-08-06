@@ -6,7 +6,7 @@
   "description": "Shared expense tracker for two people, backed by a Google Sheet.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/build-sw.js",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"

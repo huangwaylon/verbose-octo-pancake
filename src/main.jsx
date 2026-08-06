@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import { syncDocumentLocale } from './i18n/index.js'
 import { syncDocumentAccent } from './lib/theme.js'
+import { registerServiceWorker } from './lib/serviceWorker.js'
 
 import './styles/tokens.css'
 import './styles/base.css'
@@ -21,3 +22,8 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+
+// Production only: `sw.js` is emitted by the build, and in dev the base path
+// serves index.html for it, which registers as a confusing MIME-type error rather
+// than a clean 404. Caching a dev server is its own debugging trap besides.
+if (import.meta.env.PROD) registerServiceWorker()

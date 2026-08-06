@@ -10,13 +10,11 @@ import { ACCENTS, setAccent, useAccent } from '../lib/theme.js'
 export function SettingsSheet({
   config,
   me,
-  spreadsheet,
+  spreadsheetId,
   tombstoneCount,
-  email,
   onSetMe,
   onCompact,
-  onSwitchSheet,
-  onSignOut,
+  onForget,
   onClose,
 }) {
   const { t, locale, setLocale } = useT()
@@ -25,7 +23,7 @@ export function SettingsSheet({
   const accent = useAccent()
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState(null)
-  const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheet.id}`
+  const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`
 
   async function handleCompact() {
     setBusy(true)
@@ -45,8 +43,8 @@ export function SettingsSheet({
       title={t('settings.title')}
       onClose={onClose}
       footer={
-        <button type="button" className="btn btn--ghost btn--block" onClick={onSignOut}>
-          {email ? t('settings.signOutAs', { email }) : t('settings.signOut')}
+        <button type="button" className="btn btn--ghost btn--block" onClick={onForget}>
+          {t('settings.forgetKey')}
         </button>
       }
     >
@@ -116,7 +114,6 @@ export function SettingsSheet({
 
         <div className="field">
           <span className="field__label">{t('settings.sheet')}</span>
-          <p className="settings__value">{spreadsheet.name}</p>
           <div className="row">
             <a
               className="btn btn--ghost btn--sm"
@@ -126,9 +123,6 @@ export function SettingsSheet({
             >
               {t('settings.openSheet')}
             </a>
-            <button type="button" className="btn btn--ghost btn--sm" onClick={onSwitchSheet}>
-              {t('settings.switchSheet')}
-            </button>
           </div>
         </div>
 

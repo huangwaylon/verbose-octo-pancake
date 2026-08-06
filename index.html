@@ -18,11 +18,13 @@
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233d4e8b'/%3E%3Cpath d='M10 9l6 7 6-7' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M10.5 17.5h11M10.5 21h11M16 16v7' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E"
     />
     <!--
-      Home Screen install (iOS Safari 26+): Share -> Add to Home Screen. No
-      service worker — iOS needs none for installability, and one would only
-      add cache-invalidation risk on deploy that this static site has avoided
-      so far. `apple-touch-icon` (not the SVG favicon) is what iOS actually
-      uses for the home screen tile and splash flash; PNGs live in `public/`.
+      Home Screen install (iOS Safari 26+): Share -> Add to Home Screen. The
+      service worker is generated into dist/ by scripts/build-sw.js and
+      registered from main.jsx in production only — it is what makes a cold
+      launch do no network work, since Pages serves even content-hashed assets
+      with max-age=600. `apple-touch-icon` (not the SVG favicon) is what iOS
+      actually uses for the home screen tile and splash flash; PNGs live in
+      `public/`.
     -->
     <!-- Plain absolute paths, like the script tag below: Vite's dev server
          prepends `base` to a leading-slash href exactly once. %BASE_URL%
@@ -38,19 +40,30 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Finances" />
     <!--
-      Locked down to what the app actually needs: Google's auth, API, and
-      Picker hosts. No third-party CDNs, no inline script beyond the bundle.
-      The Picker is the reason docs.google.com/drive.google.com appear under
-      frame-src and gstatic under script-src — it renders in a Google iframe.
+      An allowlist, not boilerplate. No third-party JavaScript executes in this
+      app at all: `script-src 'self'` is possible because there is no Google
+      Identity Services script and no Picker iframe any more — the token comes
+      from our own Apps Script endpoint over `fetch`.
+
+      `script.googleusercontent.com` looks redundant next to `script.google.com`,
+      and is not: `/exec` answers with a 302 to it. Current Chrome does not
+      re-check `connect-src` against a redirect target, but browsers have differed
+      and Safari is the primary target here, so it stays.
+
+      Note this tag does NOT cover the service worker's own execution context —
+      a worker's CSP comes from the headers served with its script, and GitHub
+      Pages sends none. That is why the service worker never intercepts a
+      cross-origin request: it must not end up an uncovered proxy in front of the
+      hosts below.
     -->
     <meta
       http-equiv="Content-Security-Policy"
       content="
         default-src 'self';
-        script-src 'self' https://accounts.google.com https://apis.google.com https://www.gstatic.com https://ssl.gstatic.com;
-        frame-src https://accounts.google.com https://docs.google.com https://drive.google.com;
-        connect-src 'self' https://sheets.googleapis.com https://www.googleapis.com https://content.googleapis.com https://accounts.google.com;
-        img-src 'self' data: blob: https://*.googleusercontent.com https://ssl.gstatic.com https://www.gstatic.com https://drive-thirdparty.googleusercontent.com;
+        script-src 'self';
+        frame-src 'none';
+        connect-src 'self' https://sheets.googleapis.com https://script.google.com https://script.googleusercontent.com;
+        img-src 'self' data:;
         style-src 'self' 'unsafe-inline';
         font-src 'self';
         base-uri 'none';

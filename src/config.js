@@ -1,37 +1,31 @@
 /**
  * Build-time configuration, app-wide constants, and the localStorage wrappers.
  *
- * Nothing here is secret. The OAuth client ID and API key are public by design —
- * they are restricted by authorized origin / HTTP referrer in the Google Cloud
- * console, not by being hidden. See SETUP.md.
+ * Nothing here is secret, and one value needs saying plainly: `SCRIPT_URL` is
+ * PUBLIC. Vite inlines it into the shipped bundle, so anyone can read it, and
+ * the app key — which is never a build-time value and only ever lives on a
+ * device — is the sole access control. Nothing about this design may depend on
+ * the endpoint URL being hard to guess. See SETUP.md.
  */
 
-export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
-export const GOOGLE_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY ?? ''
-
-/**
- * Three scopes, all non-sensitive, so the consent screen needs no Google
- * verification review.
- *
- * `drive.file` grants access only to files the user explicitly picks in the
- * Google Picker, plus files this app creates. It must never widen to
- * `spreadsheets`, which would expose every sheet in the account.
- *
- * `openid` + `userinfo.email` exist solely so the signed-in address can be
- * matched against the config tab, skipping the "which one are you?" prompt. They
- * grant no file access.
- */
-export const OAUTH_SCOPE = [
-  'https://www.googleapis.com/auth/drive.file',
-  'openid',
-  'https://www.googleapis.com/auth/userinfo.email',
-].join(' ')
+export const SCRIPT_URL = import.meta.env.VITE_SCRIPT_URL ?? ''
 
 export const STORAGE_KEYS = {
-  spreadsheetId: 'sf.spreadsheetId',
-  spreadsheetName: 'sf.spreadsheetName',
-  identity: 'sf.identity',
+  /**
+   * The app key, exchanged at SCRIPT_URL for a short-lived Google token. Typed
+   * once per device and never written to the sheet or the bundle.
+   *
+   * NOTE: localStorage is scoped to the ORIGIN, not the path, so every site
+   * published from this GitHub Pages account can read this key. That is an
+   * accepted trade-off and the reason for the invariant in CLAUDE.md about
+   * never publishing anything untrusted from the same origin.
+   */
+  appKey: 'sf.appKey',
   token: 'sf.token',
+  spreadsheetId: 'sf.spreadsheetId',
+  /** Last successful read, so a cold launch paints before any network call. */
+  snapshot: 'sf.snapshot',
+  identity: 'sf.identity',
   locale: 'sf.locale',
   accent: 'sf.accent',
 }
@@ -71,8 +65,6 @@ export function writeStored(key, value) {
 export const DEFAULT_CONFIG = {
   person1Name: 'Person 1',
   person2Name: 'Person 2',
-  person1Email: '',
-  person2Email: '',
   currency: 'JPY',
   categories: ['Groceries', 'Dining', 'Household', 'Other'],
   /**
@@ -89,5 +81,24 @@ export const DEFAULT_CONFIG = {
 }
 
 export function isConfigured() {
-  return Boolean(GOOGLE_CLIENT_ID && GOOGLE_API_KEY)
+  return Boolean(SCRIPT_URL)
+}
+
+/**
+ * Layer whatever the sheet actually specified over the defaults.
+ *
+ * The partial is what `parseConfigRows` returned — keys the sheet left blank or
+ * unparseable are absent, so the default wins for exactly those. Shared with the
+ * snapshot cache, which stores the *partial* rather than the merged result: a
+ * merged copy would freeze the building build's defaults into every future launch,
+ * so a changed default would not take effect until the network read landed.
+ */
+export function mergeConfig(partial) {
+  return {
+    ...DEFAULT_CONFIG,
+    // Cloned so a caller mutating the arrays cannot corrupt the shared defaults.
+    categories: [...DEFAULT_CONFIG.categories],
+    notePresets: [...DEFAULT_CONFIG.notePresets],
+    ...(partial ?? {}),
+  }
 }

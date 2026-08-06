@@ -1,11 +1,11 @@
 /**
  * Working out which of the two people is using the app right now.
  *
- * Preference order: match the signed-in Google address against the emails in
- * the sheet's config tab, then fall back to a choice the person made manually.
- * The email match can legitimately fail — the drive.file scope does not
- * guarantee access to the userinfo endpoint — so the manual fallback is a
- * first-class path, not an error case.
+ * There is nothing to detect: the access token belongs to the account that owns
+ * the spreadsheet, not to either person, so this is purely a per-device choice
+ * made once on the identity gate. That is why it lives in `localStorage` next to
+ * the locale and the accent rather than in the sheet — it changes how this phone
+ * labels things and must not follow the data to the other person's phone.
  */
 
 import { EVEN_SHARE, PERSON } from '../schema.js'
@@ -18,16 +18,6 @@ export function readStoredIdentity() {
 
 export function storeIdentity(person) {
   writeStored(STORAGE_KEYS.identity, person)
-}
-
-/** @returns {'p1'|'p2'|null} null means "ask them". */
-export function resolveIdentity(config, email, stored) {
-  const normalized = typeof email === 'string' ? email.trim().toLowerCase() : ''
-  if (normalized) {
-    if (config?.person1Email?.trim().toLowerCase() === normalized) return PERSON.P1
-    if (config?.person2Email?.trim().toLowerCase() === normalized) return PERSON.P2
-  }
-  return stored
 }
 
 /**

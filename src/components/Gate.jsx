@@ -24,10 +24,7 @@ export function UnconfiguredGate() {
   return (
     <Panel title={t('gate.unconfiguredTitle')}>
       <p className="gate__text">
-        {tn('gate.unconfiguredBody', {
-          clientId: <code>VITE_GOOGLE_CLIENT_ID</code>,
-          apiKey: <code>VITE_GOOGLE_API_KEY</code>,
-        })}
+        {tn('gate.unconfiguredBody', { scriptUrl: <code>VITE_SCRIPT_URL</code> })}
       </p>
       <p className="gate__text">
         {tn('gate.unconfiguredFollow', {
@@ -39,73 +36,60 @@ export function UnconfiguredGate() {
   )
 }
 
-export function SignInGate({ onSignIn, status, error }) {
+/**
+ * Takes the app key once per device.
+ *
+ * This replaces a Google sign-in button, and the difference is the whole point of
+ * the design: a key that works keeps working, so this screen is shown once and
+ * then never again — no popup, no consent flow, nothing that expires.
+ */
+export function KeyGate({ onConnect, connecting, error, suspect }) {
   const { t } = useT()
+  const [value, setValue] = useState('')
 
   return (
     <Panel title={t('app.name')}>
       <p className="gate__text">{t('app.tagline')}</p>
-      <div className="gate__actions">
+      <form
+        className="gate__actions"
+        onSubmit={(event) => {
+          event.preventDefault()
+          onConnect(value)
+        }}
+      >
+        <div className="field">
+          <label className="field__label" htmlFor="app-key">
+            {t('gate.keyLabel')}
+          </label>
+          <input
+            id="app-key"
+            className="input"
+            type="password"
+            // A password field so iOS offers to store it in the Keychain, which is
+            // what makes "typed once per device" true rather than aspirational.
+            autoComplete="current-password"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            placeholder={t('gate.keyPlaceholder')}
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+          />
+        </div>
         <button
-          type="button"
+          type="submit"
           className="btn btn--primary btn--block"
-          onClick={onSignIn}
-          disabled={status === 'signing-in'}
+          disabled={connecting || !value.trim()}
         >
-          {status === 'signing-in' ? <span className="spinner" /> : null}
-          {t('gate.signIn')}
+          {connecting ? <span className="spinner" /> : null}
+          {t('gate.connect')}
         </button>
-      </div>
+      </form>
+      {/* A stored key the endpoint has rejected, with no fresher failure to show:
+          the key was kept deliberately, so say why this screen came back. */}
+      {suspect && !error && <p className="field__error">{t('gate.keyRejected')}</p>}
       {error && <p className="field__error">{error}</p>}
-      <p className="gate__fine">{t('gate.signInFine')}</p>
-    </Panel>
-  )
-}
-
-export function SheetGate({ onCreate, onChoose, error }) {
-  const { t } = useT()
-  const [busy, setBusy] = useState(null)
-  const [failure, setFailure] = useState(null)
-
-  async function run(kind, action) {
-    setBusy(kind)
-    setFailure(null)
-    try {
-      await action()
-    } catch (cause) {
-      // Without this the rejection was an unhandled promise and the person saw
-      // nothing at all — the Picker failing silently is the single most
-      // confusing state this screen can be in.
-      setFailure(cause?.message || String(cause))
-    } finally {
-      setBusy(null)
-    }
-  }
-
-  return (
-    <Panel title={t('gate.sheetTitle')}>
-      <p className="gate__text">{t('gate.sheetBody')}</p>
-      <div className="gate__actions">
-        <button
-          type="button"
-          className="btn btn--primary btn--block"
-          onClick={() => run('create', () => onCreate())}
-          disabled={Boolean(busy)}
-        >
-          {busy === 'create' ? <span className="spinner" /> : null}
-          {t('gate.createSheet')}
-        </button>
-        <button
-          type="button"
-          className="btn btn--ghost btn--block"
-          onClick={() => run('choose', onChoose)}
-          disabled={Boolean(busy)}
-        >
-          {busy === 'choose' ? <span className="spinner" /> : null}
-          {t('gate.chooseSheet')}
-        </button>
-      </div>
-      {(failure || error) && <p className="field__error">{failure || error}</p>}
+      <p className="gate__fine">{t('gate.keyFine')}</p>
     </Panel>
   )
 }
@@ -145,7 +129,7 @@ export function LoadingGate({ label }) {
   )
 }
 
-export function ErrorGate({ message, onRetry, onSwitchSheet }) {
+export function ErrorGate({ message, onRetry }) {
   const { t } = useT()
 
   return (
@@ -154,9 +138,6 @@ export function ErrorGate({ message, onRetry, onSwitchSheet }) {
       <div className="gate__actions">
         <button type="button" className="btn btn--primary btn--block" onClick={onRetry}>
           {t('common.retry')}
-        </button>
-        <button type="button" className="btn btn--ghost btn--block" onClick={onSwitchSheet}>
-          {t('gate.pickDifferent')}
         </button>
       </div>
     </Panel>

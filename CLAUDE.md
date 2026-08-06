@@ -10,7 +10,7 @@ see `SETUP.md`. Do not restate either here.
 | --- | --- |
 | `npm run dev` | Vite on port 5173. The port is registered with Google — do not change it. |
 | `npm test` | vitest, single run. Must pass before any commit. |
-| `npm run build` | Production bundle into `dist/`. |
+| `npm run build` | Production bundle into `dist/`, then `scripts/build-sw.js` emits `dist/sw.js`. |
 | `npm run preview` | Serve the built bundle. |
 
 ## Invariants
@@ -39,6 +39,13 @@ the sheet's locale.
 the sheet directly in the Sheets UI, so `updateEntry` and `setDeletedAt`
 re-resolve id → row immediately before writing. The `rowNumber` on an entry is
 advisory only.
+
+**Only `ensureStructure` may build structure, and it refuses a spreadsheet that
+already looks like somebody's work.** The id arrives from the script's `SHEET_ID`
+property rather than from a person choosing a file, so a wrong one is a configuration
+mistake — and adding three tabs to an unrelated spreadsheet is not something undo can
+reach. A fresh spreadsheet has exactly one default tab, so several tabs with none of
+ours among them is refused.
 
 **Deletes are soft.** `setDeletedAt` writes a timestamp and the client filters,
 so rows never change position and undo is one cell write. `compact()` is the only
@@ -86,39 +93,6 @@ reconsider.
 that parses as UTC midnight and shifts to the previous day in western timezones.
 Use the helpers in `src/lib/dates.js`, which build dates from explicit parts.
 
-**The access token is cached in `localStorage`, and cleared only on explicit
-sign-out.** Anything malformed or expired is discarded on load rather than
-trusted. This is a deliberate trade-off against XSS, not an oversight — the
-reasoning is in `README.md`, and the ceiling is Google's: the token lasts about
-an hour and the browser flow issues no refresh token, so no cache can make a
-session outlive it.
-
-**Never request a token outside a user gesture.** `requestAccessToken` always
-opens a popup, even with `prompt: ''`, and a popup with no click behind it is
-blocked. `requestToken` therefore clears the token and notifies listeners on
-failure, so the UI drops back to the sign-in screen instead of failing writes in
-the background. `useAuth` distinguishes that collapse from a deliberate sign-out:
-a silent bounce to the sign-in screen is indistinguishable from the app logging
-you out at random.
-
-**The OAuth scope grants no file access beyond `drive.file`.** The other two,
-`openid` and `userinfo.email`, only identify which of the two people is signed
-in. Never widen the Drive scope to `spreadsheets` — that would expose every sheet
-in the account. This is why the Picker exists.
-
-**The Picker needs `setAppId` and `setOrigin`.** `setAppId` (the Cloud project
-number, derived from the client ID prefix) is what makes Drive grant the picked
-file to this app under `drive.file`. `setOrigin` is required because Pages serves
-the app from a sub-path and the Picker otherwise infers the wrong origin.
-Omitting either produces an opaque "invalid API key".
-
-**Only `createSheet` may build structure; the picker path must never write.**
-`ensureStructure` adds the `expenses_p1`, `expenses_p2` and `config` tabs, so
-calling it on an arbitrary picked file scribbles three tabs into somebody's
-unrelated spreadsheet — not something undo can reach. `chooseSheet` calls the
-read-only `readStructure` first and refuses anything where `isLedger` is false.
-Any other path that adopts an existing spreadsheet needs the same guard.
-
 **Config values are not all strings.** `CONFIG_FIELDS` in `src/lib/sheets.js`
 carries a kind per key — `text`, `list` or `fraction` — and `parseConfigRows`
 omits a key whose value is blank or unparseable so the caller's defaults win. An
@@ -139,6 +113,71 @@ because a saved row records a decision someone already made.
 channel, so `useLedger` re-reads on `focus` and `visibilitychange`. Window
 switching is constant and every refresh spends per-user quota, hence the 30s
 floor — do not remove it.
+
+**The app key is the only credential, and it is never a build-time value.** It is typed
+once per device and lives in that device's `localStorage`. `VITE_SCRIPT_URL` ships in the
+public bundle, so nothing may depend on the endpoint URL being hard to guess — assume it is
+known. A `VITE_` variable holding the key would publish it.
+
+**The dedicated Google account must have access to exactly one spreadsheet, forever.** The
+minted token carries the `spreadsheets` scope, so confinement is not enforced by the scope;
+it is enforced by that account having nothing else to reach. Sharing a second sheet with it
+silently widens what a leaked key reaches, and nothing here will notice.
+
+**`localStorage` is scoped to the origin, not the path.** Every site published from the
+same GitHub Pages account can read the app key. Nothing untrusted — in particular nothing
+loading third-party scripts — may be published from that account.
+
+**The token endpoint always answers HTTP 200.** `ContentService` cannot set a status, so
+`{"error":"unauthorized"}` arrives as a 200 and the body is the only signal. Branch on the
+body, never on `response.ok`. A rotated key and a network blip are different failures:
+reporting a blip as a bad key makes someone retype 64 characters, and reporting a bad key
+as transient hides it behind retries forever. `connection.js` treats `unauthorized` as
+terminal and everything else — non-JSON, rejection, timeout — as transient, and it **flags
+a rejected key rather than deleting it**.
+
+**The mint request is `Content-Type: text/plain`, and the method is never forced through
+the redirect.** `text/plain` keeps it a CORS simple request; a preflight would be answered
+with the 302 that `/exec` returns and die, which is also why the script has no `doOptions`.
+`fetch` downgrades POST to GET across that 302 and Apps Script serves the computed reply
+from the echo URL — forcing POST through the hop returns "page not found".
+
+**`doPost` must be structurally incapable of throwing.** Any uncaught throw returns
+Google's HTML error page, which the client classifies as transient and retries, so a throw
+on the reject path becomes a silent retry loop. A body of `null` did exactly that once: it
+parses successfully, so the try/catch did not fire, and `body.key` dereferenced null. Never
+read `e.parameter` either — a key in a query string lands in Google's request logs.
+
+**The refresh margin is performance; the 401 retry is correctness.** `sheets.js` re-mints
+once on a 401 and retries once, and minting needs no user gesture, so the recovery is
+silent. `refreshToken` carries a generation counter: joining a mint that began *before* the
+401 would hand back the token Google just rejected, and the retry runs with
+`allowRetry: false`, turning a recoverable blip into a hard failure.
+
+**The snapshot's `v` is a drop marker, never a migration.** An unrecognised version is
+ignored and re-fetched, which is free — the sheet is the source of truth. The snapshot
+stores the **pre-merge** config, because a merged copy freezes the building build's
+defaults into every later launch. Config and entries seed atomically, for the same reason
+`loadAll` resolves the config before mapping rows: the balance formats at
+`config.currency`, so entries restored without their config render at the wrong scale.
+`clearSnapshot` exists because that module also remembers the last payload it wrote in
+order to skip redundant writes — clearing the key without resetting that leaves the next
+load convinced it already saved.
+
+**The service worker never intercepts a cross-origin request**, and that is an explicit
+early `return` as the first statement of the `fetch` handler, not a property of scope —
+scope decides which *clients* are controlled, not which *requests* are seen, so the token
+endpoint and the Sheets API both arrive there. A `<meta>` CSP does not cover a worker's own
+context and Pages sends no CSP header, so a worker responding to those would be an
+uncovered proxy in front of a bearer token.
+
+**Precache from a `dist/` walk, and derive the cache name from file contents.**
+`.vite/manifest.json` is not emitted without a flag, and when it is, it omits `index.html`
+itself and everything copied from `public/`. Hashing names rather than contents would leave
+`sw.js` byte-identical after an `index.html`-only change — a CSP edit, for instance — so the
+update would never reach the device. `caches.match` needs `ignoreVary: true`: Pages sends
+`Vary: Accept-Encoding` and `vite preview` sends `Vary: Origin`, and a mismatch misses and
+falls through to the network, which offline means a cache that silently only works online.
 
 **There is no migration code, and no users to need it.** Anything justified only
 by "keeps an existing sheet working" has been removed. Do not add a
@@ -264,8 +303,16 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
 
 ## Testing
 
-Specs live in `test/**/*.test.{js,jsx}`. Nine files: `money`, `currency`,
-`balance`, `schema`, `config`, `i18n`, `render`, `ui` and `lockfile`.
+Specs live in `test/**/*.test.{js,jsx}`. Twelve files: `money`, `currency`,
+`balance`, `schema`, `config`, `connection`, `snapshot`, `sw-build`, `i18n`,
+`render`, `ui` and `lockfile`.
+
+`connection`, `snapshot` and `sw-build` all exist for the same reason: their
+failure modes are invisible. A misclassified endpoint reply logs someone out or
+hides a rotated key; a snapshot that seeds entries without their config renders
+money at the wrong scale; an incomplete precache list makes `install` reject so no
+worker ever activates and the app is simply never fast. None of that shows up in a
+build or on screen.
 
 `render.test.jsx` and `ui.test.jsx` render components to static markup with
 `renderToStaticMarkup` — no DOM, no browser. They catch components that throw on
@@ -312,13 +359,18 @@ while the donut chart rendered white-on-white and invisible.
   custom domain.
 - **`loadAll` returns `sheetIds` only if this session already read them.**
   `values.batchGet` cannot reveal sheet gids; the cache is filled by
-  `readSheetIds`, which both `ensureStructure` and `readStructure` call. `compact`
-  needs a gid, so it falls back to calling `ensureStructure` itself.
-- **`drive.file` is a per-person, per-file grant.** Sharing the sheet in Google
-  Sheets is not enough — each person must pick it through the Picker on their own
-  device. This is the most common "it's broken for them" report.
-- **`getUserEmail()` fails soft, returning `null`.** It needs `openid` and
-  `userinfo.email` on the consent screen; with `drive.file` alone the endpoint
-  401s. Since a mismatched consent screen is always possible, identity still
-  falls back to a manual choice in `localStorage`. Treat the manual path as
-  first-class, not an error case.
+  `readSheetIds`, which `ensureStructure` calls. `compact` needs a gid, so it falls
+  back to calling `ensureStructure` itself — and a snapshot-seeded session has no
+  gids at all, so that fallback is the normal path rather than an edge case.
+- **The consent screen must stay published.** A script attached to a Cloud project
+  whose consent screen is in Testing has its authorization expire after 7 days, so
+  the token endpoint dies about a week later and the symptom is indistinguishable
+  from a quota problem. `SETUP.md` step 5.
+- **Quota exhaustion is the one real attack, and it is unfixable.** The endpoint is
+  anonymous and its URL is public, anonymous traffic bills the owner's quota before
+  any of our code runs, and Apps Script exposes no client IP. Impact is availability
+  only, and it self-heals. The tell is every write failing with HTML replies
+  classified as transient forever.
+- **Nothing detects which person this is.** The token belongs to the account that
+  owns the sheet, not to either of them, so `IdentityGate` and the `localStorage`
+  choice behind it are the only path — not a fallback.

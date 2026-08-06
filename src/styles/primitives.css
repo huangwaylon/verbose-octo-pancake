@@ -116,18 +116,6 @@
   background-color: var(--danger-hover);
 }
 
-/* The one button that sits ON --danger (the reconnect banner). An accent fill
-   there measures 1.20:1 against the banner and reads as a hole; white does the
-   job at 6.56:1, and so does its focus ring. */
-.btn--on-danger {
-  background-color: var(--danger-text);
-  color: var(--danger);
-}
-
-.btn--on-danger:focus-visible {
-  outline-color: var(--danger-text);
-}
-
 /* Icon-only buttons are borderless: the glyph at --ink-2 is itself the 3:1
    graphic, so a box around it is noise. Deliberately NOT combined with
    --ghost — the two disagree about the border. */

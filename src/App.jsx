@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useAuth } from './state/useAuth.js'
+import { useConnection } from './state/useConnection.js'
 import { useLedger } from './state/useLedger.js'
 import { useToasts } from './state/useToasts.js'
 import { ENTRY_TYPE, PERSON, isActive } from './schema.js'
@@ -14,7 +14,8 @@ import {
 } from './lib/balance.js'
 import { currentMonthKey, todayIso } from './lib/dates.js'
 import { useT } from './i18n/index.js'
-import { readStoredIdentity, resolveIdentity, storeIdentity } from './lib/identity.js'
+import { readStoredIdentity, storeIdentity } from './lib/identity.js'
+import { setSafeToReload } from './lib/serviceWorker.js'
 import { Header } from './components/Header.jsx'
 import { MonthNav } from './components/MonthNav.jsx'
 import { BalanceCard } from './components/BalanceCard.jsx'
@@ -27,38 +28,26 @@ import { PlusIcon } from './components/icons.jsx'
 import {
   ErrorGate,
   IdentityGate,
+  KeyGate,
   LoadingGate,
-  SheetGate,
-  SignInGate,
   UnconfiguredGate,
 } from './components/Gate.jsx'
 
 export default function App() {
   const { t } = useT()
-  const auth = useAuth()
+  const connection = useConnection()
   const toasts = useToasts()
-  // 'expired' keeps every gate and the app shell rendering as if still
-  // signed in — see useAuth for why — so the ledger stays enabled and the
-  // banner below is the only thing that changes.
-  const authed = auth.status === 'signed-in' || auth.status === 'expired'
-  const ledger = useLedger(authed)
-  const [reconnecting, setReconnecting] = useState(false)
-
-  const reconnect = useCallback(async () => {
-    setReconnecting(true)
-    try {
-      await auth.reconnect()
-    } finally {
-      setReconnecting(false)
-    }
-  }, [auth])
+  const ledger = useLedger(connection.spreadsheetId)
 
   const [identityChoice, setIdentityChoice] = useState(readStoredIdentity)
   const [monthKey, setMonthKey] = useState(currentMonthKey)
   const [draft, setDraft] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
 
-  const me = resolveIdentity(ledger.config, auth.email, identityChoice)
+  // Nothing can tell us who is signed in any more — the token belongs to the
+  // account that owns the sheet, not to either person — so identity is purely
+  // this device's own choice.
+  const me = identityChoice
   const currency = ledger.config.currency
 
   const active = useMemo(() => ledger.entries.filter(isActive), [ledger.entries])
@@ -78,10 +67,14 @@ export default function App() {
   )
 
   // Land on the newest month that actually has data, so a sheet whose last
-  // entry was a while ago does not open on an empty screen.
+  // entry was a while ago does not open on an empty screen. Runs on the cached
+  // paint too ('stale'), which is the point: waiting for 'ready' would move the
+  // month out from under someone who had already started using MonthNav.
   const jumped = useRef(false)
   useEffect(() => {
-    if (jumped.current || ledger.status !== 'ready' || !active.length) return
+    if (jumped.current) return
+    if (ledger.status !== 'ready' && ledger.status !== 'stale') return
+    if (!active.length) return
     jumped.current = true
     const months = monthKeysPresent(active)
     if (months.length && !months.includes(currentMonthKey())) setMonthKey(months[0])
@@ -91,6 +84,12 @@ export default function App() {
     storeIdentity(person)
     setIdentityChoice(person)
   }, [])
+
+  // A service worker update activates by reloading, so it must never land while
+  // an entry is half-typed or a write has not reached the sheet.
+  useEffect(() => {
+    setSafeToReload(() => !draft && !ledger.entries.some((entry) => entry.pending))
+  }, [draft, ledger.entries])
 
   const openAdd = useCallback(() => {
     const payer = me ?? PERSON.P1
@@ -157,70 +156,46 @@ export default function App() {
 
   const switchSheet = useCallback(() => {
     setShowSettings(false)
-    ledger.forgetSheet()
-  }, [ledger])
+    connection.forget()
+  }, [connection])
 
-  // Persistent, not a toast: it must stay up until the tap resolves it, and it
-  // has to render above every gate too, since 'expired' can arrive while any
-  // of them is showing — not just the main app screen below.
-  const reconnectBanner = auth.status === 'expired' && (
-    <div className="reconnect-banner" role="alert">
-      <span>{t('auth.expiredBanner')}</span>
-      <button
-        type="button"
-        className="btn btn--sm btn--on-danger"
-        onClick={reconnect}
-        disabled={reconnecting}
-      >
-        {reconnecting ? <span className="spinner" /> : t('auth.reconnect')}
-      </button>
-    </div>
-  )
+  const connectionError = connection.error
+    ? connection.error.i18nKey
+      ? t(connection.error.i18nKey)
+      : connection.error.message
+    : null
 
-  if (auth.status === 'unconfigured') return <UnconfiguredGate />
-  if (!authed) {
-    return <SignInGate onSignIn={auth.signIn} status={auth.status} error={auth.error} />
-  }
-  if (!ledger.spreadsheet) {
+  if (connection.status === 'unconfigured') return <UnconfiguredGate />
+  if (connection.status === 'no-key') {
     return (
-      <>
-        {reconnectBanner}
-        <SheetGate
-          onCreate={ledger.createSheet}
-          onChoose={ledger.chooseSheet}
-          error={ledger.error}
-        />
-      </>
+      <KeyGate
+        onConnect={connection.connect}
+        connecting={connection.connecting}
+        error={connectionError}
+        suspect={connection.suspect}
+      />
+    )
+  }
+  // Holding a key but no sheet id yet: the first mint is in flight, or it failed.
+  if (!connection.spreadsheetId) {
+    return connectionError ? (
+      <ErrorGate message={connectionError} onRetry={connection.retry} />
+    ) : (
+      <LoadingGate label={t('gate.loadingSheet')} />
     )
   }
   if (ledger.status === 'error') {
-    return (
-      <>
-        {reconnectBanner}
-        <ErrorGate message={ledger.error} onRetry={ledger.refresh} onSwitchSheet={switchSheet} />
-      </>
-    )
+    return <ErrorGate message={ledger.error} onRetry={ledger.refresh} />
   }
   if (ledger.status === 'idle' || ledger.status === 'loading') {
-    return (
-      <>
-        {reconnectBanner}
-        <LoadingGate label={t('gate.loadingSheet')} />
-      </>
-    )
+    return <LoadingGate label={t('gate.loadingSheet')} />
   }
   if (!me) {
-    return (
-      <>
-        {reconnectBanner}
-        <IdentityGate config={ledger.config} onPick={setMe} />
-      </>
-    )
+    return <IdentityGate config={ledger.config} onPick={setMe} />
   }
 
   return (
     <div className="app">
-      {reconnectBanner}
       <Header
         config={ledger.config}
         me={me}
@@ -231,6 +206,14 @@ export default function App() {
 
       <main className="layout">
         <aside className="layout__aside">
+          {/* A refresh failed but the cache is still good — say so rather than
+              replacing the whole screen with an error, which is what an offline
+              launch used to do. */}
+          {ledger.status === 'stale' && ledger.error && (
+            <p className="notice" role="status">
+              {t('warning.staleData')}
+            </p>
+          )}
           {mixedCurrencies && (
             <p className="notice" role="status">
               {t('warning.mixedCurrencies')}
@@ -288,13 +271,11 @@ export default function App() {
         <SettingsSheet
           config={ledger.config}
           me={me}
-          spreadsheet={ledger.spreadsheet}
+          spreadsheetId={connection.spreadsheetId}
           tombstoneCount={ledger.tombstoneCount}
-          email={auth.email}
           onSetMe={setMe}
           onCompact={ledger.compact}
-          onSwitchSheet={switchSheet}
-          onSignOut={auth.signOut}
+          onForget={switchSheet}
           onClose={() => setShowSettings(false)}
         />
       )}

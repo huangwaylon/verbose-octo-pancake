@@ -12,9 +12,8 @@ import { MonthNav } from '../src/components/MonthNav.jsx'
 import {
   ErrorGate,
   IdentityGate,
+  KeyGate,
   LoadingGate,
-  SheetGate,
-  SignInGate,
   UnconfiguredGate,
 } from '../src/components/Gate.jsx'
 import { Toasts } from '../src/components/Toasts.jsx'
@@ -65,24 +64,28 @@ const entries = [
 
 describe('gates render', () => {
   it('renders every pre-app screen without throwing', () => {
-    expect(renderToStaticMarkup(<UnconfiguredGate />)).toContain('VITE_GOOGLE_CLIENT_ID')
-    expect(renderToStaticMarkup(<SignInGate onSignIn={noop} status="signed-out" />)).toContain(
-      'Sign in with Google',
-    )
-    expect(renderToStaticMarkup(<SheetGate onCreate={noop} onChoose={noop} />)).toContain(
-      'Create a new sheet',
-    )
+    expect(renderToStaticMarkup(<UnconfiguredGate />)).toContain('VITE_SCRIPT_URL')
+    expect(renderToStaticMarkup(<KeyGate onConnect={noop} />)).toContain('App key')
     expect(renderToStaticMarkup(<IdentityGate config={config} onPick={noop} />)).toContain('Alex')
-    expect(
-      renderToStaticMarkup(<ErrorGate message="Boom" onRetry={noop} onSwitchSheet={noop} />),
-    ).toContain('Boom')
+    expect(renderToStaticMarkup(<ErrorGate message="Boom" onRetry={noop} />)).toContain('Boom')
   })
 
-  it('surfaces a sign-in error to the person instead of swallowing it', () => {
-    const markup = renderToStaticMarkup(
-      <SignInGate onSignIn={noop} status="signed-out" error="Popup blocked" />,
-    )
-    expect(markup).toContain('Popup blocked')
+  it('takes the key in a password field, so iOS offers to store it', () => {
+    // "Typed once per device" only holds if the Keychain can keep it.
+    const markup = renderToStaticMarkup(<KeyGate onConnect={noop} />)
+    expect(markup).toContain('type="password"')
+    expect(markup).toContain('autoComplete="current-password"')
+  })
+
+  it('surfaces a connection error to the person instead of swallowing it', () => {
+    const markup = renderToStaticMarkup(<KeyGate onConnect={noop} error="Could not reach it" />)
+    expect(markup).toContain('Could not reach it')
+  })
+
+  it('explains a rejected key when there is no fresher failure to report', () => {
+    // The key is kept on purpose, so the screen has to say why it came back.
+    const markup = renderToStaticMarkup(<KeyGate onConnect={noop} suspect />)
+    expect(markup).toContain('rejected')
   })
 
   it('announces the wait with the label the caller supplies', () => {

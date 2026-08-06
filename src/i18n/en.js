@@ -36,10 +36,6 @@ export default {
   'header.refresh': 'Refresh from the sheet',
   'header.settings': 'Settings',
 
-  // --- auth -------------------------------------------------------------
-  'auth.expiredBanner': 'Your Google session timed out.',
-  'auth.reconnect': 'Reconnect',
-
   'month.previous': 'Previous month',
   'month.next': 'Next month',
 
@@ -131,7 +127,6 @@ export default {
   'accent.sepia': 'Sepia',
   'settings.sheet': 'Sheet',
   'settings.openSheet': 'Open in Google Sheets',
-  'settings.switchSheet': 'Switch sheet',
   'settings.configTitle': 'Names, currency & categories',
   'settings.defaultSplit': 'Default split',
   'settings.defaultSplitValue': '{name} covers {percent}% of what they pay for',
@@ -154,29 +149,25 @@ export default {
     other: 'Removed {count} deleted rows.',
   },
   'settings.compactError': 'Could not compact the sheet.',
-  'settings.signOut': 'Sign out',
-  'settings.signOutAs': 'Sign out ({email})',
+  'settings.forgetKey': 'Forget key on this device',
 
   // --- gates ----------------------------------------------------------------
   'gate.unconfiguredTitle': 'Not configured yet',
   'gate.unconfiguredBody':
-    'This build is missing {clientId} or {apiKey}. Both are public values, set at build time.',
+    'This build is missing {scriptUrl}. It is a public value, set at build time.',
   'gate.unconfiguredFollow':
-    'Follow {setup} to create them, then put them in {env} for local development or in the repository variables for GitHub Pages.',
-  'gate.signIn': 'Sign in with Google',
-  'gate.signInFine':
-    'The app asks only for access to the single spreadsheet you pick — not your whole Drive.',
-  'gate.sheetTitle': 'Pick a sheet',
-  'gate.sheetBody':
-    'Start a fresh spreadsheet, or connect one you already have. You can change this later.',
-  'gate.createSheet': 'Create a new sheet',
-  'gate.chooseSheet': 'Choose an existing sheet',
+    'Follow {setup} to deploy the token endpoint, then put its URL in {env} for local development or in the repository variables for GitHub Pages.',
+  'gate.keyLabel': 'App key',
+  'gate.keyPlaceholder': 'Paste your app key',
+  'gate.connect': 'Connect',
+  'gate.keyFine':
+    'Stored on this device only, and you will not be asked again. The same key goes on both phones, and nothing expires.',
+  'gate.keyRejected': 'That key was rejected. Check it, or ask for the current one.',
   'gate.identityTitle': 'Which one are you?',
   'gate.identityBody': 'So the app can say “you” instead of a name. Stored on this device only.',
   'gate.identityFine': 'Set both names in the {tab} tab of your sheet if these look wrong.',
   'gate.loadingSheet': 'Loading your sheet',
   'gate.errorTitle': 'Could not read the sheet',
-  'gate.pickDifferent': 'Pick a different sheet',
 
   // --- toasts and errors ----------------------------------------------------
   'toast.deleted': 'Deleted',
@@ -184,10 +175,13 @@ export default {
   'toast.deleteFailed': 'Could not delete that.',
   'error.readSheet': 'Could not read the sheet.',
   'error.prepareSheet': 'Could not prepare the sheet.',
-  'error.signIn': 'Sign-in failed.',
-  'error.notALedger':
-    'That spreadsheet has no {expensesP1}, {expensesP2}, or {config} tab, so it is not a Shared Finances ledger and this app will not modify it. Pick a different sheet, or use "Create a new sheet".',
-  'error.sessionExpired': 'Your Google session ended. Sign in again to pick up where you left off.',
+  'error.badKey': 'That app key was rejected.',
+  'error.keyRequired': 'Enter your app key.',
+  'error.offline': 'Could not reach the sheet. Check your connection and try again.',
+  'error.scriptUnavailable': 'The sheet service is busy or unavailable. Try again in a moment.',
+  'error.scriptMisconfigured':
+    'The token endpoint returned no sheet id. Check its SHEET_ID script property.',
+  'error.notConfigured': 'This build has no token endpoint configured.',
   'error.missingId': 'Missing id.',
   'error.badDate': 'Date must be a real day, as YYYY-MM-DD.',
   'error.badAmount': 'Amount must be greater than zero.',
@@ -195,6 +189,7 @@ export default {
   'error.badShare': 'Split must be between 0 and 100%.',
   'error.missingCategory': 'Pick a category.',
   'error.missingCurrency': 'This sheet has no currency set in its config tab.',
+  'warning.staleData': 'Showing saved data — could not reach the sheet.',
   'warning.mixedCurrencies':
     'Some entries use a different currency, so totals may be wrong.',
 }

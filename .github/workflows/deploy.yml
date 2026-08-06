@@ -62,13 +62,13 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Build
-        # These are Actions *variables*, not secrets, deliberately. Vite inlines
-        # them into the bundle, so they are public either way; marking them
-        # secret would imply a confidentiality the deployed site cannot provide.
+        # An Actions *variable*, not a secret, deliberately. Vite inlines it into
+        # the bundle, so it is public either way; marking it secret would imply a
+        # confidentiality the deployed site cannot provide. It is only the token
+        # endpoint's address — the app key never appears in a build at all.
         # Full reasoning in the Security model section of README.md.
         env:
-          VITE_GOOGLE_CLIENT_ID: ${{ vars.VITE_GOOGLE_CLIENT_ID }}
-          VITE_GOOGLE_API_KEY: ${{ vars.VITE_GOOGLE_API_KEY }}
+          VITE_SCRIPT_URL: ${{ vars.VITE_SCRIPT_URL }}
         run: npm run build
 
       - name: Upload Pages artifact

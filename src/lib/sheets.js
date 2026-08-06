@@ -9,7 +9,7 @@
  * exactly what the API wants in "expenses_p1!A2:K" — while escaping the rest.
  */
 
-import { DEFAULT_CONFIG } from '../config.js'
+import { DEFAULT_CONFIG, mergeConfig } from '../config.js'
 import {
   CONFIG_RANGE,
   CONFIG_TAB,
@@ -28,7 +28,7 @@ import {
   rowRange,
   rowToEntry,
 } from '../schema.js'
-import { getAccessToken, signIn } from './googleAuth.js'
+import { getAccessToken, refreshToken } from './connection.js'
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
 const RAW = 'RAW'
@@ -44,12 +44,16 @@ function idColumnRange(person) {
  * Sheet key <-> config field, plus how to read the value. One list so the two
  * directions cannot drift. `list` and `fraction` values are not plain strings,
  * so they need explicit parsers; everything else is text.
+ *
+ * There are deliberately no email keys. Identity used to be resolved by matching
+ * the signed-in Google address against them, but the access token now belongs to
+ * the account that owns the sheet rather than to either person, so nothing can
+ * produce an address to match. Which of the two people this is has become a
+ * per-device choice, like the locale and the accent.
  */
 const CONFIG_FIELDS = [
   ['person1_name', 'person1Name', 'text'],
   ['person2_name', 'person2Name', 'text'],
-  ['person1_email', 'person1Email', 'text'],
-  ['person2_email', 'person2Email', 'text'],
   ['currency', 'currency', 'text'],
   ['categories', 'categories', 'list'],
   ['default_split_p1', 'defaultSplitP1', 'fraction'],
@@ -104,6 +108,11 @@ function buildQuery(params) {
  * it still looked unexpired, so re-acquire once and retry exactly once. Never
  * more — a revoked grant would loop.
  *
+ * This retry is what makes the refresh margin in `connection.js` a performance
+ * choice rather than a correctness one: minting needs no user gesture, so the
+ * recovery is silent. `refreshToken` guarantees a token newer than any mint that
+ * was already in flight when the 401 arrived.
+ *
  * Thrown errors carry `.status` so callers can tell 401/403/404 apart.
  */
 async function request(path, { method = 'GET', params, body, allowRetry = true } = {}) {
@@ -122,7 +131,7 @@ async function request(path, { method = 'GET', params, body, allowRetry = true }
   if (response.ok) return response.json().catch(() => ({}))
 
   if (response.status === 401 && allowRetry) {
-    await signIn({ silent: true })
+    await refreshToken()
     return request(path, { method, params, body, allowRetry: false })
   }
 
@@ -200,7 +209,10 @@ function defaultConfigRows() {
  * blank is decoded at the sheet's currency and getting that order wrong is a
  * silent 100x error.
  *
- * @returns {Promise<{entries: object[], config: object, sheetIds: Record<string, number>}>}
+ * Returns the sheet's own partial config as well as the merged one, because the
+ * snapshot cache has to store the partial — see `mergeConfig`.
+ *
+ * @returns {Promise<{entries: object[], config: object, sheetConfig: object, sheetIds: Record<string, number>}>}
  */
 export async function loadAll(spreadsheetId) {
   const ranges = [expensesDataRange(PERSON.P1), expensesDataRange(PERSON.P2), CONFIG_RANGE]
@@ -219,13 +231,8 @@ export async function loadAll(spreadsheetId) {
     hasConfigRange = false
   }
 
-  const config = {
-    ...DEFAULT_CONFIG,
-    // Cloned so a caller mutating the arrays cannot corrupt the shared defaults.
-    categories: [...DEFAULT_CONFIG.categories],
-    notePresets: [...DEFAULT_CONFIG.notePresets],
-    ...parseConfigRows(hasConfigRange ? (valueRanges[2]?.values ?? []) : []),
-  }
+  const sheetConfig = parseConfigRows(hasConfigRange ? (valueRanges[2]?.values ?? []) : [])
+  const config = mergeConfig(sheetConfig)
 
   const entries = PEOPLE.flatMap((person, index) =>
     // Same order as `ranges` above: p1's tab, then p2's, then the config.
@@ -235,7 +242,7 @@ export async function loadAll(spreadsheetId) {
   )
 
   const sheetIds = gidCache.spreadsheetId === spreadsheetId ? gidCache.sheetIds : {}
-  return { entries, config, sheetIds }
+  return { entries, config, sheetConfig, sheetIds }
 }
 
 /** @returns {Promise<{rowNumber: number|null}>} rowNumber of the appended row */
@@ -368,20 +375,6 @@ async function readSheetIds(spreadsheetId) {
 }
 
 /**
- * Report which of the app's tabs a spreadsheet already has, WITHOUT writing
- * anything. This is the guard in front of `ensureStructure`: picking a file in
- * the Picker is one tap over every spreadsheet you own, and adopting the wrong
- * one would scribble three tabs into it.
- *
- * @returns {Promise<{sheetIds: Record<string, number>, isLedger: boolean}>}
- */
-export async function readStructure(spreadsheetId) {
-  const sheetIds = await readSheetIds(spreadsheetId)
-  const isLedger = PEOPLE.every((person) => expensesTab(person) in sheetIds) && CONFIG_TAB in sheetIds
-  return { sheetIds, isLedger }
-}
-
-/**
  * Bring a blank or newly created spreadsheet up to the schema. Only this path
  * may build structure.
  *
@@ -396,6 +389,19 @@ export async function ensureStructure(spreadsheetId) {
   let sheetIds = await readSheetIds(spreadsheetId)
   const wantedTabs = [...PEOPLE.map(expensesTab), CONFIG_TAB]
   const missing = wantedTabs.filter((title) => !(title in sheetIds))
+
+  // Refuse to build structure in a spreadsheet that is evidently somebody's
+  // existing work. The id arrives from the script's SHEET_ID property rather than
+  // from a person choosing a file, so a wrong one is a configuration mistake —
+  // and adding three tabs to an unrelated spreadsheet is not something undo can
+  // reach. A freshly created spreadsheet has exactly one default tab, so several
+  // tabs with none of ours among them is not the ledger we were pointed at.
+  if (missing.length === wantedTabs.length && Object.keys(sheetIds).length > 1) {
+    throw new Error(
+      `That spreadsheet already has other tabs and none of this app's, so it is ` +
+        `probably not the ledger. Check the SHEET_ID script property.`,
+    )
+  }
 
   if (missing.length > 0) {
     await request(`/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {

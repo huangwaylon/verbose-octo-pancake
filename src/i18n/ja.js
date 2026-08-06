@@ -31,10 +31,6 @@ export default {
   'header.refresh': 'シートから再読み込み',
   'header.settings': '設定',
 
-  // --- auth -------------------------------------------------------------
-  'auth.expiredBanner': 'Google のセッションがタイムアウトしました。',
-  'auth.reconnect': '再接続',
-
   'month.previous': '前の月',
   'month.next': '次の月',
 
@@ -119,7 +115,6 @@ export default {
   'accent.sepia': '焦茶',
   'settings.sheet': 'シート',
   'settings.openSheet': 'Google スプレッドシートで開く',
-  'settings.switchSheet': 'シートを切り替える',
   'settings.configTitle': '名前・通貨・カテゴリー',
   'settings.defaultSplit': '既定の分担',
   'settings.defaultSplitValue': '{name}が支払ったとき、{name}の負担は{percent}%',
@@ -140,30 +135,26 @@ export default {
     other: '{count}行を削除しました。',
   },
   'settings.compactError': 'シートを整理できませんでした。',
-  'settings.signOut': 'ログアウト',
-  'settings.signOutAs': 'ログアウト（{email}）',
+  'settings.forgetKey': 'この端末からキーを削除',
 
   // --- gates ----------------------------------------------------------------
   'gate.unconfiguredTitle': '設定が未完了です',
   'gate.unconfiguredBody':
-    'このビルドには{clientId}または{apiKey}がありません。どちらもビルド時に設定する公開値です。',
+    'このビルドには{scriptUrl}がありません。ビルド時に設定する公開値です。',
   'gate.unconfiguredFollow':
-    '{setup}に従って作成し、ローカル開発では{env}に、GitHub Pages ではリポジトリ変数に設定してください。',
-  'gate.signIn': 'Google でログイン',
-  'gate.signInFine':
-    'このアプリが求めるのは、選んだ 1 つのスプレッドシートへのアクセスだけです。Drive 全体ではありません。',
-  'gate.sheetTitle': 'シートを選ぶ',
-  'gate.sheetBody':
-    '新しいスプレッドシートを作るか、すでにあるものをつなぎます。あとから変更できます。',
-  'gate.createSheet': '新しいシートを作る',
-  'gate.chooseSheet': 'すでにあるシートを選ぶ',
+    '{setup}に従ってトークン用のエンドポイントを配置し、その URL をローカル開発では{env}に、GitHub Pages ではリポジトリ変数に設定してください。',
+  'gate.keyLabel': 'アプリキー',
+  'gate.keyPlaceholder': 'アプリキーを貼り付け',
+  'gate.connect': 'つなぐ',
+  'gate.keyFine':
+    'この端末にのみ保存され、次回から聞かれることはありません。同じキーをふたりの端末に入れます。Google のログインはなく、期限切れもありません。',
+  'gate.keyRejected': 'このキーは受け付けられませんでした。確認するか、今のキーを聞いてください。',
   'gate.identityTitle': 'あなたはどちらですか？',
   'gate.identityBody':
     '名前ではなく「あなた」と表示するために使います。この端末にのみ保存されます。',
   'gate.identityFine': '表示が違う場合は、シートの{tab}タブで名前を設定してください。',
   'gate.loadingSheet': 'シートを読み込んでいます',
   'gate.errorTitle': 'シートを読み込めませんでした',
-  'gate.pickDifferent': '別のシートを選ぶ',
 
   // --- toasts and errors ----------------------------------------------------
   'toast.deleted': '削除しました',
@@ -171,10 +162,14 @@ export default {
   'toast.deleteFailed': '削除できませんでした。',
   'error.readSheet': 'シートを読み込めませんでした。',
   'error.prepareSheet': 'シートを準備できませんでした。',
-  'error.signIn': 'ログインできませんでした。',
-  'error.notALedger':
-    'このスプレッドシートには{expensesP1}タブも{expensesP2}タブも{config}タブもないため、家計シェアのシートではないと判断し、変更しません。別のシートを選ぶか、「新しいシートを作る」を使ってください。',
-  'error.sessionExpired': 'Google のセッションが終了しました。もう一度ログインすると、続きから再開できます。',
+  'error.badKey': 'このアプリキーは受け付けられませんでした。',
+  'error.keyRequired': 'アプリキーを入力してください。',
+  'error.offline': 'シートにつながりませんでした。通信を確認してもう一度お試しください。',
+  'error.scriptUnavailable':
+    'シートのサービスが混み合っているか、利用できません。少し待ってからお試しください。',
+  'error.scriptMisconfigured':
+    'トークン用のエンドポイントがシート ID を返しませんでした。SHEET_ID プロパティを確認してください。',
+  'error.notConfigured': 'このビルドにはトークン用のエンドポイントが設定されていません。',
   'error.missingId': 'ID がありません。',
   'error.badDate': '日付は YYYY-MM-DD 形式の実在する日を入力してください。',
   'error.badAmount': '金額は 0 より大きい値を入力してください。',
@@ -182,5 +177,6 @@ export default {
   'error.badShare': '分担は 0〜100% の範囲で指定してください。',
   'error.missingCategory': 'カテゴリーを選んでください。',
   'error.missingCurrency': 'このシートの config タブに通貨が設定されていません。',
+  'warning.staleData': '保存したデータを表示しています。シートにつながりませんでした。',
   'warning.mixedCurrencies': '通貨の違う記録があるため、合計が正しくない可能性があります。',
 }

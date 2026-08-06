@@ -1,173 +1,180 @@
 # Setup
 
-The app has no backend, so the whole trust relationship is between your browser and
-Google: you create a Google Cloud project and tell it which origins may use it, once.
-Google is midway through moving these screens from **APIs & Services > OAuth consent
-screen** to **Google Auth Platform**; where the two differ, both labels are given.
+Everything below happens once. The result is an app that never asks anyone to sign
+in to Google: a small Apps Script web app, owned by a dedicated account that owns
+the ledger, mints short-lived Google tokens for whoever presents a shared key.
+
+You need a **dedicated Google account** for this. Not your own — the token the
+script mints carries the `spreadsheets` scope, which reaches every spreadsheet the
+owning account can see. An account that owns exactly one file is what keeps that
+scope harmless, and that is a permanent condition rather than a setup detail.
+
+There is no OAuth client, no API key, no consent screen for either person, and no
+Google Picker. If you are looking for those, they were removed — see the Security
+model section of [README.md](README.md).
 
 | Value used throughout | |
 | --- | --- |
 | GitHub username `huangwaylon` | the Pages origin, `https://huangwaylon.github.io` |
 | Repo name `verbose-octo-pancake` | the Pages path; `vite.config.js` sets `base` to `/verbose-octo-pancake/` to match |
 
-## 1. Create a Google Cloud project
+## 1. The dedicated account and the sheet
 
-At <https://console.cloud.google.com/>, open the project dropdown in the top bar and
-click **New project**. Name it `Shared Finances`, leave **Location** as *No
-organization*, **Create**, then select it in the dropdown. No billing account and no
-card. Every later step assumes this project is the one selected in the top bar —
-configuring credentials into the wrong project is the easiest hour to waste here.
+1. Create a new Google account. Unique strong password, 2FA on, used for nothing
+   else.
+2. Signed in as that account, create one spreadsheet. Do not add tabs — the app
+   builds `expenses_p1`, `expenses_p2` and `config` on its first run.
+3. Copy the id out of the URL:
+   `https://docs.google.com/spreadsheets/d/`**`<this part>`**`/edit`
+4. **Share** it with both people's own Google addresses as **Editor**, and leave
+   general access **Restricted**. That share is the only thing that lets either of
+   you open the sheet by hand; *Anyone with the link* would make the whole ledger
+   readable to anybody who saw the URL.
 
-## 2. Enable three APIs
+## 2. Generate the app key
 
-| API | Used for |
-| --- | --- |
-| **Google Sheets API** | reading and writing the spreadsheet, and creating a new one on first run |
-| **Google Drive API** | required by the Picker |
-| **Google Picker API** | the "choose an existing sheet" dialog |
-
-For each: **APIs & Services > Library**, search the name, **Enable**; confirm all three
-under **Enabled APIs & services**. Picker is the one people forget, because nothing fails
-until the picker opens. *If a Sheets call later 403s with `has not been used in project …
-or it is disabled`, one of these is off.*
-
-## 3. Configure the OAuth consent screen
-
-Go to **APIs & Services > OAuth consent screen**; if redirected to **Google Auth
-Platform**, click **Get started**. **App name** `Shared Finances` (it appears on the
-sign-in screen), your own address as **User support email** and **Contact
-information**, **Audience** / **User type** **External** (*Internal* exists only for
-Workspace organisations), accept the policy and **Create**.
-
-**Scopes.** In **Data access** (older console: **Scopes**) click **Add or remove
-scopes**. `openid` and `.../auth/userinfo.email` are in the common list; `drive.file`
-is not, so paste it into **Manually add scopes**. All three must end up in the table,
-then **Add to table > Update > Save**:
-
-```
-https://www.googleapis.com/auth/drive.file
-openid
-https://www.googleapis.com/auth/userinfo.email
+```sh
+openssl rand -hex 32
 ```
 
-All three are **non-sensitive**, which is what avoids a Google verification review;
-`README.md` covers what each one grants. Omit the last two and the app still works —
-you just pick your name by hand once per device instead of being recognised by email.
+Keep it where both people can reach it, like a shared password manager. It is the
+only credential the app has and the only thing standing in front of a public
+endpoint. It is never a build-time value and never goes in the repository.
 
-**Test users.** Under **Audience > Test users > Add users** (older console: step 3 of
-the wizard), add both Google addresses exactly as they are used to sign in.
+## 3. Create the script
 
-**Stay in Testing.** **Audience** shows **Publishing status: Testing** and a **Publish
-app** button — do not click it. Testing means only the listed accounts can sign in and
-no review is needed; its 7-day refresh-token limit is irrelevant, since this app gets
-short-lived access tokens fresh in the browser and stores no refresh token. The price
-is an interstitial the first time each of you signs in — **"Google hasn't verified this
-app" > Advanced > Go to Shared Finances (unsafe)**. Warn the other person. *No
-**Advanced** link means that account is not in the Test users list.*
+Signed in as the dedicated account. A separate browser profile is easiest — the
+Cloud console silently acts as the wrong account when several are signed in, which
+is the easiest hour to waste here.
 
-## 4. Create the OAuth client ID
+1. Go to **script.new**. Rename the project **Shared Finances token minter**.
+2. Replace the contents of `Code.gs` with [`apps-script/Code.gs`](apps-script/Code.gs).
+3. **Project Settings** (gear) → tick **Show `appsscript.json` manifest file in
+   editor**.
+4. Back in **Editor**, replace `appsscript.json` with
+   [`apps-script/appsscript.json`](apps-script/appsscript.json). It pins the scope
+   to `spreadsheets` alone and sets the web app to run as the owner with anonymous
+   access.
+5. **Project Settings** → **Script Properties** → **Add script property**, twice:
 
-**APIs & Services > Credentials** (new console: **Google Auth Platform > Clients**) **>
-+ Create credentials > OAuth client ID**. **Application type: Web application**, name
-it `Shared Finances web` (an internal label, never shown). Leave **Authorized redirect
-URIs** empty — the GIS token flow does not redirect. Under **Authorized JavaScript
-origins** add both of these, then **Create** and copy the **Client ID**
-(`000000000000-abc….apps.googleusercontent.com`):
+   | Property | Value |
+   | --- | --- |
+   | `SHEET_ID` | the id from step 1 |
+   | `APP_KEY` | the key from step 2 |
 
+   Properties rather than literals, so the copy of the script in this repository
+   holds no secret and stays diffable.
+
+## 4. Attach a Cloud project
+
+Apps Script's own hidden Cloud project cannot have APIs enabled, so a token it
+mints is rejected by the Sheets API with `SERVICE_DISABLED`. A standard project
+fixes it. No billing account and no card.
+
+1. **console.cloud.google.com/projectcreate** → name it `shared-finances` →
+   **Create**.
+2. On the console home page, copy the **Project number** from the *Project info*
+   card. Apps Script wants the number, not the id.
+3. **console.cloud.google.com/apis/library/sheets.googleapis.com** → confirm the
+   project selector says `shared-finances` → **Enable**.
+4. Apps Script → **Project Settings** → **Google Cloud Platform (GCP) Project** →
+   **Change project** → paste the project number → **Set project**.
+
+## 5. Publish the consent screen
+
+**Do not leave this in Testing.** A script attached to a Cloud project whose
+consent screen is in Testing has its authorization expire after **7 days**, so the
+token endpoint stops working about a week after setup — and the symptom is
+indistinguishable from a quota problem. Publishing removes the expiry.
+
+1. **console.cloud.google.com/auth/overview** (older consoles: **APIs & Services →
+   OAuth consent screen**). If offered **Get started**, fill in app name
+   `Shared Finances`, the dedicated address for both support and contact, audience
+   **External**, then **Create**.
+2. **Audience** → **Publishing status** → **Publish app**.
+
+Publishing submits nothing for review. Verification only removes the warning screen
+and lifts the 100-user cap; one user with a sensitive scope on an unverified
+production app is a supported state. You will still click through **Advanced → Go
+to Shared Finances token minter (unsafe)** when authorizing.
+
+Add no scopes here. `ScriptApp.getOAuthToken()` does not route through this screen;
+it only has to exist.
+
+## 6. Deploy
+
+1. **Deploy** → **New deployment** → gear → **Web app**.
+2. **Execute as: Me**. **Who has access: Anyone** — not "Anyone with a Google
+   Account", because the app calls this with no Google login at all.
+3. **Deploy**, then authorize: pick the dedicated account, **Advanced** → **Go
+   to… (unsafe)** → **Allow**. It asks to see and edit your spreadsheets, which is
+   the `spreadsheets` scope from step 3.
+4. Copy the **Web app URL**, ending in `/exec`.
+
+Opening that URL in a browser should print `{"ok":true}`. That only proves the
+deployment is live. Confirm the part that actually matters:
+
+```sh
+URL='https://script.google.com/macros/s/…/exec'
+KEY='…'
+SHEET='…'
+TOKEN=$(curl -sSL "$URL" -H 'Content-Type: text/plain;charset=utf-8' \
+  --data "{\"key\":\"$KEY\"}" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
+curl -sS -H "Authorization: Bearer $TOKEN" \
+  "https://sheets.googleapis.com/v4/spreadsheets/$SHEET?fields=sheets(properties(title))"
 ```
-http://localhost:5173
-https://huangwaylon.github.io
+
+A tab list means it works. `SERVICE_DISABLED` means step 4 did not take.
+
+Note `--data` with no `-X POST`: `/exec` answers with a 302 and the redirect has to
+be followed as a GET, which is what a browser does and what forcing the method
+breaks.
+
+**Once the app is running, delete `doGet` and redeploy.** It exists only for that
+smoke test, and it is otherwise a free crawlable confirmation that a live endpoint
+is here, costing the same quota as a real call.
+
+## 7. Point the app at it
+
+Local development — `.env` is gitignored:
+
+```sh
+cp .env.example .env   # paste the /exec URL
+npm run dev            # http://localhost:5173/verbose-octo-pancake/
 ```
 
-Get these exactly right — it is the single most common failure. An origin is *scheme +
-host + port*, and the repo path is not part of it even though the app is served from
-`https://huangwaylon.github.io/verbose-octo-pancake/`:
+For GitHub Pages, **Settings → Secrets and variables → Actions → Variables** must
+hold `VITE_SCRIPT_URL`. It is a *variable*, not a secret: Vite inlines it into the
+bundle, so it is public either way, and marking it secret would imply a
+confidentiality the deployed site cannot provide. **Settings → Pages → Source**
+must be **GitHub Actions** — under "Deploy from a branch" Pages publishes the
+repository tree verbatim and ignores the artifact, and the tell is a 404 for
+`/src/main.jsx`.
 
-| | |
-| --- | --- |
-| Correct | `https://huangwaylon.github.io` |
-| Correct | `http://localhost:5173` |
-| Wrong — has a path | `https://huangwaylon.github.io/verbose-octo-pancake` |
-| Wrong — trailing slash | `https://huangwaylon.github.io/` |
-| Wrong — scheme mismatch | `http://huangwaylon.github.io` |
-| Wrong — wrong host form | `https://www.huangwaylon.github.io` |
-| Wrong — a different origin to Google | `http://127.0.0.1:5173` |
+## 8. Each device, once
 
-*`origin_mismatch`, `redirect_uri_mismatch` or "The given origin is not allowed for the
-given client ID" all mean the page's origin is not in this list.* Read the URL Vite
-actually printed — it moves to another port when 5173 is taken — and compare character
-by character.
+Open the app and paste the app key. It is stored in that device's `localStorage`
+and nothing expires, so this happens once per phone rather than once an hour.
 
-## 5. Create and restrict the API key
+Two things worth knowing about iOS. An installed web app has **its own storage,
+separate from Safari's**, so entering the key in Safari does not carry over —
+install first (**Share → Add to Home Screen**) and enter it there. And iOS can
+evict storage from an app left unused for a long stretch; if that happens you
+retype the key and the ledger rebuilds from the sheet.
 
-**Credentials > + Create credentials > API key**. Copy it (`AIzaSy…`), then **Edit API
-key** — an unrestricted key is one anyone can borrow. Name it `Shared Finances browser
-key`, and under **Application restrictions** choose **Websites** (older UI: **HTTP
-referrers**) and add both patterns:
+Then pick which of the two people you are. That is a per-device choice and nothing
+detects it, because the token belongs to the sheet's owner rather than to either of
+you.
 
-```
-http://localhost:5173/*
-https://huangwaylon.github.io/*
-```
+## Rotating the app key
 
-Referrer patterns are not origins: the trailing `/*` **is** required, because the
-browser sends a full URL as the referrer — the opposite convention from step 4. Under
-**API restrictions** choose **Restrict key**, tick exactly Google Sheets API, Google
-Drive API and Google Picker API, and **Save**. Allow a few minutes for restriction
-changes to propagate before debugging anything.
+The only incident response this design has, and it takes about a minute. Do it if a
+phone is lost, if the key gets shared by accident, or on any suspicion at all.
 
-*`API keys with referer restrictions cannot be used with this API` means the key's API
-restrictions are missing Picker.* *"The API developer key is invalid", if the picker also
-asked you to sign in while the app was already signed in, is the browser rather than the
-key* — Brave, Safari and hardened Firefox block the third-party cookies the
-`docs.google.com` iframe needs, or strip the `Referer` the key is matched on; lower the
-shields for the site, or check in Chrome. **Create a new sheet** uses no picker.
+1. `openssl rand -hex 32`
+2. Apps Script → **Project Settings** → **Script Properties** → edit `APP_KEY`.
+3. Both people open the app and enter the new key.
 
-Locally, `cp .env.example .env` and paste both values in, then check before touching
-GitHub with `npm install --registry=https://registry.npmjs.org && npm run dev` — the
-explicit registry matters if this machine has a private npm mirror, see `README.md` — and
-sign in at <http://localhost:5173>.
-
-## 6. GitHub Pages and the two variables
-
-1. **Settings > Pages > Build and deployment > Source: GitHub Actions.** Not "Deploy
-   from a branch" — the workflow uploads a Pages artifact, which branch mode ignores.
-   *Until this is set the deploy job fails at "Configure Pages" or with a Pages
-   permissions error, and a branch-published site 404s on `/src/main.jsx`.*
-2. **Settings > Secrets and variables > Actions > Variables** (not Secrets) **> New
-   repository variable**, twice: `VITE_GOOGLE_CLIENT_ID` with the client ID from step
-   4, and `VITE_GOOGLE_API_KEY` with the API key from step 5. Variables rather than
-   secrets on purpose — Vite bakes both into the public bundle, as the Security model
-   section of `README.md` explains.
-3. Push a commit, or run **Deploy to GitHub Pages** from the **Actions** tab; the
-   deploy job prints the live URL. *Variables added after a run need the workflow
-   re-run*, since they are read at build time and an earlier build shipped empty
-   strings — the app then reports a missing client ID.
-
-## 7. First run
-
-1. Open the deployed URL (or `localhost:5173`), sign in, and work through the
-   unverified-app screen.
-2. Either **Create a new sheet** — the app creates the spreadsheet and adds the
-   `expenses_p1`, `expenses_p2` and `config` tabs with headers and seeded config,
-   nothing to do by hand — or **Pick an existing sheet**, where the app reads the
-   file's tab list first and refuses anything that does not already have all three:
-   the Picker lists every spreadsheet you own, and writing tabs into the wrong one is
-   not undoable.
-3. In Google Sheets, share the sheet with the other person's account as an **Editor**
-   and leave general access **Restricted**. The sheet is the entire database, and link
-   access makes it world-readable.
-4. In the `config` tab set `person1_name` / `person2_name` and `person1_email` /
-   `person2_email` (the two Google addresses, so the app knows who is who), then adjust
-   `currency`, `categories`, the two `default_split_*` keys and `note_presets` — all
-   tabulated in `README.md`.
-5. **Each person must sign in and pick the same sheet through the Picker on their own
-   device.** The `drive.file` grant is per-person and per-file, so yours does not carry
-   over: until they pick it, their browser has no access even though Google Sheets
-   lists them as an Editor. *A second person seeing an empty app has almost always
-   skipped this.* *A 403 naming `insufficientPermissions` instead means the token
-   predates a consent-screen change — sign out and back in to get a new one.*
-
-First run makes several Sheets calls in sequence to create and seed the tabs, so expect
-a few seconds of spinner; later loads are one round trip. The interface language and
-accent colour are chosen per device in **Settings**.
+Rotation stops new tokens immediately. A token already issued lives out its hour —
+there is no way to revoke one individually, which is the accepted cost of this
+design. The endpoint URL does not change and the app does not need rebuilding.
