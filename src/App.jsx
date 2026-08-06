@@ -5,6 +5,7 @@ import { useToasts } from './state/useToasts.js'
 import { ENTRY_TYPE, PERSON, isActive } from './schema.js'
 import {
   computeBalance,
+  deletedEntries,
   filterByMonth,
   groupByDate,
   monthKeysPresent,
@@ -21,7 +22,9 @@ import { MonthNav } from './components/MonthNav.jsx'
 import { BalanceCard } from './components/BalanceCard.jsx'
 import { SummaryCard } from './components/SummaryCard.jsx'
 import { EntryList } from './components/EntryList.jsx'
+import { DeletedList } from './components/DeletedList.jsx'
 import { EntryFormSheet } from './components/EntryFormSheet.jsx'
+import { ConfirmDeleteSheet } from './components/ConfirmDeleteSheet.jsx'
 import { SettingsSheet } from './components/SettingsSheet.jsx'
 import { Toasts } from './components/Toasts.jsx'
 import { PlusIcon } from './components/icons.jsx'
@@ -42,6 +45,8 @@ export default function App() {
   const [identityChoice, setIdentityChoice] = useState(readStoredIdentity)
   const [monthKey, setMonthKey] = useState(currentMonthKey)
   const [draft, setDraft] = useState(null)
+  /** The entry the confirmation dialog is asking about, if it is open. */
+  const [pendingDelete, setPendingDelete] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
 
   // Nothing can tell us who is signed in any more — the token belongs to the
@@ -51,6 +56,7 @@ export default function App() {
   const currency = ledger.config.currency
 
   const active = useMemo(() => ledger.entries.filter(isActive), [ledger.entries])
+  const deleted = useMemo(() => deletedEntries(ledger.entries), [ledger.entries])
   const balance = useMemo(() => computeBalance(active), [active])
   const monthEntries = useMemo(() => filterByMonth(active, monthKey), [active, monthKey])
   const groups = useMemo(() => groupByDate(monthEntries), [monthEntries])
@@ -136,19 +142,24 @@ export default function App() {
 
   const removeEntry = useCallback(
     async (entry) => {
+      setPendingDelete(null)
       try {
         await ledger.removeEntry(entry.id, entry.payer)
-        toasts.push({
-          message: t('toast.deleted'),
-          action: {
-            label: t('toast.undo'),
-            onClick: () => {
-              ledger.restoreEntry(entry.id, entry.payer).catch((cause) => toasts.error(cause.message))
-            },
-          },
-        })
+        toasts.push({ message: t('toast.deleted') })
       } catch (cause) {
         toasts.error(cause.message || t('toast.deleteFailed'))
+      }
+    },
+    [ledger, toasts, t],
+  )
+
+  const restoreEntry = useCallback(
+    async (entry) => {
+      try {
+        await ledger.restoreEntry(entry.id, entry.payer)
+        toasts.push({ message: t('toast.restored') })
+      } catch (cause) {
+        toasts.error(cause.message || t('toast.restoreFailed'))
       }
     },
     [ledger, toasts, t],
@@ -245,8 +256,15 @@ export default function App() {
             currency={currency}
             status={ledger.status}
             onEdit={openEdit}
-            onDelete={removeEntry}
+            onDelete={setPendingDelete}
             onAdd={openAdd}
+          />
+          <DeletedList
+            entries={deleted}
+            config={ledger.config}
+            me={me}
+            currency={currency}
+            onRestore={restoreEntry}
           />
         </section>
       </main>
@@ -262,8 +280,19 @@ export default function App() {
           me={me}
           currency={currency}
           onSubmit={submitDraft}
-          onDelete={removeEntry}
+          onDelete={setPendingDelete}
           onClose={closeDraft}
+        />
+      )}
+
+      {/* Opened from the row's trash control or the edit form's, and the only
+          path to a delete: nothing calls removeEntry without going through it. */}
+      {pendingDelete && (
+        <ConfirmDeleteSheet
+          entry={pendingDelete}
+          currency={currency}
+          onConfirm={() => removeEntry(pendingDelete)}
+          onClose={() => setPendingDelete(null)}
         />
       )}
 
@@ -272,7 +301,7 @@ export default function App() {
           config={ledger.config}
           me={me}
           spreadsheetId={connection.spreadsheetId}
-          tombstoneCount={ledger.tombstoneCount}
+          tombstoneCount={deleted.length}
           onSetMe={setMe}
           onCompact={ledger.compact}
           onForget={switchSheet}
@@ -280,7 +309,7 @@ export default function App() {
         />
       )}
 
-      <Toasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
+      <Toasts toasts={toasts.toasts} />
     </div>
   )
 }

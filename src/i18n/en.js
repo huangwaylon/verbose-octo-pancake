@@ -26,6 +26,7 @@ export default {
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'common.add': 'Add',
+  'common.delete': 'Delete',
   'common.close': 'Close',
   'common.retry': 'Try again',
   'common.optional': 'optional',
@@ -81,6 +82,25 @@ export default {
   'entry.deleteSettlement': 'Delete settlement',
   'entry.delete': 'Delete {description}',
   'entry.metaSeparator': ' · ',
+
+  // --- deleted entries ------------------------------------------------------
+  // The count is in the summary line because the section is collapsed: closed,
+  // it is the only thing that says whether opening it is worth it.
+  'deleted.title': {
+    one: 'Deleted · {count} entry',
+    other: 'Deleted · {count} entries',
+  },
+  'deleted.hint': 'Restore any of these, or clear them for good in settings.',
+  'deleted.meta': '{date} · {name} paid',
+  'deleted.restore': 'Restore',
+  // Several identical "Restore" buttons in a column say nothing about which
+  // entry each one belongs to.
+  'deleted.restoreEntry': 'Restore {description}',
+
+  // --- delete confirmation --------------------------------------------------
+  'confirm.deleteTitle': 'Delete this entry?',
+  'confirm.deleteBody':
+    '{description} · {amount} moves to Deleted at the bottom of the list, where you can restore it.',
 
   // --- add / edit form ------------------------------------------------------
   'form.addTitle': 'Add expense',
@@ -138,7 +158,7 @@ export default {
     'These come from the {tab} tab of your sheet. Edit them there and refresh.',
   'settings.deletedRows': 'Deleted rows',
   'settings.deletedRowsHint':
-    'Deleted entries stay in the sheet as tombstones so nothing shifts position and undo keeps working. Clearing them is permanent.',
+    'Deleted entries stay in the sheet as tombstones so nothing shifts position and they can still be restored from the deleted list. Clearing them is permanent.',
   'settings.removeRows': {
     one: 'Permanently remove {count} row',
     other: 'Permanently remove {count} rows',
@@ -171,8 +191,9 @@ export default {
 
   // --- toasts and errors ----------------------------------------------------
   'toast.deleted': 'Deleted',
-  'toast.undo': 'Undo',
   'toast.deleteFailed': 'Could not delete that.',
+  'toast.restored': 'Restored',
+  'toast.restoreFailed': 'Could not restore that.',
   'error.readSheet': 'Could not read the sheet.',
   'error.badKey': 'That app key was rejected.',
   'error.keyRequired': 'Enter your app key.',

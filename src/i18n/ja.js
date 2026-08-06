@@ -23,6 +23,7 @@ export default {
   'common.cancel': 'キャンセル',
   'common.save': '保存',
   'common.add': '追加',
+  'common.delete': '削除',
   'common.close': '閉じる',
   'common.retry': 'もう一度試す',
   'common.optional': '任意',
@@ -73,6 +74,20 @@ export default {
   'entry.deleteSettlement': '精算を削除',
   'entry.delete': '{description}を削除',
   'entry.metaSeparator': '・',
+
+  // --- deleted entries ------------------------------------------------------
+  'deleted.title': {
+    other: '削除ずみ・{count}件',
+  },
+  'deleted.hint': '元に戻すか、設定でまとめて完全に削除できます。',
+  'deleted.meta': '{date}・{name}の支払い',
+  'deleted.restore': '元に戻す',
+  'deleted.restoreEntry': '{description}を元に戻す',
+
+  // --- delete confirmation --------------------------------------------------
+  'confirm.deleteTitle': 'この記録を削除しますか？',
+  'confirm.deleteBody':
+    '{description}・{amount}は下の「削除ずみ」に移ります。そこから元に戻せます。',
 
   // --- add / edit form ------------------------------------------------------
   'form.addTitle': '支出を追加',
@@ -126,7 +141,7 @@ export default {
     'これらはシートの{tab}タブから読み込まれます。変更したらタブを編集して再読み込みしてください。',
   'settings.deletedRows': '削除ずみの行',
   'settings.deletedRowsHint':
-    '削除した記録は、行の位置がずれず「元に戻す」が使えるように、シートに印だけ残ります。まとめて消すと元に戻せません。',
+    '削除した記録は、行の位置がずれず「削除ずみ」から元に戻せるように、シートに印だけ残ります。まとめて消すと元に戻せません。',
   'settings.removeRows': {
     other: '{count}行を完全に削除',
   },
@@ -158,8 +173,9 @@ export default {
 
   // --- toasts and errors ----------------------------------------------------
   'toast.deleted': '削除しました',
-  'toast.undo': '元に戻す',
   'toast.deleteFailed': '削除できませんでした。',
+  'toast.restored': '元に戻しました',
+  'toast.restoreFailed': '元に戻せませんでした。',
   'error.readSheet': 'シートを読み込めませんでした。',
   'error.badKey': 'このアプリキーは受け付けられませんでした。',
   'error.keyRequired': 'アプリキーを入力してください。',

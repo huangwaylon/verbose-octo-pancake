@@ -288,7 +288,6 @@ export function useLedger(spreadsheetId) {
     config,
     status,
     error,
-    tombstoneCount: entries.filter((item) => item.deletedAt).length,
     refresh,
     addEntry,
     editEntry,

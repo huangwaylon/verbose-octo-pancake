@@ -12,6 +12,8 @@ import { BalanceCard } from '../src/components/BalanceCard.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
 import { EntryFormSheet } from '../src/components/EntryFormSheet.jsx'
+import { ConfirmDeleteSheet } from '../src/components/ConfirmDeleteSheet.jsx'
+import { DeletedList } from '../src/components/DeletedList.jsx'
 
 /** The locale is a module singleton, so every test that changes it restores it. */
 afterEach(() => {
@@ -209,6 +211,123 @@ describe('entry form: presets and default split', () => {
   })
 })
 
+describe('delete confirmation', () => {
+  const target = makeEntry(
+    {
+      id: 'x',
+      type: ENTRY_TYPE.EXPENSE,
+      date: '2026-08-04',
+      payer: PERSON.P1,
+      amountCents: 1250,
+      currency: 'JPY',
+      category: 'Groceries',
+      description: 'Ozeki',
+      payerShare: EVEN_SHARE,
+    },
+    '2026-08-04T10:00:00.000Z',
+  )
+
+  const render = (entry) =>
+    renderToStaticMarkup(
+      <ConfirmDeleteSheet entry={entry} currency="JPY" onConfirm={noop} onClose={noop} />,
+    )
+
+  it('names and prices the entry, so the question is answerable', () => {
+    const markup = render(target)
+    expect(markup).toContain('Ozeki')
+    expect(markup).toContain('1,250')
+  })
+
+  it('offers a way out alongside the destructive action, and marks which is which', () => {
+    const markup = render(target)
+    expect(markup).toContain('btn--danger')
+    expect(markup).toContain('Cancel')
+    // Cancel must come first in the DOM: BottomSheet focuses the first control.
+    expect(markup.indexOf('Cancel')).toBeLessThan(markup.indexOf('btn--danger'))
+  })
+
+  it('says where the entry goes, since that is what makes it a recoverable delete', () => {
+    expect(render(target)).toContain('restore')
+  })
+
+  it('names a settlement as a settlement rather than as an expense', () => {
+    const markup = render({ ...target, type: ENTRY_TYPE.SETTLEMENT, category: '', description: '' })
+    expect(markup).toContain('Settled up')
+    expect(markup).not.toContain('Expense')
+  })
+})
+
+describe('deleted entries list', () => {
+  const removed = (id, overrides) =>
+    makeEntry(
+      {
+        id,
+        type: ENTRY_TYPE.EXPENSE,
+        date: '2026-08-04',
+        payer: PERSON.P1,
+        amountCents: 1250,
+        currency: 'JPY',
+        category: 'Groceries',
+        payerShare: EVEN_SHARE,
+        deletedAt: '2026-08-04T12:00:00.000Z',
+        ...overrides,
+      },
+      '2026-08-04T10:00:00.000Z',
+    )
+
+  const render = (entries) =>
+    renderToStaticMarkup(
+      <DeletedList
+        entries={entries}
+        config={config}
+        me={PERSON.P1}
+        currency="JPY"
+        onRestore={noop}
+      />,
+    )
+
+  it('renders nothing at all when nothing has been deleted', () => {
+    expect(render([])).toBe('')
+  })
+
+  it('starts collapsed: opening it has to be someone’s decision', () => {
+    const markup = render([removed('a')])
+    expect(markup).toContain('<details')
+    expect(markup).not.toContain('open')
+  })
+
+  it('says how many there are while it is still closed', () => {
+    expect(render([removed('a')])).toContain('1 entry')
+    expect(render([removed('a'), removed('b')])).toContain('2 entries')
+  })
+
+  it('offers a restore control per entry, each naming its own entry', () => {
+    const markup = render([removed('a', { description: 'Ozeki' }), removed('b', { description: 'Life' })])
+    expect(markup.match(/Restore/g).length).toBeGreaterThanOrEqual(2)
+    expect(markup).toContain('aria-label="Restore Ozeki"')
+    expect(markup).toContain('aria-label="Restore Life"')
+  })
+
+  it('is not filtered by month — a tombstone is looked for by what it was', () => {
+    const markup = render([
+      removed('a', { description: 'Ozeki' }),
+      removed('b', { date: '2024-01-15', description: 'OK Mart' }),
+    ])
+    expect(markup).toContain('Ozeki')
+    expect(markup).toContain('OK Mart')
+  })
+
+  it('prices each row at its own currency, not the sheet’s', () => {
+    // The same integer at two scales: ¥1250 must not render as $1,250.
+    const markup = render([removed('a', { currency: 'USD', amountCents: 1250 })])
+    expect(markup).toContain('$12.50')
+  })
+
+  it('dims a row whose write has not landed yet', () => {
+    expect(render([{ ...removed('a'), pending: true }])).toContain('entry--pending')
+  })
+})
+
 describe('Japanese rendering', () => {
   const entries = [
     makeEntry(
@@ -238,6 +357,21 @@ describe('Japanese rendering', () => {
       '2026-08-03T10:00:00.000Z',
     ),
   ]
+
+  const removed = makeEntry(
+    {
+      id: 'c',
+      type: ENTRY_TYPE.EXPENSE,
+      date: '2026-08-02',
+      payer: PERSON.P2,
+      amountCents: 640,
+      currency: 'JPY',
+      category: 'Dining',
+      payerShare: EVEN_SHARE,
+      deletedAt: '2026-08-02T12:00:00.000Z',
+    },
+    '2026-08-02T10:00:00.000Z',
+  )
 
   function renderAll() {
     const balance = computeBalance(entries)
@@ -272,6 +406,18 @@ describe('Japanese rendering', () => {
           onDelete={noop}
           onAdd={noop}
         />,
+      ),
+      renderToStaticMarkup(
+        <DeletedList
+          entries={[removed]}
+          config={config}
+          me={PERSON.P1}
+          currency="JPY"
+          onRestore={noop}
+        />,
+      ),
+      renderToStaticMarkup(
+        <ConfirmDeleteSheet entry={removed} currency="JPY" onConfirm={noop} onClose={noop} />,
       ),
     ].join('')
   }

@@ -462,11 +462,7 @@
 }
 
 .toast {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-4);
   background-color: var(--ink);
   color: var(--bg);
   border-radius: var(--radius-lg);
@@ -480,27 +476,6 @@
    always says what happened. */
 .toast--error {
   border-left: 3px solid var(--danger);
-}
-
-/* Undo is the reason a delete needs no confirm dialog, so it gets a full tap
-   target and a ring that is actually visible on the dark toast (--accent
-   measures 2.20:1 there; --bg measures 17.4:1). */
-.toast__action {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--tap-target);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-sm);
-  color: var(--bg);
-  font-size: var(--fs-label);
-  font-weight: 600;
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
-}
-
-.toast__action:focus-visible {
-  outline-color: var(--bg);
 }
 
 .spinner {

@@ -47,10 +47,14 @@ mistake — and adding three tabs to an unrelated spreadsheet is not something u
 reach. A fresh spreadsheet has exactly one default tab, so several tabs with none of
 ours among them is refused.
 
-**Deletes are soft.** `setDeletedAt` writes a timestamp and the client filters,
-so rows never change position and undo is one cell write. `compact()` is the only
-hard delete; it reads each person's tab independently and must issue its
-`deleteDimension` requests in **descending** row order within each tab, or
+**Deletes are soft, confirmed, and reversible.** `setDeletedAt` writes a timestamp and the
+client filters, so rows never change position and a restore is one cell write. Every delete
+goes through `ConfirmDeleteSheet` — `App` owns `pendingDelete` and nothing else calls
+`removeEntry`, so the row's trash control and the edit form's both land on the same dialog.
+Recovery is the collapsed `DeletedList` at the bottom of the list, not a toast: a toast that
+has timed out is a delete nobody can undo, which is why there is no toast action left in the
+app. `compact()` is the only hard delete; it reads each person's tab independently and must
+issue its `deleteDimension` requests in **descending** row order within each tab, or
 earlier deletions shift the indices of later ones.
 
 **Money is integer minor units** — cents for USD, **whole yen for JPY**, fils for

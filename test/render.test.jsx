@@ -99,7 +99,7 @@ describe('gates render', () => {
 
 describe('toasts render', () => {
   it('renders nothing at all when there is nothing to say', () => {
-    expect(renderToStaticMarkup(<Toasts toasts={[]} onDismiss={noop} />)).toBe('')
+    expect(renderToStaticMarkup(<Toasts toasts={[]} />)).toBe('')
   })
 
   it('has one tone beyond the default, and it is error', () => {
@@ -110,7 +110,6 @@ describe('toasts render', () => {
           { id: 'a', message: 'Saved' },
           { id: 'b', message: 'Could not save', tone: 'error' },
         ]}
-        onDismiss={noop}
       />,
     )
     expect(markup).toContain('Saved')
@@ -120,15 +119,14 @@ describe('toasts render', () => {
   })
 
   it('interrupts for a failure and waits its turn for anything else', () => {
-    // A write failure has to be spoken now; an Undo offer must not cut across
-    // whatever the person is reading.
+    // A write failure has to be spoken now; a "Deleted" confirmation must not
+    // cut across whatever the person is reading.
     const markup = renderToStaticMarkup(
       <Toasts
         toasts={[
-          { id: 'a', message: 'Deleted', action: { label: 'Undo', onClick: noop } },
+          { id: 'a', message: 'Deleted' },
           { id: 'b', message: 'Could not save', tone: 'error' },
         ]}
-        onDismiss={noop}
       />,
     )
     expect(markup).toContain('role="status" aria-live="polite"')

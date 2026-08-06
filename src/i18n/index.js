@@ -12,6 +12,7 @@
 
 import { useMemo, useSyncExternalStore } from 'react'
 import { STORAGE_KEYS, readStored, writeStored } from '../config.js'
+import { ENTRY_TYPE } from '../schema.js'
 import { formatCents } from '../lib/money.js'
 import { nameOf } from '../lib/identity.js'
 import { CATALOGS, DEFAULT_LOCALE, SUPPORTED } from './catalogs.js'
@@ -189,6 +190,24 @@ export function usePeopleLabels(config, me) {
     return { name, label: (person) => (person === me ? you : name(person)) }
     // `locale` is the dependency that matters; `t` is derived from it.
   }, [config, me, locale])
+}
+
+/**
+ * An entry's one-line title. Three surfaces need exactly the same string — the
+ * list row, the delete confirmation and the deleted list — and a confirmation
+ * that says "Delete Expense?" for a row with neither note nor category is the
+ * reason the fallback chain lives in one place rather than three.
+ */
+export function useEntryTitle() {
+  const { t, locale } = useT()
+  return useMemo(
+    () => (entry) =>
+      entry.type === ENTRY_TYPE.SETTLEMENT
+        ? t('entry.settled')
+        : entry.description || entry.category || t('entry.expense'),
+    // `locale` is the dependency that matters; `t` is derived from it.
+    [locale],
+  )
 }
 
 /**

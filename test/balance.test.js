@@ -8,6 +8,7 @@ import {
   filterByMonth,
   monthKeysPresent,
   groupByDate,
+  deletedEntries,
 } from '../src/lib/balance.js'
 import { makeEntry, PERSON, ENTRY_TYPE, EVEN_SHARE } from '../src/schema.js'
 
@@ -257,6 +258,43 @@ describe('soft deletes are excluded from every aggregate', () => {
     // rowToEntry normalises '' to null, but defend the boundary anyway.
     const notDeleted = expense('nd', 100, { deletedAt: '' })
     expect(totalSpend([notDeleted])).toBe(100)
+  })
+})
+
+describe('deletedEntries', () => {
+  const live = expense('live', 5000)
+  const first = expense('first', 100, { deletedAt: '2026-03-02T00:00:00.000Z' })
+  const second = expense('second', 200, { deletedAt: '2026-03-04T00:00:00.000Z' })
+
+  it('is exactly the complement of what every aggregate keeps', () => {
+    expect(deletedEntries([live, first, second]).map((e) => e.id)).toEqual(['second', 'first'])
+  })
+
+  it('puts the most recently deleted first, which is what someone is looking for', () => {
+    expect(deletedEntries([first, second])[0].id).toBe('second')
+  })
+
+  it('keeps entries from any month, since a tombstone is found by what it was', () => {
+    const old = expense('old', 300, {
+      date: '2020-01-01',
+      deletedAt: '2026-03-03T00:00:00.000Z',
+    })
+    expect(deletedEntries([first, old, second]).map((e) => e.id)).toEqual([
+      'second',
+      'old',
+      'first',
+    ])
+  })
+
+  it('does not mutate the list it was handed', () => {
+    const entries = [first, second]
+    deletedEntries(entries)
+    expect(entries.map((e) => e.id)).toEqual(['first', 'second'])
+  })
+
+  it('survives a missing or malformed list', () => {
+    expect(deletedEntries(undefined)).toEqual([])
+    expect(deletedEntries([null, undefined])).toEqual([])
   })
 })
 

@@ -1,11 +1,11 @@
 /**
  * The live region sits on each toast rather than on the stack, because the two
- * tones need different urgency: a write failure must interrupt, an Undo offer
- * must not. Two wrapper regions inside the stack would need their own layout —
- * per-toast roles need no CSS at all, and a freshly inserted alert/status is
- * announced the same way.
+ * tones need different urgency: a write failure must interrupt, a "Deleted"
+ * confirmation must not. Two wrapper regions inside the stack would need their
+ * own layout — per-toast roles need no CSS at all, and a freshly inserted
+ * alert/status is announced the same way.
  */
-export function Toasts({ toasts, onDismiss }) {
+export function Toasts({ toasts }) {
   if (!toasts.length) return null
 
   return (
@@ -20,18 +20,6 @@ export function Toasts({ toasts, onDismiss }) {
             aria-live={isError ? 'assertive' : 'polite'}
           >
             <span>{toast.message}</span>
-            {toast.action ? (
-              <button
-                type="button"
-                className="toast__action"
-                onClick={() => {
-                  onDismiss(toast.id)
-                  toast.action.onClick()
-                }}
-              >
-                {toast.action.label}
-              </button>
-            ) : null}
           </div>
         )
       })}

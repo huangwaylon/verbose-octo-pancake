@@ -1,0 +1,73 @@
+import { dayLabel } from '../lib/dates.js'
+import { useDayLabels, useEntryTitle, useMoney, usePeopleLabels, useT } from '../i18n/index.js'
+import { ChevronRightIcon } from './icons.jsx'
+
+/**
+ * Every tombstoned entry, all months, most recently deleted first.
+ *
+ * A `<details>` rather than React state: the open/closed flag is the element's
+ * own, so it starts closed by construction, needs no reset when the list changes
+ * underneath it, and keyboard and screen-reader behaviour come from the
+ * platform. This is a recovery surface, not a view — hence last on the page.
+ */
+export function DeletedList({ entries, config, me, currency, onRestore }) {
+  const { t, locale } = useT()
+  const labels = useDayLabels()
+  const { label } = usePeopleLabels(config, me)
+
+  if (!entries.length) return null
+
+  return (
+    <details className="deleted">
+      <summary className="deleted__summary">
+        <ChevronRightIcon className="deleted__chevron" width={16} height={16} />
+        {t('deleted.title', { count: entries.length })}
+      </summary>
+      <p className="field__hint">{t('deleted.hint')}</p>
+      <ul className="surface">
+        {entries.map((entry) => (
+          <DeletedRow
+            key={entry.id}
+            entry={entry}
+            currency={currency}
+            payerLabel={label(entry.payer)}
+            dateLabel={dayLabel(entry.date, { locale, labels })}
+            onRestore={onRestore}
+          />
+        ))}
+      </ul>
+    </details>
+  )
+}
+
+/** Its own component so each row can format at its own currency's scale. */
+function DeletedRow({ entry, currency, payerLabel, dateLabel, onRestore }) {
+  const { t } = useT()
+  const money = useMoney(entry.currency || currency)
+  const description = useEntryTitle()(entry)
+
+  return (
+    <li className={`entry${entry.pending ? ' entry--pending' : ''}`}>
+      <span className="entry__main">
+        <span className="entry__desc">{description}</span>
+        <span className="entry__meta">{t('deleted.meta', { date: dateLabel, name: payerLabel })}</span>
+      </span>
+
+      <span className="entry__amount tnum">
+        {money(entry.amountCents, { trimZeroCents: true })}
+      </span>
+
+      {/* Text, not an icon: there is no conventional glyph for "undelete", and
+          several identical unlabelled buttons in a row say nothing about which
+          entry each one restores — hence the per-row accessible name too. */}
+      <button
+        type="button"
+        className="btn btn--sm btn--ghost"
+        onClick={() => onRestore(entry)}
+        aria-label={t('deleted.restoreEntry', { description })}
+      >
+        {t('deleted.restore')}
+      </button>
+    </li>
+  )
+}

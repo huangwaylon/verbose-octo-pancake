@@ -177,6 +177,21 @@ export function monthKeysPresent(entries) {
 }
 
 /**
+ * Every soft-deleted entry, most recently deleted first — the restore surface,
+ * and the one view in the app that wants exactly the rows everything else
+ * filters out. Not month-filtered: a tombstone is looked for by what it was,
+ * not by when it was spent.
+ *
+ * @param {object[]} entries
+ * @returns {object[]}
+ */
+export function deletedEntries(entries) {
+  const tombstoned = Array.isArray(entries) ? entries.filter((entry) => entry?.deletedAt) : []
+  // ISO timestamps sort lexicographically the same way they sort in time.
+  return tombstoned.sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))
+}
+
+/**
  * Entries grouped into day sections for the list view: newest day first, and
  * newest-entered first within a day.
  *

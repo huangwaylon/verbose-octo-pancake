@@ -39,8 +39,9 @@ literal text and dates are never reformatted.
 
 Deletes are soft — `deleted_at` is stamped and the row filtered out client-side — because
 the Sheets API addresses rows by index, so a hard delete would shift every row below it
-out from under the other person's cached positions. Undo is therefore one cell write, and
-the manual **compact** action is the only hard delete.
+out from under the other person's cached positions. Deleting therefore asks for
+confirmation first and is then one cell write, reversible from the collapsed **Deleted**
+section at the bottom of the list; the manual **compact** action is the only hard delete.
 
 ### `config` tab
 

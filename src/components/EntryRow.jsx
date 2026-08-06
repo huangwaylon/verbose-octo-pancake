@@ -1,5 +1,5 @@
 import { ENTRY_TYPE, EVEN_SHARE, otherPerson } from '../schema.js'
-import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
+import { useEntryTitle, usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { SwapIcon, TrashIcon } from './icons.jsx'
 
 export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
@@ -8,6 +8,7 @@ export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
   // change is only rendered correctly per row.
   const money = useMoney(entry.currency || currency)
   const { label } = usePeopleLabels(config, me)
+  const description = useEntryTitle()(entry)
 
   const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
   const payerLabel = label(entry.payer)
@@ -37,8 +38,6 @@ export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
         .filter(Boolean)
         .join(separator)
 
-  const description = entry.description || entry.category || t('entry.expense')
-
   return (
     <li
       className={`entry${isSettlement ? ' entry--settlement' : ''}${
@@ -50,7 +49,7 @@ export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
           {isSettlement ? (
             <>
               <SwapIcon width={16} height={16} />
-              {t('entry.settled')}
+              {description}
             </>
           ) : (
             description

@@ -552,6 +552,50 @@
 }
 
 /* =========================================================================
+   Deleted entries
+   =========================================================================
+   Last on the page and closed until asked for: recovering a mistaken delete is
+   rare, and a permanent list of things that are gone is visual debt on every
+   other visit. The disclosure is a native <details>, so the state is the
+   element's own and the chevron is the only thing CSS has to say about it. */
+
+.deleted {
+  margin-top: var(--space-6);
+}
+
+.deleted__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--tap-target);
+  color: var(--ink-2);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  cursor: pointer;
+  /* Firefox draws the marker via list-style; WebKit needs its own pseudo. Both
+     are replaced by the chevron, which can be positioned and coloured. */
+  list-style: none;
+}
+
+.deleted__summary::-webkit-details-marker {
+  display: none;
+}
+
+.deleted__chevron {
+  color: var(--ink-3);
+  transition: transform var(--transition-fast);
+}
+
+.deleted[open] .deleted__chevron {
+  transform: rotate(90deg);
+}
+
+.deleted .field__hint {
+  margin-bottom: var(--space-3);
+}
+
+/* =========================================================================
    Split control
    ========================================================================= */
 
@@ -648,6 +692,15 @@
 }
 
 .settings__value {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--fs-label);
+  line-height: var(--lh-prose);
+}
+
+/* A confirmation's one sentence. Body size at prose leading, not --field__hint's
+   caption: it is the question being asked, not a footnote to it. */
+.confirm__text {
   margin: 0;
   color: var(--ink-2);
   font-size: var(--fs-label);

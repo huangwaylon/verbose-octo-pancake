@@ -28,6 +28,8 @@ import { BalanceCard } from '../src/components/BalanceCard.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
 import { MonthNav } from '../src/components/MonthNav.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
+import { DeletedList } from '../src/components/DeletedList.jsx'
+import { ConfirmDeleteSheet } from '../src/components/ConfirmDeleteSheet.jsx'
 import { PlusIcon } from '../src/components/icons.jsx'
 
 const config = {
@@ -65,7 +67,30 @@ const entries = raw.map(([id, date, payer, amountCents, category, description, p
   ),
 )
 
-function body() {
+/** Two tombstones, so the deleted section renders with its plural and a hairline. */
+const deleted = [
+  ['x', '2026-07-30', PERSON.P2, 2200, '外食', 'まちがえて二重に登録'],
+  ['y', '2026-07-28', PERSON.P1, 780, '日用品', ''],
+].map(([id, date, payer, amountCents, category, description]) =>
+  makeEntry(
+    {
+      id,
+      type: ENTRY_TYPE.EXPENSE,
+      date,
+      payer,
+      amountCents,
+      currency: 'JPY',
+      category,
+      description,
+      payerShare: EVEN_SHARE,
+      deletedAt: `${date}T12:00:00.000Z`,
+    },
+    `${date}T10:00:00.000Z`,
+  ),
+)
+
+/** `confirming` renders the delete dialog over the surface, which is how it ships. */
+function body(confirming) {
   const balance = computeBalance(entries)
   const noop = () => {}
 
@@ -102,11 +127,26 @@ function body() {
             onDelete={noop}
             onAdd={noop}
           />
+          <DeletedList
+            entries={deleted}
+            config={config}
+            me={PERSON.P1}
+            currency="JPY"
+            onRestore={noop}
+          />
         </section>
       </main>
       <button type="button" className="fab" aria-label={t('list.emptyAction')}>
         <PlusIcon width={24} height={24} />
       </button>
+      {confirming && (
+        <ConfirmDeleteSheet
+          entry={confirming}
+          currency="JPY"
+          onConfirm={noop}
+          onClose={noop}
+        />
+      )}
     </div>,
   )
 }
@@ -140,5 +180,13 @@ for (const [locale, accents] of [
     writeFileSync(new URL(`./${name}`, import.meta.url), page(body(), locale, accent))
     written.push(`scripts/${name}`)
   }
+  // Its own page in both languages: the dialog covers the surface it sits on,
+  // and its copy is the longest sentence in either catalog.
+  const name = `preview-${locale}-confirm.html`
+  writeFileSync(
+    new URL(`./${name}`, import.meta.url),
+    page(body(entries[0]), locale, ACCENTS[0]),
+  )
+  written.push(`scripts/${name}`)
 }
 console.log(`wrote ${written.join(', ')}`)

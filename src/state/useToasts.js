@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 const DEFAULT_DURATION = 4000
-const UNDO_DURATION = 7000
 const ERROR_DURATION = 6000
 
 /**
- * A tiny toast stack. Used for two things: reporting write failures, and
- * offering Undo after a delete — which is why deletes need no confirm dialog.
+ * A tiny toast stack. Two jobs: reporting a write failure, and confirming that a
+ * delete or a restore actually reached the sheet. Nothing here is interactive —
+ * a deleted entry is recovered from the deleted list, not from a toast that has
+ * probably already timed out.
  */
 export function useToasts() {
   const [toasts, setToasts] = useState([])
@@ -22,13 +23,12 @@ export function useToasts() {
   }, [])
 
   const push = useCallback(
-    ({ message, tone = 'info', action, duration }) => {
+    ({ message, tone = 'info', duration = DEFAULT_DURATION }) => {
       const id = crypto.randomUUID()
-      const ttl = duration ?? (action ? UNDO_DURATION : DEFAULT_DURATION)
-      setToasts((current) => [...current, { id, message, tone, action }])
+      setToasts((current) => [...current, { id, message, tone }])
       timers.current.set(
         id,
-        setTimeout(() => dismiss(id), ttl),
+        setTimeout(() => dismiss(id), duration),
       )
     },
     [dismiss],
@@ -50,5 +50,5 @@ export function useToasts() {
     }
   }, [])
 
-  return { toasts, push, error, dismiss }
+  return { toasts, push, error }
 }
