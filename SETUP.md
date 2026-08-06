@@ -111,8 +111,9 @@ it only has to exist.
    the `spreadsheets` scope from step 3.
 4. Copy the **Web app URL**, ending in `/exec`.
 
-Opening that URL in a browser should print `{"ok":true}`. That only proves the
-deployment is live. Confirm the part that actually matters:
+The script answers only POSTs, so there is nothing to check in a browser address
+bar — that is deliberate. Confirm it this way instead, which also proves the part
+most likely to be wrong:
 
 ```sh
 URL='https://script.google.com/macros/s/…/exec'
@@ -129,10 +130,6 @@ A tab list means it works. `SERVICE_DISABLED` means step 4 did not take.
 Note `--data` with no `-X POST`: `/exec` answers with a 302 and the redirect has to
 be followed as a GET, which is what a browser does and what forcing the method
 breaks.
-
-**Once the app is running, delete `doGet` and redeploy.** It exists only for that
-smoke test, and it is otherwise a free crawlable confirmation that a live endpoint
-is here, costing the same quota as a real call.
 
 ## 7. Point the app at it
 
@@ -174,6 +171,11 @@ phone is lost, if the key gets shared by accident, or on any suspicion at all.
 1. `openssl rand -hex 32`
 2. Apps Script → **Project Settings** → **Script Properties** → edit `APP_KEY`.
 3. Both people open the app and enter the new key.
+
+No redeployment: `APP_KEY` is read inside `doPost`, so a property change takes
+effect on the next request. Editing `Code.gs` is the opposite — a deployment is
+pinned to a version, so saving the editor changes nothing until **Deploy → Manage
+deployments →** pencil → **New version**.
 
 Rotation stops new tokens immediately. A token already issued lives out its hour —
 there is no way to revoke one individually, which is the accepted cost of this

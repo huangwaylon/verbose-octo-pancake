@@ -114,19 +114,11 @@ channel, so `useLedger` re-reads on `focus` and `visibilitychange`. Window
 switching is constant and every refresh spends per-user quota, hence the 30s
 floor — do not remove it.
 
-**The app key is the only credential, and it is never a build-time value.** It is typed
-once per device and lives in that device's `localStorage`. `VITE_SCRIPT_URL` ships in the
-public bundle, so nothing may depend on the endpoint URL being hard to guess — assume it is
-known. A `VITE_` variable holding the key would publish it.
-
-**The dedicated Google account must have access to exactly one spreadsheet, forever.** The
-minted token carries the `spreadsheets` scope, so confinement is not enforced by the scope;
-it is enforced by that account having nothing else to reach. Sharing a second sheet with it
-silently widens what a leaked key reaches, and nothing here will notice.
-
-**`localStorage` is scoped to the origin, not the path.** Every site published from the
-same GitHub Pages account can read the app key. Nothing untrusted — in particular nothing
-loading third-party scripts — may be published from that account.
+**The app key is never a build-time value, and the endpoint URL is not a secret.** The key
+is typed once per device and lives only there; `VITE_SCRIPT_URL` ships in the public bundle,
+so nothing may depend on the endpoint being hard to guess. Two standing conditions the code
+cannot enforce — the dedicated account owning exactly one spreadsheet, and nothing untrusted
+sharing the Pages origin — are in README's Security model. Both fail silently.
 
 **The token endpoint always answers HTTP 200.** `ContentService` cannot set a status, so
 `{"error":"unauthorized"}` arrives as a 200 and the body is the only signal. Branch on the
@@ -148,11 +140,10 @@ on the reject path becomes a silent retry loop. A body of `null` did exactly tha
 parses successfully, so the try/catch did not fire, and `body.key` dereferenced null. Never
 read `e.parameter` either — a key in a query string lands in Google's request logs.
 
-**The refresh margin is performance; the 401 retry is correctness.** `sheets.js` re-mints
-once on a 401 and retries once, and minting needs no user gesture, so the recovery is
-silent. `refreshToken` carries a generation counter: joining a mint that began *before* the
-401 would hand back the token Google just rejected, and the retry runs with
-`allowRetry: false`, turning a recoverable blip into a hard failure.
+**The refresh margin is performance; the 401 retry is correctness.** Minting needs no user
+gesture, so `sheets.js` recovers silently. `refreshToken`'s generation counter is why: a
+mint that began *before* the 401 may carry the token Google just rejected, and the retry
+runs with `allowRetry: false`.
 
 **The snapshot's `v` is a drop marker, never a migration.** An unrecognised version is
 ignored and re-fetched, which is free — the sheet is the source of truth. The snapshot

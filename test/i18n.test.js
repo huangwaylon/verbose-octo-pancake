@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { CATALOGS, DEFAULT_LOCALE, LOCALE_LABELS, SUPPORTED } from '../src/i18n/catalogs.js'
 import { getLocale, interpolate, setLocale, t, translate } from '../src/i18n/index.js'
 import { ENTRY_ERROR } from '../src/schema.js'
+import { CONNECTION_ERROR } from '../src/lib/connection.js'
 import { ACCENTS } from '../src/lib/theme.js'
 
 /**
@@ -169,6 +170,19 @@ describe('catalog usage', () => {
     // the bare string "badAmount".
     const untranslated = []
     for (const code of Object.values(ENTRY_ERROR)) {
+      for (const tag of SUPPORTED) {
+        if (!(`error.${code}` in CATALOGS[tag])) untranslated.push(`${tag}: error.${code}`)
+      }
+    }
+    expect(untranslated).toEqual([])
+  })
+
+  it('translates every connection failure code, in every locale', () => {
+    // The same blind spot, one step worse: these codes are attached to an error
+    // rather than passed to t(), so the usage scan cannot see them either. Without
+    // this, a rotated key would surface as the bare string "badKey".
+    const untranslated = []
+    for (const code of Object.values(CONNECTION_ERROR)) {
       for (const tag of SUPPORTED) {
         if (!(`error.${code}` in CATALOGS[tag])) untranslated.push(`${tag}: error.${code}`)
       }

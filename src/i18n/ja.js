@@ -161,7 +161,6 @@ export default {
   'toast.undo': '元に戻す',
   'toast.deleteFailed': '削除できませんでした。',
   'error.readSheet': 'シートを読み込めませんでした。',
-  'error.prepareSheet': 'シートを準備できませんでした。',
   'error.badKey': 'このアプリキーは受け付けられませんでした。',
   'error.keyRequired': 'アプリキーを入力してください。',
   'error.offline': 'シートにつながりませんでした。通信を確認してもう一度お試しください。',
@@ -169,7 +168,6 @@ export default {
     'シートのサービスが混み合っているか、利用できません。少し待ってからお試しください。',
   'error.scriptMisconfigured':
     'トークン用のエンドポイントがシート ID を返しませんでした。SHEET_ID プロパティを確認してください。',
-  'error.notConfigured': 'このビルドにはトークン用のエンドポイントが設定されていません。',
   'error.missingId': 'ID がありません。',
   'error.badDate': '日付は YYYY-MM-DD 形式の実在する日を入力してください。',
   'error.badAmount': '金額は 0 より大きい値を入力してください。',

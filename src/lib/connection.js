@@ -112,20 +112,34 @@ function restoreToken() {
 restoreToken()
 
 /**
- * The key was rejected. This is the ONLY terminal failure — everything else is
- * transient, because telling someone their key is wrong when the network merely
- * hiccuped is the worse mistake of the two.
+ * Every failure this module can report. Exported so `test/i18n.test.js` can prove
+ * each has a translation: these codes are attached to errors rather than passed to
+ * `t()`, so the catalog scan cannot see them, and its dead-key check exempts the
+ * `error.` prefix — between them a typo here would reach someone as the bare
+ * string "scriptUnavailable".
+ *
+ * `BAD_KEY` is the only terminal one. Everything else is transient, because
+ * telling someone their key is wrong when the network merely hiccuped is the worse
+ * mistake of the two.
  */
-function badKeyError() {
-  const error = new Error('The app key was rejected.')
-  error.i18nKey = 'error.badKey'
-  error.badKey = true
+export const CONNECTION_ERROR = {
+  BAD_KEY: 'badKey',
+  KEY_REQUIRED: 'keyRequired',
+  OFFLINE: 'offline',
+  SCRIPT_UNAVAILABLE: 'scriptUnavailable',
+  SCRIPT_MISCONFIGURED: 'scriptMisconfigured',
+}
+
+function connectionError(code, message) {
+  const error = new Error(message)
+  error.i18nKey = `error.${code}`
   return error
 }
 
-function transientError(i18nKey, message) {
-  const error = new Error(message)
-  error.i18nKey = i18nKey
+/** The key was rejected. `badKey` is what makes this the one terminal failure. */
+function badKeyError() {
+  const error = connectionError(CONNECTION_ERROR.BAD_KEY, 'The app key was rejected.')
+  error.badKey = true
   return error
 }
 
@@ -134,9 +148,10 @@ function transientError(i18nKey, message) {
  * broken this endpoint at least once during development.
  */
 async function mint() {
-  if (!SCRIPT_URL) {
-    throw transientError('error.notConfigured', 'Missing VITE_SCRIPT_URL. See SETUP.md.')
-  }
+  // Unreachable through the UI — `useConnection` reports `unconfigured` and the
+  // gate never offers to connect — so this is a build mistake rather than a state
+  // worth translating.
+  if (!SCRIPT_URL) throw new Error('Missing VITE_SCRIPT_URL. See SETUP.md.')
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), MINT_TIMEOUT_MS)
@@ -157,7 +172,7 @@ async function mint() {
       // through the hop returns "page not found".
     })
   } catch {
-    throw transientError('error.offline', 'Could not reach the token endpoint.')
+    throw connectionError(CONNECTION_ERROR.OFFLINE, 'Could not reach the token endpoint.')
   } finally {
     clearTimeout(timer)
   }
@@ -175,18 +190,27 @@ async function mint() {
     // Apps Script serves an HTML page when the quota is exhausted, during an
     // outage, and for any uncaught throw inside doPost. Transient: retrying is
     // right, and treating it as a bad key would be wrong.
-    throw transientError('error.scriptUnavailable', 'The token endpoint did not return JSON.')
+    throw connectionError(
+      CONNECTION_ERROR.SCRIPT_UNAVAILABLE,
+      'The token endpoint did not return JSON.',
+    )
   }
 
   if (payload?.error === 'unauthorized') throw badKeyError()
 
   if (typeof payload?.token !== 'string' || !payload.token) {
-    throw transientError('error.scriptUnavailable', 'The token endpoint returned no token.')
+    throw connectionError(
+      CONNECTION_ERROR.SCRIPT_UNAVAILABLE,
+      'The token endpoint returned no token.',
+    )
   }
   // An unset SHEET_ID script property would otherwise be persisted as the string
   // "null" and every request would go to /spreadsheets/null.
   if (typeof payload?.spreadsheetId !== 'string' || !payload.spreadsheetId) {
-    throw transientError('error.scriptMisconfigured', 'The token endpoint returned no sheet id.')
+    throw connectionError(
+      CONNECTION_ERROR.SCRIPT_MISCONFIGURED,
+      'The token endpoint returned no sheet id.',
+    )
   }
 
   return { accessToken: payload.token, spreadsheetId: payload.spreadsheetId }
@@ -267,7 +291,7 @@ export function onConnectionChange(listener) {
  */
 export async function connect(key) {
   const candidate = String(key ?? '').trim()
-  if (!candidate) throw transientError('error.keyRequired', 'No app key was entered.')
+  if (!candidate) throw connectionError(CONNECTION_ERROR.KEY_REQUIRED, 'No app key was entered.')
 
   const previousKey = appKey
   const previousSuspect = keySuspect

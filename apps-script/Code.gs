@@ -52,14 +52,11 @@ function doPost(e) {
 }
 
 /**
- * Setup smoke test only, so a browser address bar can confirm the deployment is
- * live. Returns no token: a key in a query string would land in Google's logs.
- * Remove once the app is running — it is a free, crawlable confirmation that a
- * live web app is deployed here, and it burns the same quota as a POST.
+ * There is deliberately no `doGet`. A GET-shaped endpoint that answers anything is
+ * a free, crawlable confirmation that a live Apps Script web app is deployed here,
+ * and it burns the same execution quota as a real call. Verify a deployment with
+ * the POST in SETUP.md instead, which also proves the part that actually matters.
  */
-function doGet() {
-  return json({ ok: true })
-}
 
 /** One reply for every rejection: no length, prefix or position is revealed. */
 function unauthorized() {
