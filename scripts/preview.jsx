@@ -67,10 +67,10 @@ const entries = raw.map(([id, date, payer, amountCents, category, description, p
   ),
 )
 
-/** Two tombstones, so the deleted section renders with its plural and a hairline. */
+/** Two tombstones, in the month being previewed, since the section is scoped to it. */
 const deleted = [
-  ['x', '2026-07-30', PERSON.P2, 2200, '外食', 'まちがえて二重に登録'],
-  ['y', '2026-07-28', PERSON.P1, 780, '日用品', ''],
+  ['x', '2026-08-03', PERSON.P2, 2200, '外食', 'まちがえて二重に登録'],
+  ['y', '2026-08-01', PERSON.P1, 780, '日用品', ''],
 ].map(([id, date, payer, amountCents, category, description]) =>
   makeEntry(
     {

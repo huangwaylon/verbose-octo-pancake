@@ -141,23 +141,28 @@ export function spendByPerson(entries) {
 }
 
 /**
- * Entries whose date falls inside a 'YYYY-MM' month.
+ * Whether an entry's ISO date falls inside a 'YYYY-MM' key.
  *
- * Deliberately a string prefix comparison on the ISO date. Constructing a Date
- * from 'YYYY-MM-DD' parses as UTC midnight and then shifts under the local
- * timezone, which silently moves the 1st and the last day of every month into
- * the neighbouring one for anyone west of UTC. Entries with a blank date are
- * excluded rather than guessed at.
+ * Deliberately a string prefix comparison. Constructing a Date from
+ * 'YYYY-MM-DD' parses as UTC midnight and then shifts under the local timezone,
+ * which silently moves the 1st and the last day of every month into the
+ * neighbouring one for anyone west of UTC. A blank date is in no month rather
+ * than guessed at.
+ */
+function inMonth(entry, monthKey) {
+  if (typeof monthKey !== 'string' || !MONTH_KEY.test(monthKey)) return false
+  return hasDate(entry) && entry.date.slice(0, 7) === monthKey
+}
+
+/**
+ * Entries whose date falls inside a 'YYYY-MM' month.
  *
  * @param {object[]} entries
  * @param {string} monthKey 'YYYY-MM'
  * @returns {object[]}
  */
 export function filterByMonth(entries, monthKey) {
-  if (typeof monthKey !== 'string' || !MONTH_KEY.test(monthKey)) return []
-  return activeEntries(entries).filter(
-    (entry) => hasDate(entry) && entry.date.slice(0, 7) === monthKey,
-  )
+  return activeEntries(entries).filter((entry) => inMonth(entry, monthKey))
 }
 
 /**
@@ -177,16 +182,23 @@ export function monthKeysPresent(entries) {
 }
 
 /**
- * Every soft-deleted entry, most recently deleted first — the restore surface,
- * and the one view in the app that wants exactly the rows everything else
- * filters out. Not month-filtered: a tombstone is looked for by what it was,
- * not by when it was spent.
+ * One month's soft-deleted entries, most recently deleted first — the restore
+ * surface, and the one view in the app that wants exactly the rows everything
+ * else filters out.
+ *
+ * Month-scoped for the same reason the list above it is: it sits under a month
+ * switcher, so a tombstone from another month showing there reads as belonging
+ * to the month on screen. Sheet-wide is what `compact` is for, and its count in
+ * settings is deliberately not this number.
  *
  * @param {object[]} entries
+ * @param {string} monthKey 'YYYY-MM'
  * @returns {object[]}
  */
-export function deletedEntries(entries) {
-  const tombstoned = Array.isArray(entries) ? entries.filter((entry) => entry?.deletedAt) : []
+export function deletedEntries(entries, monthKey) {
+  const tombstoned = (Array.isArray(entries) ? entries : []).filter(
+    (entry) => entry?.deletedAt && inMonth(entry, monthKey),
+  )
   // ISO timestamps sort lexicographically the same way they sort in time.
   return tombstoned.sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))
 }

@@ -53,9 +53,13 @@ goes through `ConfirmDeleteSheet` — `App` owns `pendingDelete` and nothing els
 `removeEntry`, so the row's trash control and the edit form's both land on the same dialog.
 Recovery is the collapsed `DeletedList` at the bottom of the list, not a toast: a toast that
 has timed out is a delete nobody can undo, which is why there is no toast action left in the
-app. `compact()` is the only hard delete; it reads each person's tab independently and must
-issue its `deleteDimension` requests in **descending** row order within each tab, or
-earlier deletions shift the indices of later ones.
+app. That list is **scoped to the month on screen** — it sits under the month switcher, so a
+tombstone from another month reads as belonging to the one being viewed; `deletedEntries`
+takes the month key for the same reason `filterByMonth` does, and settings' count stays
+sheet-wide because that is what `compact` acts on. `compact()` is the only hard delete; it
+reads each person's tab independently and must issue its `deleteDimension` requests in
+**descending** row order within each tab, or earlier deletions shift the indices of later
+ones.
 
 **Money is integer minor units** — cents for USD, **whole yen for JPY**, fils for
 KWD. `minorDigits(currency)` is the only place the exponent is decided, and it is

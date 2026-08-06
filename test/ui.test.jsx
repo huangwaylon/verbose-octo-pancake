@@ -308,10 +308,12 @@ describe('deleted entries list', () => {
     expect(markup).toContain('aria-label="Restore Life"')
   })
 
-  it('is not filtered by month — a tombstone is looked for by what it was', () => {
+  it('renders the entries it is handed — the month scoping is the caller’s job', () => {
+    // App passes deletedEntries(entries, monthKey); the component filters
+    // nothing, exactly like EntryList and its pre-grouped days.
     const markup = render([
       removed('a', { description: 'Ozeki' }),
-      removed('b', { date: '2024-01-15', description: 'OK Mart' }),
+      removed('b', { description: 'OK Mart' }),
     ])
     expect(markup).toContain('Ozeki')
     expect(markup).toContain('OK Mart')

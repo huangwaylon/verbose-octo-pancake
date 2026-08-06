@@ -90,7 +90,8 @@ export default {
     one: 'Deleted · {count} entry',
     other: 'Deleted · {count} entries',
   },
-  'deleted.hint': 'Restore any of these, or clear them for good in settings.',
+  'deleted.hint':
+    'Deleted from this month. Restore one here, or clear every deleted row for good in settings.',
   'deleted.meta': '{date} · {name} paid',
   'deleted.restore': 'Restore',
   // Several identical "Restore" buttons in a column say nothing about which

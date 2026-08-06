@@ -267,34 +267,59 @@ describe('deletedEntries', () => {
   const second = expense('second', 200, { deletedAt: '2026-03-04T00:00:00.000Z' })
 
   it('is exactly the complement of what every aggregate keeps', () => {
-    expect(deletedEntries([live, first, second]).map((e) => e.id)).toEqual(['second', 'first'])
-  })
-
-  it('puts the most recently deleted first, which is what someone is looking for', () => {
-    expect(deletedEntries([first, second])[0].id).toBe('second')
-  })
-
-  it('keeps entries from any month, since a tombstone is found by what it was', () => {
-    const old = expense('old', 300, {
-      date: '2020-01-01',
-      deletedAt: '2026-03-03T00:00:00.000Z',
-    })
-    expect(deletedEntries([first, old, second]).map((e) => e.id)).toEqual([
+    expect(deletedEntries([live, first, second], '2026-03').map((e) => e.id)).toEqual([
       'second',
-      'old',
       'first',
     ])
   })
 
+  it('puts the most recently deleted first, which is what someone is looking for', () => {
+    expect(deletedEntries([first, second], '2026-03')[0].id).toBe('second')
+  })
+
+  it('scopes to the month on screen: it sits under the month switcher', () => {
+    // Deleted in March, but spent in January — it belongs to January's list, or
+    // it reads as a January expense that was deleted from March.
+    const january = expense('jan', 300, {
+      date: '2026-01-15',
+      deletedAt: '2026-03-03T00:00:00.000Z',
+    })
+    expect(deletedEntries([first, january, second], '2026-03').map((e) => e.id)).toEqual([
+      'second',
+      'first',
+    ])
+    expect(deletedEntries([first, january, second], '2026-01').map((e) => e.id)).toEqual(['jan'])
+  })
+
+  it('sorts by when it was deleted, not by when it was spent', () => {
+    // Same month, opposite orders: the 1st was deleted last.
+    const early = expense('early', 100, {
+      date: '2026-03-01',
+      deletedAt: '2026-03-20T00:00:00.000Z',
+    })
+    const late = expense('late', 100, {
+      date: '2026-03-28',
+      deletedAt: '2026-03-02T00:00:00.000Z',
+    })
+    expect(deletedEntries([early, late], '2026-03').map((e) => e.id)).toEqual(['early', 'late'])
+  })
+
+  it('excludes a dateless tombstone, like every other month-scoped view', () => {
+    const undated = expense('undated', 100, { date: '', deletedAt: '2026-03-05T00:00:00.000Z' })
+    expect(deletedEntries([undated], '2026-03')).toEqual([])
+  })
+
   it('does not mutate the list it was handed', () => {
     const entries = [first, second]
-    deletedEntries(entries)
+    deletedEntries(entries, '2026-03')
     expect(entries.map((e) => e.id)).toEqual(['first', 'second'])
   })
 
-  it('survives a missing or malformed list', () => {
-    expect(deletedEntries(undefined)).toEqual([])
-    expect(deletedEntries([null, undefined])).toEqual([])
+  it('survives a missing or malformed list, and a bad month key', () => {
+    expect(deletedEntries(undefined, '2026-03')).toEqual([])
+    expect(deletedEntries([null, undefined], '2026-03')).toEqual([])
+    expect(deletedEntries([first, second], 'nope')).toEqual([])
+    expect(deletedEntries([first, second], undefined)).toEqual([])
   })
 })
 

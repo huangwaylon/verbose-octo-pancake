@@ -56,7 +56,12 @@ export default function App() {
   const currency = ledger.config.currency
 
   const active = useMemo(() => ledger.entries.filter(isActive), [ledger.entries])
-  const deleted = useMemo(() => deletedEntries(ledger.entries), [ledger.entries])
+  // Month-scoped, like the list it sits under. The sheet-wide count that
+  // `compact` acts on is `ledger.tombstoneCount`, which is a different number.
+  const deleted = useMemo(
+    () => deletedEntries(ledger.entries, monthKey),
+    [ledger.entries, monthKey],
+  )
   const balance = useMemo(() => computeBalance(active), [active])
   const monthEntries = useMemo(() => filterByMonth(active, monthKey), [active, monthKey])
   const groups = useMemo(() => groupByDate(monthEntries), [monthEntries])
@@ -301,7 +306,7 @@ export default function App() {
           config={ledger.config}
           me={me}
           spreadsheetId={connection.spreadsheetId}
-          tombstoneCount={deleted.length}
+          tombstoneCount={ledger.tombstoneCount}
           onSetMe={setMe}
           onCompact={ledger.compact}
           onForget={switchSheet}

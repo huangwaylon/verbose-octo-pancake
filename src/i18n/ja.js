@@ -79,7 +79,8 @@ export default {
   'deleted.title': {
     other: '削除ずみ・{count}件',
   },
-  'deleted.hint': '元に戻すか、設定でまとめて完全に削除できます。',
+  'deleted.hint':
+    'この月に削除した記録です。ここで元に戻すか、設定ですべての削除ずみを完全に削除できます。',
   'deleted.meta': '{date}・{name}の支払い',
   'deleted.restore': '元に戻す',
   'deleted.restoreEntry': '{description}を元に戻す',

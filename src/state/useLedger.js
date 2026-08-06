@@ -288,6 +288,9 @@ export function useLedger(spreadsheetId) {
     config,
     status,
     error,
+    // Sheet-wide, unlike the month-scoped deleted list in the UI: this is what
+    // `compact` would remove, and it removes every tombstone in both tabs.
+    tombstoneCount: entries.filter((item) => item.deletedAt).length,
     refresh,
     addEntry,
     editEntry,

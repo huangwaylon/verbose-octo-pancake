@@ -41,7 +41,8 @@ Deletes are soft — `deleted_at` is stamped and the row filtered out client-sid
 the Sheets API addresses rows by index, so a hard delete would shift every row below it
 out from under the other person's cached positions. Deleting therefore asks for
 confirmation first and is then one cell write, reversible from the collapsed **Deleted**
-section at the bottom of the list; the manual **compact** action is the only hard delete.
+section at the bottom of the month being viewed; the manual **compact** action is the only
+hard delete, and the only thing that spans every month at once.
 
 ### `config` tab
 
