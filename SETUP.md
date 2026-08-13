@@ -9,9 +9,10 @@ script mints carries the `spreadsheets` scope, which reaches every spreadsheet t
 owning account can see. An account that owns exactly one file is what keeps that
 scope harmless, and that is a permanent condition rather than a setup detail.
 
-There is no OAuth client, no API key, no consent screen for either person, and no
-Google Picker. If you are looking for those, they were removed — see the Security
-model section of [README.md](README.md).
+Neither person ever sees an OAuth client, an API key, a consent screen or a file
+picker — the script's own consent screen, in step 5, is authorized once by the
+dedicated account and never again. If you are looking for those, they were removed;
+see the Security model in [README.md](README.md).
 
 | Value used throughout | |
 | --- | --- |
@@ -43,9 +44,8 @@ endpoint. It is never a build-time value and never goes in the repository.
 
 ## 3. Create the script
 
-Signed in as the dedicated account. A separate browser profile is easiest — the
-Cloud console silently acts as the wrong account when several are signed in, which
-is the easiest hour to waste here.
+Signed in as the dedicated account, ideally in a separate browser profile: the
+Cloud console silently acts as the wrong account when several are signed in.
 
 1. Go to **script.new**. Rename the project **Shared Finances token minter**.
 2. Replace the contents of `Code.gs` with [`apps-script/Code.gs`](apps-script/Code.gs).
@@ -61,9 +61,6 @@ is the easiest hour to waste here.
    | --- | --- |
    | `SHEET_ID` | the id from step 1 |
    | `APP_KEY` | the key from step 2 |
-
-   Properties rather than literals, so the copy of the script in this repository
-   holds no secret and stays diffable.
 
 ## 4. Attach a Cloud project
 
@@ -93,9 +90,7 @@ indistinguishable from a quota problem. Publishing removes the expiry.
    **External**, then **Create**.
 2. **Audience** → **Publishing status** → **Publish app**.
 
-Publishing submits nothing for review. Verification only removes the warning screen
-and lifts the 100-user cap; one user with a sensitive scope on an unverified
-production app is a supported state. You will still click through **Advanced → Go
+Publishing submits nothing for review; you will still click through **Advanced → Go
 to Shared Finances token minter (unsafe)** when authorizing.
 
 Add no scopes here. `ScriptApp.getOAuthToken()` does not route through this screen;
@@ -127,9 +122,8 @@ curl -sS -H "Authorization: Bearer $TOKEN" \
 
 A tab list means it works. `SERVICE_DISABLED` means step 4 did not take.
 
-Note `--data` with no `-X POST`: `/exec` answers with a 302 and the redirect has to
-be followed as a GET, which is what a browser does and what forcing the method
-breaks.
+`--data` with no `-X POST` is deliberate: `/exec` answers with a 302 that has to be
+followed as a GET.
 
 ## 7. Point the app at it
 

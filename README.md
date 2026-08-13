@@ -73,12 +73,11 @@ to the account that owns the sheet rather than to either person.
 
 ## Security model
 
-**This is a usability change with a security cost, and it is worth stating plainly.**
-Replacing browser OAuth with a shared app key made the session never expire, which was the
-whole point. It also made the credential on each device *permanent* rather than
+Replacing browser OAuth with a shared app key made the session never expire, which was
+the whole point. It also made the credential on each device *permanent* rather than
 hour-limited, widened the token's reach from one picked file to every spreadsheet the
 dedicated account can see, and removed remote revocation. In exchange it deleted every
-third-party script from the page. Net: roughly neutral, and acceptable only under the four
+third-party script from the page. Roughly neutral, and acceptable only under the four
 conditions below.
 
 **The dedicated account must own exactly one spreadsheet, forever.** The minted token
@@ -93,9 +92,8 @@ Brute force is not a concern — 256 bits against a ~30 requests/second ceiling 
 Apps Script quota before any of our code runs, and Apps Script exposes no client IP, so no
 in-script throttle can help. The impact is availability only: writes fail, the endpoint
 returns HTML instead of JSON, the app falls back to cached data, and it self-heals when the
-quota resets. Nobody has a motive to do this to two people's grocery ledger, so it is
-accepted rather than engineered against — but the symptom is written down here because it
-is otherwise indistinguishable from a bug.
+quota resets. Accepted rather than engineered against; recorded because the symptom is
+otherwise indistinguishable from a bug.
 
 **Key rotation is the only incident response, and it is a documented minute.** See the end
 of [SETUP.md](SETUP.md). It stops new tokens at once; one already issued lives out its
@@ -107,40 +105,30 @@ nothing untrusted — in particular nothing loading third-party scripts — may 
 from that GitHub Pages account.
 
 **The CSP is now strict enough that no third-party JavaScript runs at all.**
-`script-src 'self'`, `frame-src 'none'`, and `connect-src` naming only the Sheets API and
-the two Apps Script hosts. `script.googleusercontent.com` looks redundant next to
+`script-src 'self'`, `frame-src 'none'`, and `connect-src` naming only `'self'`, the
+Sheets API and the two Apps Script hosts. `script.googleusercontent.com` looks redundant next to
 `script.google.com` and is not: `/exec` answers with a 302 to it. One caveat worth knowing
 — a `<meta>` CSP does not cover a service worker's own execution context, and Pages sends
 no CSP header, which is exactly why the service worker never intercepts a cross-origin
 request.
 
-**Access control on the sheet is Google's.** It is owned by the dedicated account and
-shared with the two people as Editors, general access **Restricted**. Both are full
-Editors, so either can edit or delete the other's entries. Nothing here touches a bank —
-entries are typed by hand.
+**Access control on the sheet is Google's.** Owned by the dedicated account, shared
+with the two people as Editors, general access **Restricted**.
 
 ## Cost
 
-$0/month on permanent free tiers — nothing to cancel, no card on file.
-
-| Thing | Cost |
-| --- | --- |
-| GitHub Pages, GitHub Actions | Free for public repos |
-| Google Cloud project | Free; no billing account required. It exists only so the Sheets API can be enabled |
-| Apps Script | Not billed at all. Quotas are rate limits — 6 min per execution, 30 concurrent — and two people entering groceries never approach them |
-| Sheets API | Not billed |
-| Storage | The sheet counts against the dedicated account's Drive quota — a few thousand rows of text is a rounding error |
+$0/month, nothing to cancel and no card on file. Pages and Actions are free for public
+repos; the Cloud project needs no billing account and exists only to enable the Sheets
+API; neither Apps Script nor the Sheets API is billed, and their quotas are rate limits
+two people entering groceries never approach. The sheet counts against the dedicated
+account's Drive quota, which a few thousand rows of text does not trouble.
 
 ## Deploy
 
 Pushing to `main` runs `.github/workflows/deploy.yml`: `npm ci`, `npm test`, build,
-upload a Pages artifact, deploy. Two things must be set once in the repo settings.
-**Settings > Pages > Source** must be **GitHub Actions** — under "Deploy from a branch"
-Pages publishes the repository tree verbatim and ignores the artifact, and the tell is a
-404 for `/src/main.jsx`, the dev-only script tag in the source `index.html`. **Settings
-> Secrets and variables > Actions > Variables** must hold `VITE_SCRIPT_URL`; it is read at
-build time, so a run predating it ships an empty string and the app reports itself
-unconfigured.
+upload a Pages artifact, deploy. Two repo settings have to be right for any of it to land —
+the Pages source and the `VITE_SCRIPT_URL` variable — both in **SETUP.md** step 7, with the
+symptoms each wrong setting produces.
 
 `vite.config.js` sets `base` to `/verbose-octo-pancake/`, because a project Pages site
 serves from `/<repo>/`. Rename the repo without updating it and the page is blank with
@@ -157,18 +145,16 @@ tags Safari still reads.
 
 Two caches, and between them a cold launch does no network work at all.
 
-`npm run build` runs `scripts/build-sw.js`, which walks `dist/` and emits a service worker
-precaching every file in it. The list comes from the tree rather than Vite's
-`.vite/manifest.json`, which omits `index.html` and everything copied from `public/`. The
-cache name hashes file *contents*, not names, because `index.html` is not in the JS module
-graph — a name-derived id would leave `sw.js` byte-identical after a CSP edit and the
-change would never reach the device. This is worth having even though the assets are
+`npm run build` runs `scripts/build-sw.js`, which walks `dist/` and emits a service
+worker precaching every file in it — worth having even though the assets are
 content-hashed, because Pages serves them with `max-age=600` and cannot be told otherwise.
+Why it walks the tree and hashes contents rather than names is a rule for future edits, so
+it lives in CLAUDE.md.
 
 `src/lib/snapshot.js` keeps the last successful read in `localStorage`, and `useLedger`
 paints from it before requesting anything. A launch with no network therefore shows the
-real ledger with a "showing saved data" notice rather than an error screen. Measured in
-Chrome: first contentful paint ~80ms with data already on screen, offline included.
+real ledger with a "showing saved data" notice rather than an error screen — with data on
+screen before any network call, offline included.
 
 Updates activate by reloading, which `src/lib/serviceWorker.js` only does when no entry is
 half-typed and no write is in flight. It also calls `registration.update()` when the app
@@ -187,22 +173,18 @@ cp .env.example .env   # paste the /exec URL of your token endpoint
 npm run dev            # http://localhost:5173/verbose-octo-pancake/
 ```
 
-The explicit registry is not decoration: a bare `npm install` behind a private mirror
-bakes internal hosts into every `resolved` URL in `package-lock.json`, which works
-locally and fails on a GitHub runner, and `test/lockfile.test.js` fails the build if it
-happens.
+The explicit registry is required — a bare `npm install` behind a private mirror bakes
+internal hosts into `package-lock.json` and fails on a GitHub runner. CLAUDE.md has the
+regeneration recipe; `test/lockfile.test.js` fails the build if it happens.
 
-Scripts: `dev` (Vite on 5173), `build` (bundle into `dist/`, then generate `dist/sw.js`),
-`preview` (serve the built `dist/`), `test` (vitest, single run), `test:watch` (vitest in
-watch mode). The service worker only exists in a build, so testing it means `npm run
-build && npm run preview` — and note `preview` registers a real worker on port 4173, which
-is shared with every other Vite project on the machine.
+The scripts are listed in CLAUDE.md. One caveat that is not obvious: the service worker
+only exists in a build, so exercising it means `npm run build && npm run preview`, and
+`preview` registers a real worker on port 4173 — shared with every other Vite project on
+the machine.
 
-A green suite says nothing about whether the page looks right — the donut chart once
-shipped white-on-white with every test passing. `npx vite-node scripts/preview.jsx`
-renders the signed-in surface with the real stylesheets to `scripts/preview-{en,ja}.html`
-plus one file per accent preset; load them in `<iframe>`s at phone and desktop widths, so
-media queries resolve honestly.
+A green suite says nothing about whether the page looks right; `npx vite-node
+scripts/preview.jsx` writes eight static pages with the real stylesheets, and CLAUDE.md
+says how to view them.
 
 ## Layout
 

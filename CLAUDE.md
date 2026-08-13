@@ -8,10 +8,11 @@ see `SETUP.md`. Do not restate either here.
 
 | Command | Notes |
 | --- | --- |
-| `npm run dev` | Vite on port 5173. The port is registered with Google — do not change it. |
+| `npm run dev` | Vite on 5173 (its default). |
 | `npm test` | vitest, single run. Must pass before any commit. |
 | `npm run build` | Production bundle into `dist/`, then `scripts/build-sw.js` emits `dist/sw.js`. |
-| `npm run preview` | Serve the built bundle. |
+| `npm run preview` | Serve the built bundle. Needed to exercise the service worker. |
+| `npm run test:watch` | vitest in watch mode. |
 
 ## Invariants
 
@@ -22,6 +23,18 @@ throw — it quietly writes the wrong thing to someone's spreadsheet.
 order, ranges, and row↔entry mapping live there. Never hardcode a range like
 `'expenses_p1!A2:K'` or a column index elsewhere — use `columnLetter` /
 `columnIndex`.
+
+**`EXPENSE_COLUMNS` is append-only.** Every range and letter is derived from
+array *position*, and `ensureStructure` rewrites a mismatched header row while
+never touching data rows — so inserting or reordering a column relabels every
+existing row in a live sheet, silently, under the wrong field. Appending is also
+capped: `columnLetter` is single-character arithmetic (`65 + index`), so column
+27 would produce `'['` and a range the API rejects.
+
+**`loadAll`'s ranges are positionally coupled to `PEOPLE`.** It requests
+`[p1, p2, config]` and maps `valueRanges[index]` back by the `PEOPLE` index, so
+reordering either list attributes every row to the wrong payer: the balance
+flips sign and nothing throws.
 
 **Each person has their own expenses tab (`expenses_p1`, `expenses_p2`).**
 Which tab a row lives in *is* the payer, so there is no `payer` column to keep in
@@ -35,31 +48,30 @@ two leaves the entry visible rather than gone.
 `=SUM(A:A)` must be stored as literal text, and dates must not be reformatted to
 the sheet's locale.
 
-**Never trust a cached `rowNumber`.** Row positions shift whenever anyone edits
-the sheet directly in the Sheets UI, so `updateEntry` and `setDeletedAt`
-re-resolve id → row immediately before writing. The `rowNumber` on an entry is
-advisory only.
+**An entry never carries its row position.** Row positions shift whenever anyone
+edits the sheet in the Sheets UI, so `updateEntry` and `setDeletedAt` re-resolve
+id → row through `resolveRow` immediately before writing. There is deliberately
+no `rowNumber` field to be tempted by: it existed once, was written in five
+places, read in none, and its only test asserted the value the rule forbids
+anyone to use.
 
-**Only `ensureStructure` may build structure, and it refuses a spreadsheet that
-already looks like somebody's work.** The id arrives from the script's `SHEET_ID`
-property rather than from a person choosing a file, so a wrong one is a configuration
-mistake — and adding three tabs to an unrelated spreadsheet is not something undo can
-reach. A fresh spreadsheet has exactly one default tab, so several tabs with none of
-ours among them is refused.
+**Only `ensureStructure` builds structure, and it refuses a spreadsheet with
+several tabs and none of ours** — a fresh one has exactly one. The reasoning is at
+the throw site; the point here is that no other path may adopt a spreadsheet.
 
-**Deletes are soft, confirmed, and reversible.** `setDeletedAt` writes a timestamp and the
-client filters, so rows never change position and a restore is one cell write. Every delete
-goes through `ConfirmDeleteSheet` — `App` owns `pendingDelete` and nothing else calls
-`removeEntry`, so the row's trash control and the edit form's both land on the same dialog.
-Recovery is the collapsed `DeletedList` at the bottom of the list, not a toast: a toast that
-has timed out is a delete nobody can undo, which is why there is no toast action left in the
-app. That list is **scoped to the month on screen** — it sits under the month switcher, so a
-tombstone from another month reads as belonging to the one being viewed; `deletedEntries`
-takes the month key for the same reason `filterByMonth` does, and settings' count stays
-sheet-wide because that is what `compact` acts on. `compact()` is the only hard delete; it
-reads each person's tab independently and must issue its `deleteDimension` requests in
-**descending** row order within each tab, or earlier deletions shift the indices of later
-ones.
+**Deletes are soft, confirmed, and reversible.** `setDeletedAt` writes a timestamp and
+the client filters, so rows never move and a restore is one cell write. Every delete goes
+through `ConfirmDeleteSheet`: `App` owns `pendingDelete` and nothing else calls
+`removeEntry`, so the row's trash control and the edit form's land on the same dialog.
+Recovery is the collapsed `DeletedList`, never a toast action — a toast that has timed out
+is a delete nobody can undo.
+
+**The deleted list is scoped to the month on screen**, because it sits under the month
+switcher; settings' count stays sheet-wide, because that is what `compact` acts on.
+
+**`compact()` is the only hard delete**, and it must issue its `deleteDimension` requests
+in **descending** row order within each tab, or earlier deletions shift the indices of
+later ones.
 
 **Money is integer minor units** — cents for USD, **whole yen for JPY**, fils for
 KWD. `minorDigits(currency)` is the only place the exponent is decided, and it is
@@ -68,9 +80,14 @@ gets written to the sheet and must be identical on every device forever.
 
 **Every money function takes the currency explicitly; none defaults it.** The
 string `"1250"` is ¥1250 or $12.50 depending only on the currency it is decoded
-with, so a default is a silent 100x error rather than a convenience. `entryToRow`
-throws without one and `validateEntryCodes` reports `MISSING_CURRENCY`, because
-the alternative is a ¥1250 expense landing in the sheet as `"12.50"`.
+with, so a default is a silent 100x error rather than a convenience.
+`centsToSheetString` and `entryToRow` both throw without one, and
+`validateEntryCodes` reports `MISSING_CURRENCY`. The display formatters are the
+deliberate exception — they fall back to the ISO default and to
+`decimalString`, never to the sheet encoder, because a missing currency must not
+take a render down but must never be written. `minorDigits` answers 2 for any
+code it does not recognise, so a typo in the config tab's `currency` is a silent
+100x error of exactly this kind.
 
 **Decode a row's currency BEFORE its amount.** `rowToEntry` takes the sheet's
 currency and uses it only when a row's own currency cell is blank — a row
@@ -84,25 +101,26 @@ It and `sumCents` are scale-agnostic and need no currency.
 **Nothing written to the sheet is ever localized.** Config defaults, column
 names, timestamps, and amount strings are locale-independent by design: two
 people sharing a sheet may be reading the UI in different languages, and the
-stored data must not depend on whose device seeded it.
+stored data must not depend on whose device seeded it. The two people's names are
+the one place this cuts both ways: `SEED_NAMES` in `sheets.js` writes English
+into a fresh sheet, and `DEFAULT_CONFIG` deliberately carries no names at all, so
+that a sheet which says nothing falls through to `nameOf`'s localized fallback
+instead of "Person 1".
 
 **Per-device vs per-sheet.** The locale and the accent colour live in
 `localStorage` (like identity); the currency lives in the sheet's `config` tab
 and on every entry row. Neither preference may ever be written to the sheet —
 neither person gets to restyle the other's phone.
 
-**Settlements are not a separate code path.** A settlement is an entry with
-`payer_share: 0`, which makes the balance a single sum over every row. It counts
-toward the balance but never toward spend totals or category breakdowns. If you
-find yourself adding an `if (type === 'settlement')` branch to arithmetic,
-reconsider.
+**Settlements are not a separate code path** (the model is in README). Two rules
+follow from that: never add an `if (type === 'settlement')` branch to arithmetic —
+`payer_share: 0` already says it — and never count one toward spend totals or a
+category breakdown.
 
-**Nothing in the UI creates a settlement.** Settling happens by wire transfer
-outside the app, so there is no "settle up" action and `BalanceCard` is a
-statement with no button — it must stay that way unless asked. The schema, the
-balance arithmetic, `EntryRow`, and the settlement branch of `EntryFormSheet`
-still handle the type, because sheets carry settlement rows written before the
-button was removed and editing one must keep working.
+**Nothing in the UI creates a settlement.** Settling happens by wire transfer, so
+`BalanceCard` carries no action and must stay that way unless asked. Everything
+below the UI still handles the type, because sheets hold settlement rows from
+before and editing one must keep working.
 
 **Dates are ISO strings, compared as strings.** Never `new Date('2026-08-05')` —
 that parses as UTC midnight and shifts to the previous day in western timezones.
@@ -149,16 +167,22 @@ with the 302 that `/exec` returns and die, which is also why the script has no `
 `fetch` downgrades POST to GET across that 302 and Apps Script serves the computed reply
 from the echo URL — forcing POST through the hop returns "page not found".
 
-**`doPost` must be structurally incapable of throwing.** Any uncaught throw returns
-Google's HTML error page, which the client classifies as transient and retries, so a throw
-on the reject path becomes a silent retry loop. A body of `null` did exactly that once: it
-parses successfully, so the try/catch did not fire, and `body.key` dereferenced null. Never
-read `e.parameter` either — a key in a query string lands in Google's request logs.
+**`doPost` must be structurally incapable of throwing**, because Google's HTML
+error page is classified as transient and retried forever, and it must never read
+`e.parameter`, which would log the key. `apps-script/Code.gs` carries the reasoning
+and the incident behind it.
 
 **The refresh margin is performance; the 401 retry is correctness.** Minting needs no user
 gesture, so `sheets.js` recovers silently. `refreshToken`'s generation counter is why: a
 mint that began *before* the 401 may carry the token Google just rejected, and the retry
 runs with `allowRetry: false`.
+
+**Bump the snapshot's `VERSION` whenever the persisted shape changes**, and
+remember it silently stops writing past `MAX_CHARS` (~2000 entries): `writeStored`
+swallows the quota error, so an over-long history turns the cold-launch paint off
+for good with no error anywhere. `writeSnapshot` must also be handed the
+server-loaded list, never the merged state — an unacknowledged optimistic row
+persisted there comes back next launch looking saved.
 
 **The snapshot's `v` is a drop marker, never a migration.** An unrecognised version is
 ignored and re-fetched, which is free — the sheet is the source of truth. The snapshot
@@ -169,6 +193,11 @@ defaults into every later launch. Config and entries seed atomically, for the sa
 `clearSnapshot` exists because that module also remembers the last payload it wrote in
 order to skip redundant writes — clearing the key without resetting that leaves the next
 load convinced it already saved.
+
+**`setSafeToReload` must stay wired.** `serviceWorker.js` defaults it to
+`() => true`, and one effect in `App` narrows it to "no draft open, no write in
+flight". Break that effect and an update reloads mid-entry, discarding what
+someone was typing.
 
 **The service worker never intercepts a cross-origin request**, and that is an explicit
 early `return` as the first statement of the `fetch` handler, not a property of scope —
@@ -206,7 +235,13 @@ back-compatibility branch for a shape this app never shipped.
 - **One helper, one home.** `readStored`/`writeStored` in `src/config.js` are the
   only `localStorage` touches; `cellText` and `columnIndex` live in `schema.js`;
   `PEOPLE` is the only `[p1, p2]` literal; `usePeopleLabels` is the only place a
-  component turns a person into a name.
+  component turns a person into a name; `i18nError` in `i18n/index.js` is the only
+  way to throw something a person will read; `UNCATEGORIZED` in `balance.js` is the
+  only spelling of that bucket.
+- **A control that appears twice is a component.** `Segmented` (four call sites,
+  and the only one carrying `role="radiogroup"`), `EntryAmount` (the per-row
+  currency resolution), `NoteField` and `SplitField`. `useLedgerView` holds every
+  derived figure so `App` stays gates, sheets and layout.
 
 ### i18n
 
@@ -216,11 +251,15 @@ node-returning variant for strings with inline markup (`nodes.jsx`).
 
 - **Never hardcode a user-facing string in a component.** That includes every
   `aria-label`, `title` and `placeholder`. `test/i18n.test.js` scans `src/` and
-  fails on a catalog key nothing references, a referenced key no catalog has, and
-  a bare string literal in one of those three attributes.
+  fails on a catalog key nothing references (the `error.` and `accent.` prefixes
+  excepted), a referenced key no catalog has, and a bare string literal in one of
+  those three attributes. The scan matches `t('key')` verbatim, so a key held in a
+  variable is invisible to it — build the array out of `t()` calls, not keys.
+  It cannot see a template literal either, which is how the summary meter's
+  `aria-label` stayed untranslated.
 - **A key built at runtime needs its own coverage test.** The scan cannot see
-  `` t(`error.${code}`) `` or `` t(`accent.${preset}`) ``, so each family is
-  asserted against its source list (`ENTRY_ERROR`, `ACCENTS`) instead.
+  `` t(`error.${code}`) ``, so each family is asserted against its source list
+  instead: `ENTRY_ERROR`, `CONNECTION_ERROR` and `ACCENTS`.
 - **It is a module singleton, not a context.** `render.test.jsx` renders
   components bare, and non-React modules (`useLedger`) need the same `t`. A
   provider would break the first and be unreachable from the second.
@@ -267,12 +306,10 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
 
 - **Light theme only.** There is no dark block and no `--success`/`--warning`:
   state is stated in words, and money direction is never encoded in hue.
-- **An accent preset is three custom properties**, redefined under
-  `[data-accent]` in `tokens.css`. `--accent-ring` and `--accent-shadow` derive
-  from `--accent` with `color-mix`, so a preset never restates the accent's
-  channels. Every preset keeps white text ≥7.5:1 on the accent and ≥6.8:1 against
-  `--bg`; measured values sit next to the values. The selector is attribute-based
-  rather than `:root`-scoped so a settings swatch can paint its own colour.
+- **An accent preset is three custom properties** under `[data-accent]` in
+  `tokens.css` — attribute-scoped rather than `:root`-scoped so a settings swatch
+  can paint its own colour, with `--accent-ring`/`--accent-shadow` derived by
+  `color-mix` rather than restated.
 - **Use the tokens.** In particular use `var(--transition-fast|base)` rather than
   a hardcoded duration — the tokens collapse to ~0ms under
   `prefers-reduced-motion`, so hardcoding silently opts out of that support.
@@ -283,17 +320,19 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
 - **No line-height below 1.5** on anything that can hold Japanese; CJK glyphs
   fill the em box. `--lh-flat: 1` is the single carve-out, same element, same
   reason. There is no `--lh-heading`: headings use `--lh-tight`, which *is* 1.5.
-- **Nothing below 13px**, `<code>` included — hence
-  `max(var(--fs-caption), 0.9375em)`, since every `<code>` in the app sits inside
-  caption-sized text. Weights are `400|500|600` only.
-- **Shadows appear in exactly four places** (sheet panel, toast, FAB, segmented
-  thumb) and never on hover. Cards are a white plane plus one hairline; the
-  temperature step from `--bg` to `--surface` is the elevation. The focus ring is
-  also drawn with `box-shadow`, which is a ring, not an elevation.
-- **`--line-input` is deliberately darker than `--line`.** WCAG 1.4.11 wants 3:1
-  for the boundary identifying a control; `--line` on white is 1.34:1 and fails.
-- **`--ink-3` may not sit on `--accent-wash` or `--sunken`** (4.46:1 and 4.30:1,
-  both under AA at 13px). Those two surfaces take `--ink-2`.
+- **Nothing below 13px**, `<code>` included. Weights are `400|500|600` only.
+- **Elevations appear in exactly four places** (sheet panel, toast, FAB,
+  segmented thumb) and never on hover. Cards are a white plane plus one hairline;
+  the temperature step from `--bg` to `--surface` is the elevation. `box-shadow`
+  is used for three other things that are not elevations and do not count against
+  those four: the focus ring, the swatch's selection ring, and the meter's
+  segment hairline. It is transitioned in exactly one place, the text control's
+  focus ring; `test/styles.test.js` pins that.
+- **Contrast budgets live in `tokens.css`, next to the values, with their
+  measured ratios.** Do not restate them here; do not "tidy" two tokens together
+  because they look similar. The two that catch people: `--line-input` is darker
+  than `--line` because a control boundary needs 3:1 and `--line` gives 1.34:1,
+  and `--ink-3` may not sit on `--accent-wash` or `--sunken`.
 - **`.btn--icon` is not combined with `.btn--ghost`.** They disagree about the
   border, and the icon glyph at `--ink-2` is itself the 3:1 graphic.
 - **Never drop a form control below 16px.** Mobile Safari zooms on focus below
@@ -302,23 +341,26 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
   `62rem`; the sheet becomes a centred dialog at `48rem` too — there is no third
   breakpoint. Tap targets are `var(--tap-target)` (44px), or
   `var(--tap-target-sm)` (36px) for chips and the segmented thumb.
-- **Every layout keeps `--fab-size` of clearance below its content.** Dropping
-  that reservation in the two-column block once put the FAB on top of the last
-  expense row's amount and delete button.
+- **Every layout keeps `--fab-size` of clearance below its content**, at every
+  width — the FAB has landed on the last row's delete button before.
 - Keep specificity flat: single class selectors, no IDs, no `!important`.
 
 ## Testing
 
-Specs live in `test/**/*.test.{js,jsx}`. Twelve files: `money`, `currency`,
-`balance`, `schema`, `config`, `connection`, `snapshot`, `sw-build`, `i18n`,
-`render`, `ui` and `lockfile`.
+Specs live in `test/**/*.test.{js,jsx}`, with shared harnesses under
+`test/support/`. Fourteen files: `money`, `currency`, `balance`, `schema`, `dates`,
+`config`, `connection`, `snapshot`, `sw-build`, `i18n`, `render`, `ui`, `styles`
+and `lockfile`.
 
-`connection`, `snapshot` and `sw-build` all exist for the same reason: their
-failure modes are invisible. A misclassified endpoint reply logs someone out or
-hides a rotated key; a snapshot that seeds entries without their config renders
-money at the wrong scale; an incomplete precache list makes `install` reject so no
-worker ever activates and the app is simply never fast. None of that shows up in a
-build or on screen.
+`connection`, `snapshot`, `sw-build` and `styles` exist because their failures are
+invisible in a build and on screen — a misclassified endpoint reply, a snapshot
+that renders money at the wrong scale, a precache list that stops any worker
+activating, a merged CSS rule that lands on the wrong block.
+
+**A test that cannot fail is worse than no test**, because it reads as coverage.
+Do not assert a function against itself, do not assert a property of the platform,
+and do not name a test after an invariant it does not exercise: all three shipped
+here, and one of them stood in for the `disabled` rule on the month switcher.
 
 `render.test.jsx` and `ui.test.jsx` render components to static markup with
 `renderToStaticMarkup` — no DOM, no browser. They catch components that throw on
@@ -331,8 +373,9 @@ exactly the outstanding balance must drive the net to zero, with odd-unit
 amounts so rounding is genuinely exercised.
 
 **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders
-the signed-in surface to static HTML in both locales and every accent, with the
-real stylesheets:
+the signed-in surface to static HTML: every accent in English, indigo in
+Japanese, and the confirm dialog in each — eight files, with the real
+stylesheets:
 
 ```sh
 npx vite-node scripts/preview.jsx     # writes scripts/preview-*.html (gitignored)
@@ -346,14 +389,11 @@ while the donut chart rendered white-on-white and invisible.
 
 ## Gotchas
 
-- **Never run a bare `npm install` on a machine with a private registry.** This
-  repo is developed where `NPM_CONFIG_REGISTRY` points at an internal Apple
-  mirror, and `npm install` bakes that host into every `resolved` URL in
-  `package-lock.json`. The result works locally and fails everywhere else with
-  `getaddrinfo ENOTFOUND`, which npm reports only as the useless "Exit handler
-  never called!". A repo `.npmrc` cannot prevent it — npm ranks env vars higher.
-  Always regenerate with an explicit override, which `test/lockfile.test.js`
-  then verifies:
+- **Never run a bare `npm install` on a machine with a private registry.** It bakes
+  that host into every `resolved` URL in `package-lock.json`, which works locally and
+  fails on any other machine with `getaddrinfo ENOTFOUND`. A repo `.npmrc` cannot
+  prevent it — npm ranks env vars higher — so always regenerate with an explicit
+  override, which `test/lockfile.test.js` then verifies:
 
   ```sh
   rm -rf node_modules package-lock.json
@@ -363,20 +403,14 @@ while the donut chart rendered white-on-white and invisible.
   repo name, because project Pages sites serve from `/<repo>/`. Renaming the repo
   without updating it produces a blank page. Build with `VITE_BASE=/` for a
   custom domain.
-- **`loadAll` returns `sheetIds` only if this session already read them.**
-  `values.batchGet` cannot reveal sheet gids; the cache is filled by
-  `readSheetIds`, which `ensureStructure` calls. `compact` needs a gid, so it falls
-  back to calling `ensureStructure` itself — and a snapshot-seeded session has no
-  gids at all, so that fallback is the normal path rather than an edge case.
-- **The consent screen must stay published.** A script attached to a Cloud project
-  whose consent screen is in Testing has its authorization expire after 7 days, so
-  the token endpoint dies about a week later and the symptom is indistinguishable
-  from a quota problem. `SETUP.md` step 5.
-- **Quota exhaustion is the one real attack, and it is unfixable.** The endpoint is
-  anonymous and its URL is public, anonymous traffic bills the owner's quota before
-  any of our code runs, and Apps Script exposes no client IP. Impact is availability
-  only, and it self-heals. The tell is every write failing with HTML replies
-  classified as transient forever.
+- **`compact` has to ask for sheet gids, every time.** `values.batchGet` cannot
+  reveal them, so `loadAll` never has any: the gids come from `ensureStructure`,
+  which `compact` calls itself when `useLedger` holds none. That is the normal
+  path, not an edge case, and `compact` skips a tab whose gid is missing — the
+  throw in `useLedger` is what stops that being silent.
+- **The consent screen must stay published**, or the script's authorization
+  expires after 7 days and the endpoint dies a week later, looking exactly like a
+  quota problem. `SETUP.md` step 5.
 - **Nothing detects which person this is.** The token belongs to the account that
   owns the sheet, not to either of them, so `IdentityGate` and the `localStorage`
   choice behind it are the only path — not a fallback.
