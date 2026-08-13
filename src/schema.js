@@ -123,19 +123,13 @@ export function columnIndex(field) {
 /**
  * Column letter for a named field, e.g. columnLetter('deleted_at') -> 'K'.
  *
- * Single-character arithmetic, which is the whole reason EXPENSE_COLUMNS is
- * capped at 26: column 27 would answer '[' and every range built from it would
- * be rejected by the API as an opaque error on every read and write. Refusing
- * here puts the failure at the append rather than at runtime in the field.
+ * Single-character arithmetic, which is why EXPENSE_COLUMNS cannot exceed 26
+ * entries: column 27 would answer '[' and every range built from it would be
+ * rejected by the API. `test/schema.test.js` asserts the length, which is the only
+ * way that limit can be crossed — every caller passes a name from the list.
  */
 export function columnLetter(field) {
-  const index = columnIndex(field)
-  if (index > 25) {
-    throw new RangeError(
-      `EXPENSE_COLUMNS cannot exceed 26 columns: '${field}' is number ${index + 1}`,
-    )
-  }
-  return String.fromCharCode(65 + index)
+  return String.fromCharCode(65 + columnIndex(field))
 }
 
 const LAST_COLUMN = columnLetter(EXPENSE_COLUMNS[EXPENSE_COLUMNS.length - 1])
@@ -148,7 +142,7 @@ export function cellRange(person, rowNumber, field) {
 /** A cell as trimmed text. Sheets returns numbers as numbers and gaps as holes. */
 export function cellText(row, index) {
   const value = row?.[index]
-  return typeof value === 'string' ? value.trim() : value == null ? '' : String(value).trim()
+  return value == null ? '' : String(value).trim()
 }
 
 /**
@@ -186,7 +180,12 @@ export function rowToEntry(row, payer, currency) {
   const amountCents = parseAmountToCents(get('amount'), rowCurrency)
   if (amountCents == null) return null
 
-  const type = get('type') === ENTRY_TYPE.SETTLEMENT ? ENTRY_TYPE.SETTLEMENT : ENTRY_TYPE.EXPENSE
+  // Case-folded like the currency, and for the same reason: a hand-typed
+  // "Settlement" read as an expense keeps the right balance (its `payer_share` of 0
+  // says everything) but is then counted in the month's spend and the category
+  // donut, inflating both by the full transfer.
+  const type =
+    get('type').toLowerCase() === ENTRY_TYPE.SETTLEMENT ? ENTRY_TYPE.SETTLEMENT : ENTRY_TYPE.EXPENSE
 
   // Same percentage-or-fraction rule as the config tab's default_split rows:
   // both are a share somebody may have typed by hand.

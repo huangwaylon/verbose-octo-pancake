@@ -15,7 +15,7 @@ export function ConfirmDeleteSheet({ entry, currency, onConfirm, onClose }) {
   // The entry's own currency, like every other surface: a row from before a
   // currency change is only priced correctly at its own scale.
   const money = useMoney(entry.currency || currency)
-  const title = useEntryTitle()
+  const title = useEntryTitle(entry)
 
   return (
     <BottomSheet
@@ -37,8 +37,8 @@ export function ConfirmDeleteSheet({ entry, currency, onConfirm, onClose }) {
     >
       <p className="confirm__text">
         {t('confirm.deleteBody', {
-          description: title(entry),
-          amount: money(entry.amountCents, { trimZeroCents: true }),
+          description: title,
+          amount: money(entry.amountCents),
         })}
       </p>
     </BottomSheet>

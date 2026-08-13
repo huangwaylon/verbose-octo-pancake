@@ -86,9 +86,9 @@ describe('column contract', () => {
 
   it('stays within the 26 columns single-letter arithmetic can name', () => {
     // `columnLetter` is `String.fromCharCode(65 + index)`, so a 27th column would
-    // answer '[' and the API would reject every range built from it. This is the
-    // assertion that fails the day somebody appends past Z; the RangeError in
-    // `columnLetter` is what makes it loud at runtime rather than opaque.
+    // answer '[' and the API would reject every range built from it. This assertion is
+    // the whole guard: every caller passes a name from the list, so the list growing is
+    // the only way the limit can be crossed.
     expect(EXPENSE_COLUMNS.length).toBeLessThanOrEqual(26)
     expect(columnLetter(EXPENSE_COLUMNS[EXPENSE_COLUMNS.length - 1])).toMatch(/^[A-Z]$/)
   })

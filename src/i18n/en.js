@@ -165,6 +165,9 @@ export default {
     other: 'Removed {count} deleted rows.',
   },
   'settings.compactError': 'Could not compact the sheet.',
+  // Removing rows shifts every row below them, so it cannot run while a write is
+  // still resolving its own row number.
+  'settings.compactBusy': 'A change is still saving. Try again in a moment.',
   'settings.forgetKey': 'Forget key on this device',
 
   // --- gates ----------------------------------------------------------------
@@ -193,6 +196,10 @@ export default {
   // Every failed Sheets request lands here. The API's own English text stays on
   // the error for the console; this is what the person is told.
   'error.sheetRequest': 'The sheet would not answer. Try again in a moment.',
+  // 403/404: not a blip. The account can no longer reach the spreadsheet, so
+  // retrying forever would just hide it behind "showing saved data".
+  'error.sheetUnreachable':
+    'This app can no longer reach the sheet. Check that it is still shared with the account that owns it.',
   // `ensureStructure` refusing to adopt a spreadsheet that is somebody else's work.
   'error.notOurSheet':
     'That spreadsheet already has other tabs and none of this app’s, so it is probably not the ledger. Check the SHEET_ID script property.',
@@ -204,6 +211,10 @@ export default {
   'error.keyRequired': 'Enter your app key.',
   'error.offline': 'Could not reach the sheet. Check your connection and try again.',
   'error.scriptUnavailable': 'The sheet service is busy or unavailable. Try again in a moment.',
+  // The script's own authorization lapsed — an unpublished consent screen expires
+  // after 7 days. Names the fix, because retrying cannot help.
+  'error.scriptUnauthorized':
+    'The sheet service needs re-authorizing. Open the Apps Script project and run it once, then publish its consent screen.',
   'error.scriptMisconfigured':
     'The token endpoint returned no sheet id. Check its SHEET_ID script property.',
   'error.missingId': 'Missing id.',
@@ -217,6 +228,16 @@ export default {
   'warning.mixedCurrencies': 'Some entries use a different currency, so totals may be wrong.',
   // A row whose amount cell cannot be read at all is left out of every total, so
   // the balance is short by it. Naming the count is the only way anyone would know.
+  // The config tab is gone or renamed, so every value falls back to a default —
+  // including the currency, which decides the scale of every amount.
+  'warning.configMissing':
+    'The config tab is missing, so names, currency and categories are the defaults. Restore it in the sheet.',
+  // These rows are in the balance but belong to no month, so they appear in no
+  // list and cannot be found from here.
+  'warning.undatedRows': {
+    one: '{count} row in the sheet has a date that cannot be read, so it appears in no month.',
+    other: '{count} rows in the sheet have dates that cannot be read, so they appear in no month.',
+  },
   'warning.undecodedRows': {
     one: '{count} row in the sheet has an amount that cannot be read, so it is left out of the totals.',
     other:

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { EVEN_SHARE } from '../schema.js'
-import { defaultSplitFor, nextSplit, toSplit } from '../lib/split.js'
+import { defaultSplitFor, nextSplit, splitAtPercent, toSplit } from '../lib/split.js'
 import { useT } from '../i18n/index.js'
 import { Segmented } from './Segmented.jsx'
 
@@ -14,7 +14,9 @@ import { Segmented } from './Segmented.jsx'
  *
  * An entry being edited carries an explicit share instead, so it opens on the
  * number actually stored and changing its payer leaves that number alone: a saved
- * row records a decision someone already made.
+ * row records a decision someone already made. `payerShare` comes from `share`
+ * rather than `percent / 100` for the same reason — the slider is whole percents,
+ * and a stored 0.333 must not be quantized to 0.33 by an edit that never touched it.
  *
  * Every transition is in `lib/split.js`; this holds only the one piece of state.
  */
@@ -23,14 +25,14 @@ export function useEntrySplit(entry, config, payer) {
   const [override, setOverride] = useState(stored == null ? null : toSplit(stored))
 
   const configuredShare = defaultSplitFor(config, payer)
-  const { mode, percent } = override ?? toSplit(configuredShare)
+  const { mode, percent, share } = override ?? toSplit(configuredShare)
 
   return {
     mode,
     percent,
-    payerShare: mode === 'even' ? EVEN_SHARE : percent / 100,
+    payerShare: mode === 'even' ? EVEN_SHARE : share,
     /** Dragging or hitting a preset pins the entry, so it survives a payer switch. */
-    setPercent: (next) => setOverride({ mode: 'custom', percent: next }),
+    setPercent: (next) => setOverride(splitAtPercent(next)),
     setMode: (next) => setOverride(nextSplit(next, configuredShare)),
   }
 }

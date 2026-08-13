@@ -17,10 +17,10 @@
 
 import { PERSON, ENTRY_TYPE, isActive } from '../schema.js'
 import { splitCents, sumCents } from './money.js'
+import { isMonthKey } from './dates.js'
 
 /** Where a blank category lands. Exported so the UI labels exactly this bucket. */
 export const UNCATEGORIZED = 'Uncategorized'
-const MONTH_KEY = /^\d{4}-\d{2}$/
 
 function activeEntries(entries) {
   return Array.isArray(entries) ? entries.filter(isActive) : []
@@ -162,7 +162,9 @@ export function spendByPerson(entries) {
  * than guessed at.
  */
 function inMonth(entry, monthKey) {
-  if (typeof monthKey !== 'string' || !MONTH_KEY.test(monthKey)) return false
+  // `isMonthKey`, not a second regex: a local one accepted month 13 while
+  // `shiftMonth` rejected it, so the two disagreed about what a month even is.
+  if (!isMonthKey(monthKey)) return false
   return hasDate(entry) && entry.date.slice(0, 7) === monthKey
 }
 
@@ -262,7 +264,9 @@ export function groupByDate(entries) {
           String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')) ||
           String(b.id ?? '').localeCompare(String(a.id ?? '')),
       ),
-      totalCents: sumCents(dayEntries.filter(isExpense).map((entry) => entry.amountCents)),
+      // `totalSpend`, not a copy of it: the rule that a day's total is spend — and so
+      // excludes settlements — then holds by construction rather than by agreement.
+      totalCents: totalSpend(dayEntries),
     }))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
 }

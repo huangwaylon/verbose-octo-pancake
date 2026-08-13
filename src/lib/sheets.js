@@ -37,8 +37,30 @@ import { i18nError } from '../i18n/index.js'
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
 const RAW = 'RAW'
 
+/**
+ * Telling "this spreadsheet is not reachable" apart from "try again".
+ *
+ * 404 is always the former. 403 is both: Google returns it for a revoked share AND
+ * for a tripped quota, so the reason decides — calling a rate limit a lost share
+ * sends someone to re-share a spreadsheet that is fine.
+ */
+const RATE_LIMIT_REASONS = new Set([
+  'rateLimitExceeded',
+  'userRateLimitExceeded',
+  'quotaExceeded',
+  'dailyLimitExceeded',
+])
+
+function isUnreachable(status, payload) {
+  if (status === 404) return true
+  if (status !== 403) return false
+  const reasons = (payload?.error?.errors ?? []).map((item) => item?.reason)
+  return !reasons.some((reason) => RATE_LIMIT_REASONS.has(reason))
+}
+
 const ID_INDEX = columnIndex('id')
 const DELETED_AT_INDEX = columnIndex('deleted_at')
+const DATE_INDEX = columnIndex('date')
 
 /** One column of one person's tab, e.g. "expenses_p1!K2:K". */
 function columnRange(person, field) {
@@ -136,7 +158,12 @@ async function request(path, { method = 'GET', params, body, allowRetry = true }
   const message = payload?.error?.message ?? response.statusText ?? 'Request failed'
   const error = new Error(`Google Sheets: ${message} (HTTP ${response.status})`)
   error.status = response.status
-  error.i18nKey = 'error.sheetRequest'
+  // A 403/404 is not a blip: the account has lost access to the spreadsheet, or the
+  // id is wrong. Reporting it as transient hides it behind a 30-second retry loop
+  // and a "showing saved data" notice, forever.
+  error.i18nKey = isUnreachable(response.status, payload)
+    ? 'error.sheetUnreachable'
+    : 'error.sheetRequest'
   throw error
 }
 
@@ -165,7 +192,10 @@ function updateValues(spreadsheetId, range, values) {
  * and the percentage-vs-fraction rule needs cases pinned to it.
  *
  * A key that is absent, or present with a blank or unparseable value, is omitted
- * so the caller's defaults win.
+ * so the caller's defaults win. The FIRST usable value for a key wins: a tab where
+ * someone added `currency, USD` at the top and forgot an old `currency, JPY` lower
+ * down would otherwise run the whole sheet at JPY, which is a 100x error on every
+ * row with a blank currency cell.
  */
 export function parseConfigRows(rows) {
   const byKey = new Map(CONFIG_FIELDS.map(([key, field, kind]) => [key, { field, kind }]))
@@ -175,7 +205,7 @@ export function parseConfigRows(rows) {
     const key = cellText(row, 0).toLowerCase()
     const value = cellText(row, 1)
     const spec = byKey.get(key)
-    if (!spec || !value) continue
+    if (!spec || !value || spec.field in parsed) continue
 
     const result = PARSERS[spec.kind](value)
     if (result != null) parsed[spec.field] = result
@@ -210,21 +240,36 @@ function defaultConfigRows() {
  * Returns the sheet's own partial config as well as the merged one, because the
  * snapshot cache has to store the partial — see `mergeConfig`.
  *
- * The two counts are how the sheet reports what it holds and the app does not
- * show. `supersededRows` counts only the TOMBSTONES `reconcileById` hid, because
- * its consumer is the compact button and `compact` removes exactly the tombstoned
- * rows: counting a hidden *live* duplicate there would offer a removal that can
- * never happen and a count that never clears. `undecodedRows` counts live rows
- * with an id whose amount cannot be read at all — a hand-typed "12,34.5" — which
- * would otherwise leave the ledger silently short one expense. A tombstoned row is
- * excluded from that count because it is correctly out of the totals already.
+ * The counts are how the sheet reports what it holds and the app cannot show. Each
+ * one exists because the alternative is a wrong number with nothing said:
+ *
+ * `supersededRows` — TOMBSTONES `reconcileById` hid. Only tombstones, because the
+ * consumer is the compact button and `compact` removes exactly those: counting a
+ * hidden live duplicate would offer a removal that can never happen.
+ *
+ * `undecodedRows` — live rows with an id whose amount cannot be read at all, so the
+ * ledger is short by them. A tombstoned one is correctly out of the totals already.
+ *
+ * `undatedRows` — live rows whose date cell is not a real ISO day. These DO reach
+ * the balance but belong to no month, so they never appear in a month's list and
+ * cannot be found and fixed from the app. A hand-typed date that Sheets stored as a
+ * date is the common cause: reads are `FORMATTED_VALUE`, so it comes back in the
+ * spreadsheet's own locale ("8/5/2026"). Asking for `UNFORMATTED_VALUE` instead
+ * would make it a serial number, which is worse.
+ *
+ * `configMissing` — the config tab is gone or renamed, so every default applies:
+ * on a USD sheet, every row with a blank currency cell silently decodes at JPY's
+ * zero minor digits. Reported rather than repaired, because seeding a fresh config
+ * tab would write the DEFAULT currency into the sheet and make the error permanent.
  *
  * @returns {Promise<{entries: object[], config: object, sheetConfig: object,
- *   supersededRows: number, undecodedRows: number}>}
+ *   supersededRows: number, undecodedRows: number, undatedRows: number,
+ *   configMissing: boolean}>}
  */
 export async function loadAll(spreadsheetId) {
   const ranges = [expensesDataRange(PERSON.P1), expensesDataRange(PERSON.P2), CONFIG_RANGE]
   let valueRanges
+  let configMissing = false
 
   try {
     const data = await batchGetValues(spreadsheetId, ranges)
@@ -236,21 +281,28 @@ export async function loadAll(spreadsheetId) {
     if (error.status !== 400 && error.status !== 404) throw error
     const data = await batchGetValues(spreadsheetId, ranges.slice(0, 2))
     valueRanges = data.valueRanges ?? []
+    configMissing = true
   }
 
   const sheetConfig = parseConfigRows(valueRanges[2]?.values ?? [])
   const config = mergeConfig(sheetConfig)
 
   let undecodedRows = 0
+  let undatedRows = 0
   const decoded = PEOPLE.flatMap((person, index) =>
     // Same order as `ranges` above: p1's tab, then p2's, then the config.
     (valueRanges[index]?.values ?? []).flatMap((row) => {
+      // A tombstoned row is meant to be absent from every total, so neither count
+      // applies to it; a row with no id is a blank one and says nothing either.
+      const counts = cellText(row, ID_INDEX) && !cellText(row, DELETED_AT_INDEX)
       const entry = rowToEntry(row, person, config.currency)
-      if (entry) return [entry]
-      // A row with no id is a blank one, which is expected and says nothing; a
-      // tombstoned one is already meant to be absent from every total.
-      if (cellText(row, ID_INDEX) && !cellText(row, DELETED_AT_INDEX)) undecodedRows += 1
-      return []
+      if (!entry) {
+        if (counts) undecodedRows += 1
+        return []
+      }
+      // The cell held something; `rowToEntry` could not make a real day of it.
+      if (counts && !entry.date && cellText(row, DATE_INDEX)) undatedRows += 1
+      return [entry]
     }),
   )
 
@@ -262,6 +314,8 @@ export async function loadAll(spreadsheetId) {
     sheetConfig,
     supersededRows: tombstones(decoded) - tombstones(entries),
     undecodedRows,
+    undatedRows,
+    configMissing,
   }
 }
 

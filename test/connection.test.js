@@ -302,16 +302,22 @@ describe('connect and forget', () => {
     }
   })
 
-  it('notifies listeners when the connection changes', async () => {
+  it('notifies listeners while subscribed, and stops when unsubscribed', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok()))
 
     const c = await load()
     const seen = vi.fn()
     const stop = c.onConnectionChange(seen)
+
     await c.connect('k')
     expect(seen).toHaveBeenCalled()
+
+    // The unsubscribe is what this exists to prove. Asserting a total call count
+    // instead passes on however many times `connect` happens to notify internally,
+    // and would break on a harmless refactor without ever checking `stop`.
+    seen.mockClear()
     stop()
     c.forgetKey()
-    expect(seen).toHaveBeenCalledTimes(2)
+    expect(seen).not.toHaveBeenCalled()
   })
 })

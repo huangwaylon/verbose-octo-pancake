@@ -3,6 +3,7 @@ import { BottomSheet } from './BottomSheet.jsx'
 import { centsToSheetString, minorDigits, parseAmountToCents, splitCents } from '../lib/money.js'
 import { ENTRY_TYPE, PEOPLE, PERSON, otherPerson } from '../schema.js'
 import { errorMessage, usePeopleLabels, useMoney, useT } from '../i18n/index.js'
+import { Field } from './Field.jsx'
 import { NoteField } from './NoteField.jsx'
 import { Segmented } from './Segmented.jsx'
 import { SplitField, useEntrySplit } from './SplitField.jsx'
@@ -131,10 +132,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
       }
     >
       <form id="entry-form" className="stack" onSubmit={handleSubmit}>
-        <div className="field">
-          <label className="field__label" htmlFor="entry-amount">
-            {t('form.amount')}
-          </label>
+        <Field htmlFor="entry-amount" label={t('form.amount')}>
           <input
             id="entry-amount"
             className="input input--amount"
@@ -150,7 +148,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                reader reaches the failed field and is told nothing about why. */
             aria-describedby={error ? errorId : undefined}
           />
-        </div>
+        </Field>
 
         <Segmented
           name="payer"
@@ -163,10 +161,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
           }
         />
 
-        <div className="field">
-          <label className="field__label" htmlFor="entry-date">
-            {t('form.date')}
-          </label>
+        <Field htmlFor="entry-date" label={t('form.date')}>
           <input
             id="entry-date"
             className="input"
@@ -174,14 +169,11 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
             value={date}
             onChange={(event) => setDate(event.target.value)}
           />
-        </div>
+        </Field>
 
         {!isSettlement && (
           <>
-            <div className="field">
-              <label className="field__label" htmlFor="entry-category">
-                {t('form.category')}
-              </label>
+            <Field htmlFor="entry-category" label={t('form.category')}>
               <select
                 id="entry-category"
                 className="select"
@@ -194,7 +186,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                   </option>
                 ))}
               </select>
-            </div>
+            </Field>
 
             <NoteField value={description} presets={config.notePresets} onChange={setDescription} />
 

@@ -1,7 +1,8 @@
 # Shared Finances
 
 A static React app for two people to track shared expenses, with a single Google Sheet as
-the database. There is no sign-in: a small Apps Script web app, owned by a dedicated
+the database. It is built for one place: Safari on iOS, added to the Home Screen, on a
+phone. There is no sign-in: a small Apps Script web app, owned by a dedicated
 account that owns the sheet, mints short-lived Google tokens for whoever presents a shared
 app key, and the browser then talks straight to the Sheets API. Google Cloud setup is in
 [SETUP.md](SETUP.md); the invariants that fail silently if broken are in
@@ -40,9 +41,10 @@ already carrying the type still read, display and edit correctly. Amounts are in
 minor units (whole yen for JPY, cents for USD, fils for KWD) and every conversion takes
 the currency explicitly, with no default, because `1250` at the wrong scale is a silent
 100x error. Every write is `valueInputOption: RAW`, so a note of `=SUM(A:A)` stays
-literal text and dates are never reformatted. A row whose amount cannot be parsed at all
-is left out of every total and reported on screen as a count, because a ledger quietly
-short one expense is worse than an ugly notice.
+literal text and dates are never reformatted. A row the app cannot fully read — an
+unparseable amount, a date the spreadsheet stored in its own locale, a renamed `config`
+tab — is counted and reported on screen, because a ledger quietly short one expense, or
+silently running on the default currency, is worse than a notice.
 
 Both people are full Editors of one sheet, and edits are **last-write-wins**: an
 entry saved from two devices at once keeps whichever write landed second, with no
@@ -147,10 +149,20 @@ the repo without updating that one line and the page is blank with console 404s 
 `/assets/index-*.js` missing the prefix. Build with `VITE_BASE=/` for a user site or a
 custom domain.
 
-The app installs to an iOS Home Screen (**Share > Add to Home Screen**):
-`public/manifest.webmanifest` declares `display: standalone` and the PNG icons, and
-`index.html` carries the `apple-touch-icon` link and the `apple-mobile-web-app-*` meta
+### On a phone
+
+The only target. The install is **Share → Add to Home Screen**:
+`public/manifest.webmanifest` declares `display: standalone`, and `index.html` carries
+`viewport-fit=cover`, the `apple-touch-icon` link and the `apple-mobile-web-app-*` meta
 tags Safari still reads.
+
+Standalone changes what can go wrong, and the rules that follow from it are in
+CLAUDE.md's Platform section: the keyboard covers a fixed footer without shrinking the
+viewport `dvh` reads, `:hover` latches after a tap, a flick from the top reloads the app
+out from under a half-typed entry, and safe-area insets are the app's problem because
+there is no browser chrome to absorb them. Layout is decided at 320px; `npx vite-node
+scripts/preview.jsx` writes fourteen pages for checking it, two of them deliberately
+pathological.
 
 ### Launch speed
 
@@ -194,8 +206,8 @@ only exists in a build, so exercising it means `npm run build && npm run preview
 the machine.
 
 A green suite says nothing about whether the page looks right; `npx vite-node
-scripts/preview.jsx` writes eight static pages with the real stylesheets, and CLAUDE.md
-says how to view them.
+scripts/preview.jsx` writes fourteen static pages with the real stylesheets, and
+CLAUDE.md says how to view them.
 
 ## Layout
 
@@ -203,6 +215,8 @@ says how to view them.
 | --- | --- |
 | `index.html` | entry HTML, the CSP, the manifest and Home Screen tags |
 | `base.js`, `vite.config.js` | the Pages base path, in one place; React plugin and vitest config |
+| `src/components/LedgerScreen.jsx` | the whole signed-in surface, rendered by both `App` and the visual harness |
+| `src/lib/viewport.js` | how much of the layout viewport the software keyboard covers |
 | `apps-script/` | the token endpoint: `Code.gs` and its manifest, deployed by hand |
 | `public/` | `manifest.webmanifest` and the PNG app icons, copied verbatim into `dist/` |
 | `src/schema.js` | the sheet contract: columns, ranges, row ↔ entry mapping |

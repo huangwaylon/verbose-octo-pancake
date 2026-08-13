@@ -123,6 +123,7 @@ export const CONNECTION_ERROR = {
   KEY_REQUIRED: 'keyRequired',
   OFFLINE: 'offline',
   SCRIPT_UNAVAILABLE: 'scriptUnavailable',
+  SCRIPT_UNAUTHORIZED: 'scriptUnauthorized',
   SCRIPT_MISCONFIGURED: 'scriptMisconfigured',
 }
 
@@ -193,6 +194,17 @@ async function mint() {
   }
 
   if (payload?.error === 'unauthorized') throw badKeyError()
+
+  // The script itself could not mint: its authorization has lapsed, which is what
+  // an unpublished consent screen does after 7 days. Retrying will not fix it, but
+  // it is not a bad key either, so it gets its own message rather than being
+  // reported as a network blip.
+  if (payload?.error === 'unavailable') {
+    throw connectionError(
+      CONNECTION_ERROR.SCRIPT_UNAUTHORIZED,
+      'The token endpoint could not mint a token.',
+    )
+  }
 
   if (typeof payload?.token !== 'string' || !payload.token) {
     throw connectionError(

@@ -44,10 +44,14 @@ export function DeletedList({ entries, config, me, currency, onRestore }) {
   )
 }
 
-/** Its own component so each row can format at its own currency's scale. */
+/**
+ * Its own component because it calls a hook per row: `useEntryTitle` needs the entry,
+ * and the title is wanted twice — as the visible text and inside the restore button's
+ * accessible name. The per-row currency is `EntryAmount`'s job, not this one's.
+ */
 function DeletedRow({ entry, currency, payerLabel, dateLabel, onRestore }) {
   const { t } = useT()
-  const description = useEntryTitle()(entry)
+  const description = useEntryTitle(entry)
 
   return (
     <li className={`entry${entry.pending ? ' entry--pending' : ''}`}>

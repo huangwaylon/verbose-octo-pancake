@@ -92,7 +92,17 @@
   color: var(--accent-text);
 }
 
-.btn--primary:hover:not([disabled]) {
+/* Every hover rule is gated: iOS applies :hover on tap and holds it until the next
+   tap elsewhere, so an unguarded one leaves a button looking stuck in a selected
+   state. `:active` is the touch equivalent and the only press feedback there is,
+   because base.css clears the platform tap highlight. */
+@media (hover: hover) {
+  .btn--primary:hover:not([disabled]) {
+    background-color: var(--accent-hover);
+  }
+}
+
+.btn--primary:active:not([disabled]) {
   background-color: var(--accent-hover);
 }
 
@@ -102,7 +112,14 @@
   color: var(--ink-2);
 }
 
-.btn--ghost:hover:not([disabled]) {
+@media (hover: hover) {
+  .btn--ghost:hover:not([disabled]) {
+    background-color: var(--sunken);
+    color: var(--ink);
+  }
+}
+
+.btn--ghost:active:not([disabled]) {
   background-color: var(--sunken);
   color: var(--ink);
 }
@@ -112,7 +129,13 @@
   color: var(--danger-text);
 }
 
-.btn--danger:hover:not([disabled]) {
+@media (hover: hover) {
+  .btn--danger:hover:not([disabled]) {
+    background-color: var(--danger-hover);
+  }
+}
+
+.btn--danger:active:not([disabled]) {
   background-color: var(--danger-hover);
 }
 
@@ -126,7 +149,14 @@
   color: var(--ink-2);
 }
 
-.btn--icon:hover:not([disabled]) {
+@media (hover: hover) {
+  .btn--icon:hover:not([disabled]) {
+    background-color: var(--sunken);
+    color: var(--ink);
+  }
+}
+
+.btn--icon:active:not([disabled]) {
   background-color: var(--sunken);
   color: var(--ink);
 }
@@ -238,7 +268,12 @@
 }
 
 .segmented__option {
+  /* min-width:0 so a long name from the config tab shrinks instead of forcing the
+     flex item to its min-content width, which at 320px overflows the sheet. */
   flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  touch-action: manipulation;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -302,6 +337,7 @@
   height: var(--tap-target);
   border-radius: var(--radius-full);
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 /* The input itself is hidden by the shared rule above, alongside the segmented
@@ -335,11 +371,15 @@
 .pill {
   display: inline-flex;
   align-items: center;
+  /* Pills carry arbitrary config-tab text — a category or a note preset — so they
+     must never set the width of the sheet they sit in. */
+  max-width: 100%;
   padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-full);
   font-size: var(--fs-caption);
   font-weight: 500;
   line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
 }
 
 .pill--muted {
@@ -358,12 +398,19 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  /* The software keyboard covers the bottom of the LAYOUT viewport, which is what
+     `position: fixed` and `dvh` are both anchored to — so without this the panel
+     keeps its full height and the footer's Save button sits behind the keyboard.
+     BottomSheet publishes the overlap from `window.visualViewport`. */
+  padding-bottom: var(--keyboard-inset, 0px);
 }
 
 .sheet__backdrop {
   position: absolute;
   inset: 0;
   background-color: var(--scrim);
+  /* Dismissal is a single tap, and a drag here must not reach the page behind. */
+  touch-action: manipulation;
 }
 
 .sheet__panel {
@@ -371,7 +418,9 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-height: min(88dvh, 44rem);
+  /* Shrinks by the keyboard inset too, or the panel grows past the top of the
+     screen instead of the body scrolling. */
+  max-height: min(calc(88dvh - var(--keyboard-inset, 0px)), 44rem);
   background-color: var(--surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--shadow-overlay);
@@ -405,6 +454,10 @@
 .sheet__body {
   flex: 1 1 auto;
   overflow-y: auto;
+  /* Not `visible`: with overflow-y set, the spec computes a `visible` overflow-x to
+     `auto`, so one over-wide child would turn the sheet into a sideways scroller
+     rather than being wrapped or clipped. */
+  overflow-x: hidden;
   padding: var(--space-2) var(--space-5) var(--space-5);
   -webkit-overflow-scrolling: touch;
   /* The body's overflow:hidden lock does not stop iOS chaining the scroll to
@@ -448,11 +501,16 @@
    Feedback: toasts, spinner, empty state
    ========================================================================= */
 
+/* Stacked ABOVE the FAB, not over it: --z-toast beats --z-fab, so an overlapping
+   toast would hide the add button and swallow its taps for the toast's whole life.
+   Nothing in a toast is interactive, so the stack itself takes no pointer events —
+   only a rare wide toast can reach past the FAB, and it must not block it either. */
 .toast-stack {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--space-5) + var(--safe-bottom));
+  bottom: calc(var(--space-5) + var(--fab-size) + var(--space-3) + var(--safe-bottom));
   z-index: var(--z-toast);
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);

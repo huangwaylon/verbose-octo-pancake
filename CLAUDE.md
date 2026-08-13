@@ -5,6 +5,11 @@ reasoning and the cost are in `README.md`; the Google Cloud walkthrough is in
 `SETUP.md`. Neither is restated here — this file is only the rules that are not
 visible from the code, and the reasons they exist.
 
+**The target is one platform: Safari on iOS, installed to the Home Screen, on a
+phone.** Not "mobile-first, desktop too" — desktop is a convenience. Every layout
+decision is made at 320px first, and a rule that only matters in a standalone web app
+is still a rule. See Platform below.
+
 ## Commands
 
 | Command | Notes |
@@ -27,31 +32,26 @@ order, ranges, and row↔entry mapping live there. Never hardcode a range like
 `columnIndex`.
 
 **`EXPENSE_COLUMNS` is append-only, and capped at 26.** Every range and letter is
-derived from array *position*, and `ensureStructure` rewrites a mismatched header
-row while never touching data rows — so inserting or reordering a column relabels
-every existing row in a live sheet, silently, under the wrong field. The cap is
-`columnLetter`'s single-character arithmetic (`65 + index`): column 27 is `'['`.
-That throws a `RangeError` rather than producing a range the API rejects, and
-`test/schema.test.js` fails on the list growing past 26.
+derived from array *position*, and `ensureStructure` rewrites a mismatched header row
+while never touching data rows — so inserting or reordering a column relabels every
+existing row in a live sheet, silently, under the wrong field. The cap is
+`columnLetter`'s single-character arithmetic (`65 + index`): column 27 answers `'['`
+and every range built from it is rejected. `test/schema.test.js` asserts the length,
+which is the only way that limit can be crossed.
 
 **`loadAll`'s ranges are positionally coupled to `PEOPLE`.** It requests
 `[p1, p2, config]` and maps `valueRanges[index]` back by the `PEOPLE` index, so
 reordering either list attributes every row to the wrong payer: the balance flips
 sign and nothing throws.
 
-**Which tab a row lives in *is* the payer**, so there is no `payer` column to keep
-in sync. `rowToEntry` takes the person as an argument and **throws** for anything
-that is not one, like `expensesTab` — a caller that cannot name the tab it is
-reading has lost track of it, and every entry it decodes would be attributed
-wrongly. Every function that touches expense rows is keyed on a person.
+**`rowToEntry` and `expensesTab` throw rather than guess a person.** Which tab a row
+lives in *is* the payer, so a caller that cannot name one has lost track of the tab it
+is reading, and every row it touches would be attributed wrongly.
 
 **An id is not unique across the two tabs**, because a payer change leaves a
-tombstone behind (README's data model). `reconcileById` in `lib/ledgerState.js` is
-what keeps that from mattering, and `loadAll` applies it; the reasoning is at the
-function, and three separate things break silently without it. The hidden tombstones
-are still real rows, so `loadAll` reports `supersededRows` and `useLedger` adds them
-to the count the compact button acts on — otherwise the button offers nothing to
-remove while the sheet still holds removable rows.
+tombstone behind. Every read goes through `reconcileById`, which says what breaks
+without it. Those hidden tombstones are still real rows, so `supersededRows` is added
+back to the count the compact button acts on.
 
 **`updateEntry` must be told the row's CURRENT payer**, which is the tab the row
 lives in now — `useLedger` passes `previous.payer` from local state, never
@@ -60,13 +60,23 @@ lives in now — `useLedger` passes `previous.payer` from local state, never
 a `previousPayer` that is not a person. Guessing appends a duplicate row and then
 tombstones in the wrong tab, leaving two live rows for one entry.
 
-**Read state through `entriesRef`, never from inside a `setEntries` updater.** A
-write needs the entry it is about to replace, and an updater only runs synchronously
-while React's eager-state bailout applies — which any other pending update on the
-component defeats, and `App` sets its own state in the same handler as a delete. Take
-`previous` from the ref *before* calling `setEntries`, and keep the updater pure.
-Otherwise `previous` is undefined exactly when a revert matters and a failed delete
-stays tombstoned on screen while the row is still live in the sheet.
+**A pending row always beats the server's copy of it**, whether or not the sheet lists
+its id — `mergeLoaded` says why both halves matter. Its corollary: `pending` must never
+be left set with no write in flight, so `reverted` strips it. A stuck flag is permanent
+and blocks `compact` for the life of the install.
+
+**Only the newest read may apply.** `loadGeneration` in `useLedger` drops any reply that
+is not the current one, and a read in flight when the key is forgotten must not
+repopulate state for the sheet just left.
+
+**`compact` never runs while a write is in flight**, because deleting rows shifts the
+row numbers a pending write already resolved. It reports `busy` rather than
+`{removed: 0}` — "Removed 0 rows" is a lie when there are rows to remove.
+
+**Read state through `entriesRef`, never from inside a `setEntries` updater.** An
+updater only runs synchronously while React's eager-state bailout applies, which any
+other pending update on the component defeats — and `App` sets its own state in the same
+handler as a delete. Take `previous` from the ref *before* calling `setEntries`.
 
 **Never `USER_ENTERED`.** Every write passes `valueInputOption: RAW`, for the
 reasons in README's data model.
@@ -81,11 +91,9 @@ edits the sheet in the Sheets UI, so `updateEntry` and `setDeletedAt` re-resolve
 id → row through `resolveRow` immediately before writing. There is deliberately no
 `rowNumber` field to be tempted by.
 
-**`compact` reads the full row range, not just the `deleted_at` column.** Row
-numbers there are derived from position (`FIRST_DATA_ROW + index`), which only holds
-while every data row is present in the reply — and `deleted_at` is empty on most
-rows. Being one row out in the only hard delete in the app removes somebody else's
-expense. `resolveRow` may read one column because `id` is populated on every row.
+**`compact` reads the full row range, not just the `deleted_at` column**, because its
+row numbers come from position and that column is empty on most rows. Being one row out
+in the only hard delete removes somebody else's expense.
 
 **`compact()` is the only hard delete**, and it must issue its `deleteDimension`
 requests in **descending** row order within each tab, or earlier deletions shift the
@@ -97,10 +105,9 @@ because `compact` also calls it for the gids. `looksUninitialized` is what turns
 *failed read* into a build, and it answers true for 400 and 404 alone: a 403 or a 500
 must never lead to writing tabs into somebody's spreadsheet.
 
-**Every delete goes through `ConfirmDeleteSheet`.** `App` owns `pendingDelete` and
-nothing else calls `removeEntry`, so the row's trash control and the edit form's land
-on the same dialog. Recovery is the collapsed `DeletedList`, never a toast action — a
-toast that has timed out is a delete nobody can undo.
+**Every delete goes through `ConfirmDeleteSheet`**: `App` owns `pendingDelete` and
+nothing else calls `removeEntry`. Recovery is the collapsed `DeletedList`, never a toast
+action — a toast that has timed out is a delete nobody can undo.
 
 **The deleted list is scoped to the month on screen**, because it sits under the
 month switcher; settings' count stays sheet-wide, because that is what `compact`
@@ -133,11 +140,20 @@ row somebody added by hand. `loadAll` therefore resolves the config *before* map
 rows. `test/currency.test.js` pins both scales. `entryToRow` writes each row at its
 *own* currency's scale, never the config's.
 
-**A row the app cannot decode is reported, not dropped.** `rowToEntry` answers null
-for a row whose amount is unparseable, so it is absent from the list, the balance and
-every total. `loadAll` counts those rows and `App` says so, because a ledger quietly
-short one expense is the exact failure this codebase exists to avoid. A row with no
-id is a blank one and says nothing.
+**Anything the sheet holds and the app cannot show is counted and said out loud.**
+`loadAll` returns `undecodedRows`, `undatedRows`, `supersededRows` and `configMissing`,
+each explained where it is counted, and `noticeKeys` turns them into notices. A ledger
+quietly short one expense — or silently running on the default currency — is the exact
+failure this codebase exists to avoid. Never repair `configMissing`: re-seeding writes
+the DEFAULT currency into a sheet whose real one is unknown.
+
+**`type` and `currency` are both case-folded on read, and the FIRST usable value for a
+config key wins.** Each is a 100x-or-worse error from one stray cell.
+
+**A displayed share is not the saved share.** `toSplit` carries the exact `share`
+beside the whole-percent `percent`, and `share` is what gets written; `splitAtPercent`
+is the only place a slider position becomes one. Saving `percent / 100` moves money on
+an edit that never touched the split.
 
 **`parseShare` is the one reading of a share a human typed** — anything above 1 is a
 percentage. Both the `payer_share` column and the `default_split_p*` rows go through
@@ -158,14 +174,11 @@ nothing falls through to `nameOf`'s localized fallback instead of "Person 1".
 **Neither per-device preference may ever be written to the sheet.** Neither person
 gets to restyle the other's phone.
 
-**Settlements are not a separate code path.** Two rules follow: never add an
-`if (type === 'settlement')` branch to arithmetic — `payer_share: 0` already says it
-— and never count one toward spend totals or a category breakdown.
+**Never add an `if (type === 'settlement')` branch to arithmetic** — `payer_share: 0`
+already says it — and never count one toward a spend total or a category breakdown.
 
-**Nothing in the UI creates a settlement.** Settling happens by wire transfer, so
-`BalanceCard` carries no action and must stay that way unless asked. Everything below
-the UI still handles the type, because the row format has one and a settlement row
-must stay readable and editable.
+**Nothing in the UI creates a settlement**, so `BalanceCard` carries no action and must
+stay that way unless asked. Everything below the UI still handles the type.
 
 **The default split is per person, keyed on the payer.** `defaultSplitFor(config,
 person)` in `src/lib/split.js` is the only place that decides it. The two values are
@@ -177,8 +190,9 @@ records a decision someone already made.
 
 **Dates are ISO strings, compared as strings.** Never `new Date('2026-08-05')` —
 that parses as UTC midnight and shifts to the previous day in western timezones. Use
-the helpers in `src/lib/dates.js`, which build dates from explicit parts; `monthParts`
-there is the only parser of a `'YYYY-MM'` key.
+the helpers in `src/lib/dates.js`, which build dates from explicit parts. `isMonthKey`
+there is the only test of a `'YYYY-MM'` key — a second regex elsewhere disagreed with it
+about whether month 13 is a month.
 
 **Config values are not all strings.** `CONFIG_FIELDS` in `src/lib/sheets.js`
 carries a kind per key — `text`, `code`, `list` or `fraction` — and each parser in
@@ -196,10 +210,9 @@ lives in `lib/` — `ledgerState.js` (list transitions, `reconcileById`,
 aggregates), `split.js` (`toSplit`, `nextSplit`). Put new logic there, not in the
 hook, or it cannot be tested at all.
 
-**Refreshes on focus are throttled.** Two people share one sheet with no push
-channel, so `useLedger` re-reads on `focus` and `visibilitychange`. Window switching
-is constant and every refresh spends per-user quota, hence the 30s floor — do not
-remove it.
+**Refreshes on focus are throttled to a 30s floor.** Two people share one sheet with
+no push channel, so `useLedger` re-reads on `focus` and `visibilitychange`; window
+switching is constant and every refresh spends per-user quota. Do not remove it.
 
 **The app key is never a build-time value.** It is typed once per device and lives
 only there. `VITE_SCRIPT_URL` ships in the public bundle, so nothing may depend on
@@ -230,6 +243,16 @@ user gesture, so `sheets.js` recovers silently. `refreshToken`'s generation coun
 why: a mint that began *before* the 401 may carry the token Google just rejected, and
 the retry runs with `allowRetry: false`.
 
+**A failure that retrying cannot fix must not be reported as transient**, or it hides
+behind a 30-second retry loop and a "showing saved data" notice forever. Two of them: a
+lost share, and the token endpoint's `{"error":"unavailable"}` (the 7-day consent-screen
+expiry). A 403 is *both* — Google also returns it for a tripped quota — so
+`isUnreachable` reads the reason rather than the status.
+
+**An entry's id is minted when the draft opens, not per submit**, so a retry after a lost
+response is at worst a duplicate row the client reconciles, rather than a second expense
+with its own id.
+
 **No raw error text ever reaches the screen.** `i18nError` is the only way to throw
 something a person will read. `sheets.js` and `connection.js` keep the API's own
 English on `.message` for consoles and bug reports and attach an `i18nKey` instead;
@@ -237,22 +260,21 @@ English on `.message` for consoles and bug reports and attach an `i18nKey` inste
 becomes a sentence, and it never falls back to `.message`. Show `cause.message` and a
 Japanese reader gets "The caller does not have permission (HTTP 403)".
 
-**Bump the snapshot's `VERSION` whenever the persisted shape changes**, and remember
-it silently stops writing past `MAX_CHARS` (~2000 entries): `writeStored` swallows the
-quota error, so an over-long history turns the cold-launch paint off for good with no
-error anywhere. `writeSnapshot` must also be handed the server-loaded list, never the
-merged state — an unacknowledged optimistic row persisted there comes back next launch
-looking saved.
+**The snapshot is validated per entry, and dropped whole if any row fails.** It is the
+one input never decoded through `rowToEntry`, and it paints during the FIRST render
+inside a `useMemo`, where a throw is an app that will not launch with no way in to clear
+the cache. A partially dropped list would be a wrong balance instead.
 
-**The snapshot's `v` is a drop marker, never a migration.** An unrecognised version is
-ignored and re-fetched, which is free — the sheet is the source of truth. The snapshot
-stores the **pre-merge** config, because a merged copy freezes the building build's
-defaults into every later launch. Config and entries seed atomically, for the same
-reason `loadAll` resolves the config before mapping rows: the balance formats at
-`config.currency`, so entries restored without their config render at the wrong scale.
-`clearSnapshot` exists because that module also remembers the last payload it wrote in
-order to skip redundant writes — clearing the key without resetting that leaves the
-next load convinced it already saved.
+**Bump `VERSION` whenever the persisted shape changes**; `v` is a drop marker, never a
+migration. Three other things there are easy to break: it silently stops writing past
+`MAX_CHARS`, so an over-long history turns the cold-launch paint off with no error
+anywhere; it stores the **pre-merge** config, seeded atomically with the entries, or the
+balance renders at the wrong scale; and `clearSnapshot` exists because it remembers its
+last payload to skip redundant writes.
+
+**The cache is written from the screen, only once nothing is pending.** An effect in
+`useLedger` owns that, so an unacknowledged optimistic row can never reach it — and a
+write that lands after a refresh started is not lost from it either.
 
 **`setSafeToReload` must stay wired.** `serviceWorker.js` defaults it to `() => true`,
 and one effect in `App` narrows it to "no draft open, no write in flight". Break that
@@ -306,11 +328,16 @@ existing sheet working".
   turns a person into a name; `i18nError` and `errorMessage` in `i18n/index.js` are the
   only ways an error becomes readable text; `UNCATEGORIZED` in `balance.js` is the only
   spelling of that bucket.
-- **A control that appears twice is a component.** `Segmented` (four call sites),
-  `EntryAmount` (the per-row currency resolution), `NoteField` and `SplitField`.
-  `useLedgerView` holds every derived figure so `App` stays gates, sheets and layout.
-  The two radio groups — `Segmented` and the accent swatches — each carry their own
-  `role="radiogroup"`.
+- **A control that appears twice is a component.** `Field` (the one place the
+  `<label htmlFor>` vs `<span>` decision is made — pointing a label at a group makes a
+  screen reader announce the wrong thing), `Segmented` (four call sites, itself built on
+  `Field`), `EntryAmount` (the per-row currency resolution), `NoteField` and
+  `SplitField`. The two radio groups — `Segmented` and the accent swatches — each
+  carry their own `role="radiogroup"`.
+- **`LedgerScreen` is the signed-in surface, and TWO things render it**: `App` and
+  `scripts/preview.jsx`. Written twice, a layout change silently leaves the only visual
+  check screenshotting a tree the app no longer has. `App` keeps the gates, the sheets
+  and the state; `useLedgerView` holds every derived figure.
 
 ### i18n
 
@@ -355,6 +382,47 @@ variant for strings with inline markup (`nodes.jsx`).
 - **Identity is never communicated by colour alone.** The chart legend always carries
   name, value and share; the who-paid meter's second segment carries a hairline.
 
+### Platform: iOS, standalone, small
+
+Every rule here is invisible in a desktop browser and wrong on the actual target.
+`test/styles.test.js` pins them, because nothing else can.
+
+- **The sheet lifts clear of the software keyboard.** `position: fixed` and `dvh` both
+  track the LAYOUT viewport, which iOS does not shrink for the keyboard, so a
+  bottom-anchored panel puts its Save button behind it — and the decimal keypad has no
+  Done key to escape with. `BottomSheet` publishes `--keyboard-inset` from
+  `window.visualViewport` (`resize` **and** `scroll`) and `.sheet` pads by it;
+  `scrollIntoView` cannot do this job, because the footer is a sibling of the scrolling
+  body rather than content in it. `lib/viewport.js` holds the arithmetic.
+- **Hover is a mouse state, `:active` is the touch one.** iOS applies `:hover` on tap
+  and holds it until the next tap elsewhere, so every hover rule sits behind
+  `@media (hover: hover)` and every hover-styled control has an `:active` too — the
+  platform tap highlight is cleared, so `:active` is the only press feedback there is.
+- **`overscroll-behavior-y: none` on `html`.** An installed iOS web app reloads on a
+  downward flick from the top, and that reload never consults `setSafeToReload`, so it
+  can discard a half-typed entry.
+- **`touch-action: manipulation` on anything tappable.** `base.css` sets it on `button`
+  only, so the label-based controls, the `<summary>` and the backdrop each need their own
+  or they wait 300ms for a double-tap that would only zoom. `.entry__main` carries the
+  touch rules on `button.entry__main` alone: the deleted list renders the same class as
+  inert text, where a press state promises a tap that does nothing.
+- **Nothing may scroll sideways at 320px.** `.sheet__body` sets `overflow-x: hidden`
+  explicitly, because with `overflow-y` set the spec computes a `visible` overflow-x to
+  `auto` — one over-wide child would make the panel a horizontal scroller. Anything
+  holding config-tab text needs `min-width: 0` (a flex item's automatic minimum is
+  min-content) and `overflow-wrap: anywhere` (`break-word` does not reduce min-content
+  width). The two `preview-en-stress*` pages are the check: names, categories, notes and
+  amounts that no phone has room for.
+- **The toast stack sits ABOVE the FAB and takes no pointer events**, or it hides the
+  add button and swallows its taps for the toast's whole life.
+- **A row is a row, not text.** `.entry__main` sets `user-select: none` and
+  `-webkit-touch-callout: none`: it is the edit affordance, and a long press should not
+  raise the selection magnifier.
+- **Safe areas are composed where they are needed, not globally.** `base.css` applies
+  the horizontal insets to `body`; the sticky header, the FAB, the sheet footer and the
+  toast stack each add `--safe-top`/`--safe-bottom` themselves, because each has to paint
+  *into* its inset while padding its own content.
+
 ### Charts
 
 `DonutChart` is hand-rolled inline SVG — no charting library, and it uses a
@@ -366,10 +434,9 @@ is exactly 100, making a dash length a percentage).
   including the ring's wrap-around pair. Never reorder, never cycle past slot 6 — a
   7th category folds into "Other" via `foldTail`. Accent presets deliberately do not
   touch these.
-- **Set the slice stroke inline, never in CSS.** `var()` is invalid in an SVG
-  presentation attribute, and a CSS rule on `.chart__slice` overrides the attribute
-  and paints every slice one color — an invisible chart that passes every test.
-  `test/ui.test.jsx` pins it.
+- **Set the slice stroke inline, never in CSS.** A CSS rule on `.chart__slice` overrides
+  the attribute and paints every slice one colour — an invisible chart that passes every
+  test. `test/ui.test.jsx` pins it.
 - **Two values is not a pie.** The who-paid split is a meter bar, and its second
   segment carries a hairline: the accent wash is 1.04:1 against the track, so without
   it the bar reads as "one person paid everything".
@@ -426,26 +493,29 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
 ## Testing
 
 Specs live in `test/**/*.test.{js,jsx}`, with shared harnesses under `test/support/`.
-Seventeen files: `money`, `currency`, `balance`, `schema`, `dates`, `config`, `split`,
-`sheets`, `ledgerState`, `connection`, `snapshot`, `sw-build`, `i18n`, `render`, `ui`,
-`styles` and `lockfile`.
+Nineteen files: `money`, `currency`, `balance`, `schema`, `dates`, `config`, `split`,
+`sheets`, `ledgerState`, `connection`, `snapshot`, `preferences`, `viewport`,
+`sw-build`, `i18n`, `render`, `ui`, `styles` and `lockfile`.
 
 `sheets.test.js` runs against a fake Sheets API in `test/support/sheets-api.js` that
 records every request, because this layer's failures are writes: the assertions are
 about what was *sent*, not what came back.
 
-`connection`, `snapshot`, `sw-build` and `styles` exist because their failures are
-invisible in a build and on screen — a misclassified endpoint reply, a snapshot that
-renders money at the wrong scale, a precache list that stops any worker activating, a
-merged CSS rule that lands on the wrong block.
+`connection`, `snapshot`, `sw-build`, `styles`, `preferences` and `viewport` exist
+because their failures are invisible in a build and on screen — a misclassified endpoint
+reply, a snapshot that renders money at the wrong scale, a precache list that stops any
+worker activating, a merged CSS rule that lands on the wrong block, an accent that
+writes an attribute CSS has no rule for, a keyboard inset that leaves Save covered.
 
 **A test that cannot fail is worse than no test**, because it reads as coverage. Do
 not assert a function against itself, do not assert a property of the platform, and do
-not name a test after an invariant it does not exercise. Three specific traps here:
+not name a test after an invariant it does not exercise. Four specific traps here:
 deriving an expected value from the module under test (write the literal `'K'`, not
 `columnLetter('deleted_at')`); asserting `not.toContain` against a string that appears
-in neither the right nor the wrong output; and accepting either of two shapes with
-`??` when only one is correct.
+in neither the right nor the wrong output; accepting either of two shapes with `??`
+when only one is correct; and asserting an attribute that a DIFFERENT element in the
+same markup already supplies — check the element, not the document. **Mutate the code
+and watch the test fail** before believing it.
 
 `render.test.jsx` and `ui.test.jsx` render components to static markup with
 `renderToStaticMarkup` — no DOM, no browser. They catch components that throw on a
@@ -463,17 +533,21 @@ the outstanding balance must drive the net to zero, with odd-unit amounts so rou
 is genuinely exercised.
 
 **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the
-signed-in surface to static HTML: every accent in English, indigo in Japanese, and the
-confirm dialog in each — eight files, with the real stylesheets:
+real `LedgerScreen` to static HTML with the real stylesheets — fourteen files: each
+accent in English, indigo in Japanese, the three overlays (delete dialog, entry form,
+settings) in both, and two stress pages whose config tab and notes hold everything a
+320px phone has no room for.
 
 ```sh
 npx vite-node scripts/preview.jsx     # writes scripts/preview-*.html (gitignored)
 ```
 
-Load those in `<iframe>`s at 320/390/430/768/1440 and screenshot. **Use iframes, not a
+Load them in `<iframe>`s at 320/390/430/768/1440 and screenshot. **Use iframes, not a
 resized window** — an iframe gets its own viewport so container and media queries
 resolve honestly, while headless Chrome quietly reports a different width than you
-asked for and every breakpoint reads wrong.
+asked for and every breakpoint reads wrong. Assert the absence of sideways scroll
+rather than eyeballing it: `documentElement.scrollWidth > clientWidth` inside each
+frame is the whole check.
 
 ## Gotchas
 

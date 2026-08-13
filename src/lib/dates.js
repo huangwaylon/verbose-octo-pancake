@@ -49,6 +49,11 @@ function monthParts(monthKey) {
   return { year, month }
 }
 
+/** Whether a string is a 'YYYY-MM' key. The only such check in the app. */
+export function isMonthKey(value) {
+  return monthParts(value) != null
+}
+
 /** Shift a 'YYYY-MM' key by n months. A key that is not one is returned as ''. */
 export function shiftMonth(monthKey, delta) {
   const parts = monthParts(monthKey)

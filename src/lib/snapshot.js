@@ -9,6 +9,7 @@
  */
 
 import { STORAGE_KEYS, readStored, writeStored } from '../config.js'
+import { isPerson } from '../schema.js'
 
 /**
  * A drop marker, never a migration. An unrecognised version means the snapshot is
@@ -24,6 +25,33 @@ const VERSION = 1
  * swallows the resulting error and the app would just stay slow forever.
  */
 const MAX_CHARS = 800_000
+
+/**
+ * Whether a restored row is safe to hand to the balance.
+ *
+ * The cache is the one input the app trusts without having decoded it through
+ * `rowToEntry`, and it paints during the FIRST render — before any network call and
+ * inside a `useMemo`, where a throw is an app that will not launch. `splitCents`
+ * throws on a non-numeric share and `sumCents` on a non-integer amount, so a single
+ * bad row from an un-bumped `VERSION` would white-screen the app with no way in to
+ * clear it. Cheaper to check here and re-fetch: the sheet is the source of truth.
+ */
+function isRestorable(entry) {
+  return (
+    Boolean(entry) &&
+    typeof entry === 'object' &&
+    typeof entry.id === 'string' &&
+    entry.id.length > 0 &&
+    Number.isInteger(entry.amountCents) &&
+    // Not `Number(...)`: that accepts null, '' and false, all of which coerce to 0
+    // and then throw in `splitCents`, which is the crash this guard exists to stop.
+    Number.isFinite(entry.payerShare) &&
+    typeof entry.currency === 'string' &&
+    // The payer decides the SIGN of the balance, so a junk one is a wrong number
+    // rather than a crash — which is worse.
+    isPerson(entry.payer)
+  )
+}
 
 /**
  * @param {string} spreadsheetId the sheet the caller is about to read
@@ -42,6 +70,9 @@ export function readSnapshot(spreadsheetId) {
     if (saved.spreadsheetId !== spreadsheetId) return null
     if (!Array.isArray(saved.entries)) return null
     if (!saved.config || typeof saved.config !== 'object') return null
+    // All or nothing: a partially dropped list is a wrong balance on screen, which
+    // is worse than the empty frame a re-fetch costs.
+    if (!saved.entries.every(isRestorable)) return null
     return { entries: saved.entries, config: saved.config }
   } catch {
     return null

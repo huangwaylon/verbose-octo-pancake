@@ -6,7 +6,6 @@ import {
   acknowledge,
   entryById,
   entryFromInput,
-  hasTombstones,
   looksUninitialized,
   mergeLoaded,
   missingExpenseGid,
@@ -25,6 +24,14 @@ import { readSnapshot, writeSnapshot } from '../lib/snapshot.js'
 
 /** Floor between focus-triggered refreshes. Window switching is constant. */
 const REFRESH_THROTTLE_MS = 30_000
+
+/** Nothing read yet, and what a disconnect resets to. */
+const EMPTY_EXTRAS = {
+  supersededRows: 0,
+  undecodedRows: 0,
+  undatedRows: 0,
+  configMissing: false,
+}
 
 /**
  * Owns the entry list for one spreadsheet.
@@ -62,7 +69,7 @@ export function useLedger(spreadsheetId) {
    * unreadable. Both are things the person needs told about, and neither can be
    * recovered from the entry list, because being absent from it is the point.
    */
-  const [sheetExtras, setSheetExtras] = useState({ supersededRows: 0, undecodedRows: 0 })
+  const [sheetExtras, setSheetExtras] = useState(EMPTY_EXTRAS)
 
   const loadedFor = useRef(null)
   /** Whether there has ever been something real to show, cached or loaded. */
@@ -97,39 +104,70 @@ export function useLedger(spreadsheetId) {
 
   useEffect(() => () => clearTimeout(persistTimer.current), [])
 
-  const applyLoad = useCallback(
-    (id, data) => {
-      const loaded = data.entries ?? []
-      setEntries((current) => mergeLoaded(current, loaded))
-      // Config before amounts, always: the balance and the month totals format
-      // at `config.currency`, so entries seeded against a stale currency render
-      // at the wrong scale. Same ordering rule as `loadAll`.
-      setConfig(mergeConfig(data.sheetConfig))
-      setSheetExtras({
-        supersededRows: data.supersededRows ?? 0,
-        undecodedRows: data.undecodedRows ?? 0,
-      })
-      setError(null)
-      setStatus('ready')
-      everLoaded.current = true
-      // The loaded list, never the merged one: a pending row persisted here comes
-      // back next launch looking saved.
-      persist(id, loaded, data.sheetConfig)
-    },
-    [persist],
-  )
+  /** The sheet's own partial config, which is what the snapshot has to store. */
+  const sheetConfigRef = useRef(seed?.config)
+
+  const applyLoad = useCallback((id, data) => {
+    setEntries((current) => mergeLoaded(current, data.entries ?? []))
+    // Config before amounts, always: the balance and the month totals format
+    // at `config.currency`, so entries seeded against a stale currency render
+    // at the wrong scale. Same ordering rule as `loadAll`.
+    sheetConfigRef.current = data.sheetConfig
+    setConfig(mergeConfig(data.sheetConfig))
+    setSheetExtras({
+      supersededRows: data.supersededRows ?? 0,
+      undecodedRows: data.undecodedRows ?? 0,
+      undatedRows: data.undatedRows ?? 0,
+      configMissing: Boolean(data.configMissing),
+    })
+    setError(null)
+    setStatus('ready')
+    everLoaded.current = true
+  }, [])
+
+  /**
+   * Persist whatever is on screen, once nothing is in flight.
+   *
+   * Driven by the list rather than by each write, because the two can disagree: a
+   * refresh that started before a delete returns the row still live, and persisting
+   * that read would put a deleted expense back into the next cold launch's balance.
+   * Waiting for `pending` to clear is also what keeps the documented rule — an
+   * unacknowledged optimistic row must never reach the cache — true by construction.
+   */
+  useEffect(() => {
+    if (!spreadsheetId || !everLoaded.current) return
+    if (entries.some((entry) => entry.pending)) return
+    persist(spreadsheetId, entries, sheetConfigRef.current)
+  }, [spreadsheetId, entries, persist])
+
+  /**
+   * Counts every read started, so a reply that is not the newest can be dropped.
+   *
+   * Two taps of the refresh button on a flaky connection can resolve out of order,
+   * and the older reply would win both `setEntries` and the debounced `persist` —
+   * writing a stale ledger to the cache. A read still in flight when the key is
+   * forgotten would likewise repopulate state for a sheet the app has left, so the
+   * spreadsheet id is checked as well as the generation.
+   */
+  const loadGeneration = useRef(0)
 
   const load = useCallback(
     async (id) => {
+      const generation = (loadGeneration.current += 1)
+      const isCurrent = () => generation === loadGeneration.current
       setStatus(statusOnLoadStart)
 
       const fail = (cause) => {
+        if (!isCurrent()) return
         setError(errorMessage(cause, 'error.readSheet'))
         setStatus(statusOnLoadFailure(everLoaded.current))
       }
+      const apply = (data) => {
+        if (isCurrent()) applyLoad(id, data)
+      }
 
       try {
-        applyLoad(id, await sheets.loadAll(id))
+        apply(await sheets.loadAll(id))
       } catch (cause) {
         // A sheet that has never been used has no tabs yet; set it up and retry
         // once. This is the only path that builds structure, and it refuses a
@@ -137,8 +175,9 @@ export function useLedger(spreadsheetId) {
         if (looksUninitialized(cause)) {
           try {
             const { sheetIds: ids } = await sheets.ensureStructure(id)
+            if (!isCurrent()) return
             setSheetIds(ids ?? {})
-            applyLoad(id, await sheets.loadAll(id))
+            apply(await sheets.loadAll(id))
           } catch (secondCause) {
             fail(secondCause)
           }
@@ -153,13 +192,17 @@ export function useLedger(spreadsheetId) {
   useEffect(() => {
     if (!spreadsheetId) {
       // Disconnected: drop everything, and clear `loadedFor` so reconnecting to
-      // the same sheet still triggers a read rather than short-circuiting.
+      // the same sheet still triggers a read rather than short-circuiting. Bumping
+      // the generation is what stops a read already in flight from repopulating
+      // state — and rewriting the snapshot — for the sheet just left behind.
+      loadGeneration.current += 1
       loadedFor.current = null
       everLoaded.current = false
+      sheetConfigRef.current = undefined
       setEntries([])
       setConfig(mergeConfig())
       setSheetIds({})
-      setSheetExtras({ supersededRows: 0, undecodedRows: 0 })
+      setSheetExtras(EMPTY_EXTRAS)
       setStatus('idle')
       setError(null)
       return
@@ -272,7 +315,18 @@ export function useLedger(spreadsheetId) {
 
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
   const compact = useCallback(async () => {
-    if (!hasTombstones(entries) && !sheetExtras.supersededRows) return { removed: 0 }
+    /**
+     * Never while a write is in flight. `compact` deletes rows, which shifts every
+     * row below each one, and a pending `updateEntry`/`setDeletedAt` already resolved
+     * its target row number before the shift — so its write would land on whichever
+     * row moved into that position, blanking a cell in a live expense or un-deleting
+     * an unrelated one.
+     *
+     * Reported as `busy`, not as `{removed: 0}`: "Removed 0 deleted rows" is a lie
+     * when there are rows to remove, and it gives no reason to try again.
+     */
+    if (entries.some((entry) => entry.pending)) return { removed: 0, busy: true }
+    if (!tombstoneCount(entries) && !sheetExtras.supersededRows) return { removed: 0 }
 
     let gids = sheetIds
     if (missingExpenseGid(gids)) {
@@ -301,6 +355,8 @@ export function useLedger(spreadsheetId) {
      */
     tombstoneCount: tombstoneCount(entries) + sheetExtras.supersededRows,
     undecodedRows: sheetExtras.undecodedRows,
+    undatedRows: sheetExtras.undatedRows,
+    configMissing: sheetExtras.configMissing,
     refresh,
     addEntry,
     editEntry,

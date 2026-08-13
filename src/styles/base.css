@@ -11,7 +11,14 @@ html {
   /* Stop iOS/iPadOS from inflating text after an orientation change. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+  /* The platform flash is replaced by explicit `:active` states in primitives.css,
+     which are also the only press feedback a touch device gets — the hover rules
+     are gated behind `@media (hover: hover)`. */
   -webkit-tap-highlight-color: transparent;
+  /* No pull-to-refresh and no rubber-band past the ends. An installed iOS web app
+     reloads on a downward flick from the top, and that reload never consults
+     `setSafeToReload`, so it can discard a half-typed entry. */
+  overscroll-behavior-y: none;
   /* Kinsoku shori: keeps 、。」 from being orphaned at the start of a line.
      Harmless for Latin, load-bearing for Japanese. */
   line-break: strict;
@@ -132,8 +139,10 @@ a {
   text-underline-offset: 0.15em;
 }
 
-a:hover {
-  color: var(--accent-hover);
+@media (hover: hover) {
+  a:hover {
+    color: var(--accent-hover);
+  }
 }
 
 hr {

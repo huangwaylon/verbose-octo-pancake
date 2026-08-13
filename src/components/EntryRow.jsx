@@ -9,7 +9,7 @@ import { SwapIcon, TrashIcon } from './icons.jsx'
  */
 export function EntryRow({ entry, label, currency, onEdit, onDelete }) {
   const { t } = useT()
-  const description = useEntryTitle()(entry)
+  const description = useEntryTitle(entry)
 
   const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
   const payerLabel = label(entry.payer)

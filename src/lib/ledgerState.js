@@ -52,21 +52,40 @@ function supersedes(entry, kept) {
 }
 
 /**
- * Fold a fresh server read into what is on screen, keeping optimistic rows the
+ * Fold a fresh server read into what is on screen, keeping every optimistic row the
  * server has not acknowledged yet.
  *
- * A refresh that started before an append would otherwise drop the new row — and
- * because the snapshot is written from the loaded list, that loss would survive a
- * relaunch. Pending rows go last: they are the newest thing the person did.
+ * A pending row always wins, whether or not the sheet mentions its id. Both halves
+ * matter, and for different reasons:
+ *
+ * An in-flight APPEND is absent from `loaded`, so without this it would leave the
+ * screen — and because the snapshot is written from the loaded list, that loss would
+ * survive a relaunch.
+ *
+ * An in-flight EDIT or DELETE is present in `loaded`, at its pre-write value. Taking
+ * the server's copy there discards what the person just did: the deleted row
+ * reappears, the balance and the month total go back to the old figure, the snapshot
+ * persists it that way — and then `settled` clears `pending` on the stale row, so it
+ * reads as saved. A refresh landing between the tap and the reply is enough.
+ *
+ * Rows the sheet no longer has and that are not pending are gone, not in flight, so
+ * they leave. Order follows the sheet, with fresh appends last: they are the newest
+ * thing this person did.
  *
  * @param {object[]} current what is on screen, including pending rows
  * @param {object[]} loaded what the sheet just said
  * @returns {object[]}
  */
 export function mergeLoaded(current, loaded) {
-  const seen = new Set(loaded.map((entry) => entry.id))
-  const inFlight = current.filter((entry) => entry.pending && !seen.has(entry.id))
-  return inFlight.length ? [...loaded, ...inFlight] : loaded
+  const pending = new Map()
+  for (const entry of current) if (entry.pending) pending.set(entry.id, entry)
+  if (pending.size === 0) return loaded
+
+  const merged = loaded.map((entry) => pending.get(entry.id) ?? entry)
+  const appended = [...pending.values()].filter(
+    (entry) => !loaded.some((item) => item.id === entry.id),
+  )
+  return appended.length ? [...merged, ...appended] : merged
 }
 
 /** The entry with this id, or undefined. What a failed write reverts to. */
@@ -110,10 +129,18 @@ export function without(entries, id) {
 /**
  * The edit or delete failed: put back exactly what was there before, rather than
  * clearing `pending` and leaving the optimistic values on screen as if saved.
+ *
+ * `pending` is stripped from the restored row, because a revert means no write is in
+ * flight for it any more — and `previous` can itself be a pending copy when two
+ * writes to one entry overlap (restore tapped while the delete is still going). A
+ * `pending` flag left set there is permanent: `mergeLoaded` keeps a pending row over
+ * the server's forever, so the row freezes, stops receiving the other person's edits,
+ * and blocks `compact` for the life of the install.
  */
 export function reverted(entries, id, previous) {
   if (!previous) return entries
-  return entries.map((item) => (item.id === id ? previous : item))
+  const restored = previous.pending ? { ...previous, pending: false } : previous
+  return entries.map((item) => (item.id === id ? restored : item))
 }
 
 /**
@@ -122,10 +149,6 @@ export function reverted(entries, id, previous) {
  */
 export function tombstoneCount(entries) {
   return entries.filter((entry) => entry.deletedAt).length
-}
-
-export function hasTombstones(entries) {
-  return entries.some((entry) => entry.deletedAt)
 }
 
 /**
@@ -196,4 +219,34 @@ export function entryFromInput(input, now) {
   const problems = validateEntryCodes(entry)
   if (problems.length) throw i18nError(`error.${problems[0]}`)
   return entry
+}
+
+/**
+ * Everything the screen has to say about itself, as catalog keys.
+ *
+ * Each one reports a state where the numbers on screen are incomplete or suspect,
+ * and every one of them is otherwise silent. Order is worst-first, because they
+ * stack above the balance and the top one is the one that gets read.
+ *
+ * A notice, never a gate: the sheet has not changed just because something about it
+ * cannot be shown, so replacing a working screen with an error would be a
+ * downgrade. `staleData` is the offline launch and needs an `error` to be real —
+ * `stale` alone is where a cached launch starts, before any read has failed.
+ *
+ * @param {{status: string, error: unknown, mixedCurrencies: boolean,
+ *   configMissing: boolean, undecodedRows: number, undatedRows: number}} state
+ * @returns {{key: string, vars?: object}[]}
+ */
+export function noticeKeys(state = {}) {
+  const notices = []
+  if (state.status === 'stale' && state.error) notices.push({ key: 'warning.staleData' })
+  if (state.configMissing) notices.push({ key: 'warning.configMissing' })
+  if (state.mixedCurrencies) notices.push({ key: 'warning.mixedCurrencies' })
+  if (state.undecodedRows > 0) {
+    notices.push({ key: 'warning.undecodedRows', vars: { count: state.undecodedRows } })
+  }
+  if (state.undatedRows > 0) {
+    notices.push({ key: 'warning.undatedRows', vars: { count: state.undatedRows } })
+  }
+  return notices
 }

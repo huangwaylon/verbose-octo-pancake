@@ -18,7 +18,9 @@ export const values = (rows) => ({ values: rows })
 /**
  * @param {(call: {method: string, url: string, path: string, body: object|null}) => object|undefined} handler
  *   returns the JSON payload for a call, or undefined to fall through to `{}`.
- *   Return `{ __status: 400 }` to answer with an error instead.
+ *   Return `{ __status: 400 }` to answer with an error instead, optionally with
+ *   `{ __reason: 'rateLimitExceeded' }` — the field that decides whether a 403 means
+ *   "lost access" or "try again".
  */
 export function installSheets(handler) {
   const calls = []
@@ -43,7 +45,12 @@ export function installSheets(handler) {
         ok: false,
         status: payload.__status,
         statusText: 'Error',
-        json: async () => ({ error: { message: 'stub failure' } }),
+        json: async () => ({
+          error: {
+            message: 'stub failure',
+            ...(payload.__reason ? { errors: [{ reason: payload.__reason }] } : {}),
+          },
+        }),
       }
     }
     return { ok: true, json: async () => payload }

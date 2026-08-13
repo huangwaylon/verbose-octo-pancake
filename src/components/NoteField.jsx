@@ -1,4 +1,5 @@
 import { useT } from '../i18n/index.js'
+import { Field } from './Field.jsx'
 
 /**
  * The free-text note, with the config tab's frequent shops offered two ways.
@@ -13,10 +14,14 @@ export function NoteField({ value, presets, onChange }) {
   const listId = presets.length ? 'note-presets' : undefined
 
   return (
-    <div className="field">
-      <label className="field__label" htmlFor="entry-note">
-        {t('form.note')} <span className="field__hint">{t('common.optional')}</span>
-      </label>
+    <Field
+      htmlFor="entry-note"
+      label={
+        <>
+          {t('form.note')} <span className="field__hint">{t('common.optional')}</span>
+        </>
+      }
+    >
       <input
         id="entry-note"
         className="input"
@@ -54,6 +59,6 @@ export function NoteField({ value, presets, onChange }) {
           </div>
         </>
       )}
-    </div>
+    </Field>
   )
 }

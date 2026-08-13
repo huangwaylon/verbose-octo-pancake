@@ -34,7 +34,7 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
     <section className="card summary">
       <div>
         <p className="eyebrow">{t('summary.title')}</p>
-        <p className="summary__total tnum">{money(monthSpend, { trimZeroCents: true })}</p>
+        <p className="summary__total tnum">{money(monthSpend)}</p>
       </div>
 
       <div className="summary__section">
@@ -69,9 +69,7 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
               <span className="summary__person-name">
                 {t('common.paid', { name: label(person) })}
               </span>
-              <span className="summary__person-amount tnum">
-                {money(byPerson[person] ?? 0, { trimZeroCents: true })}
-              </span>
+              <span className="summary__person-amount tnum">{money(byPerson[person] ?? 0)}</span>
             </span>
           ))}
         </div>
@@ -82,7 +80,7 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
           <p className="eyebrow">{t('summary.byCategory')}</p>
           <DonutChart
             items={items}
-            formatMoney={(cents) => money(cents, { trimZeroCents: true })}
+            formatMoney={money}
             formatShare={(percent) => t('summary.share', { percent })}
             label={t('summary.chartLabel')}
             otherLabel={t('summary.other')}

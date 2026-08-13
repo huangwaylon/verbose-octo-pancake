@@ -480,6 +480,10 @@
   opacity: 0.55;
 }
 
+/* The row body carries the same layout whether it is the edit affordance (a button in
+   the list) or inert text (a span in the deleted list). The touch rules below belong
+   only to the button: a press state on inert text promises a tap that does nothing,
+   and `user-select: none` on it makes a note nobody can copy. */
 .entry__main {
   display: flex;
   flex-direction: column;
@@ -489,6 +493,17 @@
   min-width: 0;
   padding: var(--space-1) 0;
   text-align: left;
+}
+
+button.entry__main {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+button.entry__main:active {
+  background-color: var(--sunken);
 }
 
 /* Deliberately not a flex container. text-overflow only paints on a block box
@@ -561,6 +576,9 @@
   font-weight: 500;
   line-height: var(--lh-tight);
   cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
   /* Firefox draws the marker via list-style; WebKit needs its own pseudo. Both
      are replaced by the chevron, which can be positioned and coloured. */
   list-style: none;
@@ -664,7 +682,13 @@
   transition: background-color var(--transition-fast);
 }
 
-.fab:hover {
+@media (hover: hover) {
+  .fab:hover {
+    background-color: var(--accent-hover);
+  }
+}
+
+.fab:active {
   background-color: var(--accent-hover);
 }
 

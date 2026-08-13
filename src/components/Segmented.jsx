@@ -1,4 +1,5 @@
 import { useId } from 'react'
+import { Field } from './Field.jsx'
 
 /**
  * The segmented radio group: two or three mutually exclusive options, styled as
@@ -25,10 +26,7 @@ export function Segmented({ name, label, value, options, onChange, children, hin
   const labelId = `${useId()}-label`
 
   return (
-    <div className="field">
-      <span className="field__label" id={labelId}>
-        {label}
-      </span>
+    <Field label={label} labelId={labelId} hint={hint}>
       <div className="segmented" role="radiogroup" aria-labelledby={labelId}>
         {options.map(([optionValue, optionLabel]) => (
           <label className="segmented__option" key={optionValue}>
@@ -44,7 +42,6 @@ export function Segmented({ name, label, value, options, onChange, children, hin
         ))}
       </div>
       {children}
-      {hint && <p className="field__hint">{hint}</p>}
-    </div>
+    </Field>
   )
 }

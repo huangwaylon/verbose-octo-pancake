@@ -6,6 +6,7 @@ import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
 import { LOCALE_LABELS, SUPPORTED } from '../i18n/catalogs.js'
 import { ACCENTS, setAccent, useAccent } from '../lib/theme.js'
+import { Field } from './Field.jsx'
 import { Segmented } from './Segmented.jsx'
 
 export function SettingsSheet({
@@ -30,8 +31,11 @@ export function SettingsSheet({
     setBusy(true)
     setMessage(null)
     try {
-      const { removed } = await onCompact()
-      setMessage(t('settings.removedRows', { count: removed }))
+      const { removed, busy: inFlight } = await onCompact()
+      // A refusal is not a removal of zero rows: it has a reason and a remedy.
+      setMessage(
+        inFlight ? t('settings.compactBusy') : t('settings.removedRows', { count: removed }),
+      )
     } catch (cause) {
       setMessage(errorMessage(cause, 'settings.compactError'))
     } finally {
@@ -70,8 +74,7 @@ export function SettingsSheet({
           hint={t('settings.languageHint')}
         />
 
-        <div className="field">
-          <span className="field__label">{t('settings.accent')}</span>
+        <Field label={t('settings.accent')} hint={t('settings.accentHint')}>
           <div className="swatches" role="radiogroup" aria-label={t('settings.accent')}>
             {ACCENTS.map((preset) => (
               <label className="swatch" key={preset}>
@@ -90,11 +93,9 @@ export function SettingsSheet({
               </label>
             ))}
           </div>
-          <p className="field__hint">{t('settings.accentHint')}</p>
-        </div>
+        </Field>
 
-        <div className="field">
-          <span className="field__label">{t('settings.sheet')}</span>
+        <Field label={t('settings.sheet')}>
           <div className="row">
             <a
               className="btn btn--ghost btn--sm"
@@ -105,13 +106,12 @@ export function SettingsSheet({
               {t('settings.openSheet')}
             </a>
           </div>
-        </div>
+        </Field>
 
-        <div className="field">
-          <span className="field__label">{t('settings.configTitle')}</span>
-          <p className="field__hint">
-            {tn('settings.configHint', { tab: <code>{CONFIG_TAB}</code> })}
-          </p>
+        <Field
+          label={t('settings.configTitle')}
+          description={tn('settings.configHint', { tab: <code>{CONFIG_TAB}</code> })}
+        >
           <div className="row">
             <span className="pill pill--muted">{config.currency}</span>
             {config.categories.map((category) => (
@@ -120,10 +120,9 @@ export function SettingsSheet({
               </span>
             ))}
           </div>
-        </div>
+        </Field>
 
-        <div className="field">
-          <span className="field__label">{t('settings.defaultSplit')}</span>
+        <Field label={t('settings.defaultSplit')} hint={t('settings.defaultSplitHint')}>
           {/* One line per person: the whole point of the setting is that the two
               numbers can differ, so a single figure would hide half of it. */}
           {PEOPLE.map((person) => (
@@ -134,11 +133,9 @@ export function SettingsSheet({
               })}
             </p>
           ))}
-          <p className="field__hint">{t('settings.defaultSplitHint')}</p>
-        </div>
+        </Field>
 
-        <div className="field">
-          <span className="field__label">{t('common.notePresets')}</span>
+        <Field label={t('common.notePresets')}>
           {config.notePresets?.length ? (
             <div className="row">
               {config.notePresets.map((note) => (
@@ -152,11 +149,9 @@ export function SettingsSheet({
               {tn('settings.notePresetsEmpty', { key: <code>note_presets</code> })}
             </p>
           )}
-        </div>
+        </Field>
 
-        <div className="field">
-          <span className="field__label">{t('settings.deletedRows')}</span>
-          <p className="field__hint">{t('settings.deletedRowsHint')}</p>
+        <Field label={t('settings.deletedRows')} description={t('settings.deletedRowsHint')}>
           <button
             type="button"
             className="btn btn--danger btn--sm"
@@ -175,7 +170,7 @@ export function SettingsSheet({
               {message}
             </p>
           )}
-        </div>
+        </Field>
       </div>
     </BottomSheet>
   )

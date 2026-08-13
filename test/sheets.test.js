@@ -266,14 +266,43 @@ describe('loadAll', () => {
   })
 
   it('carries a translation key on a failed request, so no English reaches the screen', async () => {
-    installSheets(() => ({ __status: 403 }))
+    installSheets(() => ({ __status: 500 }))
 
     const cause = await sheets.loadAll(SHEET).catch((error) => error)
 
     // The API's own text stays on `.message` for the console; the UI shows the key.
-    expect(cause.message).toContain('HTTP 403')
+    expect(cause.message).toContain('HTTP 500')
     expect(cause.i18nKey).toBe('error.sheetRequest')
-    expect(cause.status).toBe(403)
+    expect(cause.status).toBe(500)
+  })
+
+  it('tells "lost access" apart from "try again"', async () => {
+    // Losing access is not a blip: calling it transient hides it behind a 30-second
+    // retry loop and a "showing saved data" notice, forever.
+    for (const status of [403, 404]) {
+      installSheets(() => ({ __status: status }))
+      const cause = await sheets.loadAll(SHEET).catch((error) => error)
+      expect(cause.i18nKey).toBe('error.sheetUnreachable')
+    }
+    for (const status of [429, 500, 503]) {
+      installSheets(() => ({ __status: status }))
+      const cause = await sheets.loadAll(SHEET).catch((error) => error)
+      expect(cause.i18nKey).toBe('error.sheetRequest')
+    }
+  })
+
+  it('does not call a rate-limited 403 a lost share', async () => {
+    // Google answers 403 for a revoked share AND for a tripped quota. Two people both
+    // active is enough to trip one, and telling someone to go re-share a spreadsheet
+    // that is fine is the wrong instruction at the worst moment.
+    for (const reason of ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded']) {
+      installSheets(() => ({ __status: 403, __reason: reason }))
+      const cause = await sheets.loadAll(SHEET).catch((error) => error)
+      expect(cause.i18nKey).toBe('error.sheetRequest')
+    }
+    installSheets(() => ({ __status: 403, __reason: 'forbidden' }))
+    const revoked = await sheets.loadAll(SHEET).catch((error) => error)
+    expect(revoked.i18nKey).toBe('error.sheetUnreachable')
   })
 
   it('keeps the live row when a payer change left a tombstone under the same id', async () => {

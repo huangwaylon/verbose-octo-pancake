@@ -33,11 +33,20 @@ export function defaultSplitFor(config, person) {
  * control to "Even" and hides the slider; anything else opens Custom showing that
  * number, which is what makes a configured 80% land ready to submit.
  *
+ * `share` is carried alongside `percent` and is the value that gets SAVED. The
+ * slider is whole percents, so a stored 0.333 — from a `default_split_p1` of 33.3 —
+ * displays as 33; saving `percent / 100` instead would rewrite it as 0.33 and move
+ * money on an edit that only touched the note.
+ *
  * @param {number} share fraction in [0,1]
- * @returns {{mode: 'even'|'custom', percent: number}}
+ * @returns {{mode: 'even'|'custom', percent: number, share: number}}
  */
 export function toSplit(share) {
-  return { mode: share === EVEN_SHARE ? 'even' : 'custom', percent: Math.round(share * 100) }
+  return {
+    mode: share === EVEN_SHARE ? 'even' : 'custom',
+    percent: Math.round(share * 100),
+    share,
+  }
 }
 
 /**
@@ -49,9 +58,16 @@ export function toSplit(share) {
  *
  * @param {'even'|'custom'} mode
  * @param {number} configuredShare the payer's default, from `defaultSplitFor`
- * @returns {{mode: 'even'|'custom', percent: number}}
+ * @returns {{mode: 'even'|'custom', percent: number, share: number}}
  */
 export function nextSplit(mode, configuredShare) {
-  if (mode === 'even') return { mode: 'even', percent: Math.round(EVEN_SHARE * 100) }
-  return { mode: 'custom', percent: Math.round(configuredShare * 100) }
+  if (mode === 'even') return toSplit(EVEN_SHARE)
+  // Custom on exactly the even share still has to read as Custom, so this cannot
+  // route through `toSplit`, which would answer 'even' for it.
+  return { mode: 'custom', percent: Math.round(configuredShare * 100), share: configuredShare }
+}
+
+/** Dragging or tapping a preset: whole percents, and the share follows exactly. */
+export function splitAtPercent(percent) {
+  return { mode: 'custom', percent, share: percent / 100 }
 }

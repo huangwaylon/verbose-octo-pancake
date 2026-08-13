@@ -235,29 +235,36 @@ export function usePeopleLabels(config, me) {
  * list row, the delete confirmation and the deleted list — and a confirmation
  * that says "Delete Expense?" for a row with neither note nor category is the
  * reason the fallback chain lives in one place rather than three.
+ *
+ * Takes the entry rather than returning a function: every call site holds exactly
+ * one, and `useEntryTitle()(entry)` was the shape of all three.
  */
-export function useEntryTitle() {
+export function useEntryTitle(entry) {
   const { t, locale } = useT()
   return useMemo(
-    () => (entry) =>
+    () =>
       entry.type === ENTRY_TYPE.SETTLEMENT
         ? t('entry.settled')
         : entry.description || entry.category || t('entry.expense'),
     // `locale` is the dependency that matters; `t` is derived from it.
-    [locale],
+    [entry, locale],
   )
 }
 
 /**
  * A currency- and locale-bound money formatter, so call sites stop silently
- * inheriting the runtime locale and the `trimZeroCents` policy lives in one
- * place. Pass the entry's own currency where one exists; a mixed-currency sheet
- * is only rendered correctly per row.
+ * inheriting the runtime locale. Pass the entry's own currency where one exists; a
+ * mixed-currency sheet is only rendered correctly per row.
+ *
+ * A ".00" tail is always trimmed, because that IS the policy rather than an option:
+ * every figure the app shows is in a dense list or a tight card, and the trim only
+ * ever fires on a whole unit, where the cents carry nothing — including for the
+ * spoken meter label, where "$50" and "$50.00" say the same thing.
  */
 export function useMoney(currency) {
   const { locale } = useT()
   return useMemo(
-    () => (cents, opts) => formatCents(cents, currency, { locale, ...opts }),
+    () => (cents) => formatCents(cents, currency, { locale, trimZeroCents: true }),
     [locale, currency],
   )
 }

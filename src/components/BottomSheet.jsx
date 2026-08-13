@@ -1,14 +1,19 @@
 import { useEffect, useId, useRef } from 'react'
 import { useT } from '../i18n/index.js'
+import { keyboardInset } from '../lib/viewport.js'
 import { CloseIcon } from './icons.jsx'
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
 
+/** Read by `.sheet` in CSS, so the panel sits above the software keyboard. */
+const KEYBOARD_INSET = '--keyboard-inset'
+
 /**
  * Bottom sheet on phones, centred dialog on wider screens (the CSS decides
  * which). Handles Escape, backdrop dismissal, background scroll locking, focus
- * trapping, and moving focus into the panel on open.
+ * trapping, moving focus into the panel on open, and staying clear of the
+ * software keyboard.
  */
 export function BottomSheet({ title, onClose, children, footer }) {
   const { t } = useT()
@@ -77,6 +82,38 @@ export function BottomSheet({ title, onClose, children, footer }) {
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       node?.removeEventListener('focusin', onFocusIn)
+    }
+  }, [])
+
+  /**
+   * Publish how much of the layout viewport the keyboard covers, so the CSS can
+   * lift the whole panel clear of it. `scrollIntoView` above cannot do this job: it
+   * scrolls within `.sheet__body`, and the footer holding Save is a sibling of that
+   * body, not content inside it. The decimal keypad has no Done key, so a footer
+   * behind the keyboard leaves no way to submit at all.
+   */
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const root = document.documentElement
+    const sync = () => {
+      const inset = keyboardInset({
+        innerHeight: window.innerHeight,
+        height: viewport.height,
+        offsetTop: viewport.offsetTop,
+      })
+      root.style.setProperty(KEYBOARD_INSET, `${inset}px`)
+    }
+    sync()
+    // `scroll` as well as `resize`: iOS shifts the visual viewport within the layout
+    // one to follow the focused field, without changing its height.
+    viewport.addEventListener('resize', sync)
+    viewport.addEventListener('scroll', sync)
+    return () => {
+      viewport.removeEventListener('resize', sync)
+      viewport.removeEventListener('scroll', sync)
+      root.style.removeProperty(KEYBOARD_INSET)
     }
   }, [])
 

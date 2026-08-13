@@ -359,10 +359,15 @@ describe('settings renders', () => {
 
   it('names the accent presets for a screen reader, not by swatch colour alone', () => {
     const markup = render()
-    expect(markup).toContain('role="radiogroup"')
+    // The swatch list specifically: a bare `role="radiogroup"` check passes on the
+    // two Segmented groups above it, so it would survive deleting both attributes
+    // from the swatches entirely.
+    expect(markup).toContain('<div class="swatches" role="radiogroup" aria-label="Accent">')
     for (const preset of ['Indigo', 'Pine', 'Teal', 'Plum', 'Sepia']) {
       expect(markup).toContain(preset)
     }
+    // Three groups, not two: identity, language, accent.
+    expect(markup.match(/role="radiogroup"/g)).toHaveLength(3)
   })
 
   it('points at the config tab when there are no note presets', () => {

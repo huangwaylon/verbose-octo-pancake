@@ -4,8 +4,12 @@
  * test suite says nothing about whether the page looks right: a chart rendering
  * white-on-white passes every assertion in the suite.
  *
- * One file per locale, and each carries every accent preset as a query-free
- * variant so a color change can be eyeballed across all five.
+ * One file per locale, each accent as its own variant so a colour change can be
+ * eyeballed across all five, and one page per overlay — the delete dialog, the entry
+ * form and the settings sheet — because those three are what overflow a small phone.
+ *
+ * The surface is the app's own `LedgerScreen`, so this harness cannot drift from what
+ * `App` renders.
  *
  *   npx vite-node scripts/preview.jsx
  */
@@ -23,14 +27,10 @@ import {
   spendByPerson,
   totalSpend,
 } from '../src/lib/balance.js'
-import { Header } from '../src/components/Header.jsx'
-import { BalanceCard } from '../src/components/BalanceCard.jsx'
-import { SummaryCard } from '../src/components/SummaryCard.jsx'
-import { MonthNav } from '../src/components/MonthNav.jsx'
-import { EntryList } from '../src/components/EntryList.jsx'
-import { DeletedList } from '../src/components/DeletedList.jsx'
+import { LedgerScreen } from '../src/components/LedgerScreen.jsx'
 import { ConfirmDeleteSheet } from '../src/components/ConfirmDeleteSheet.jsx'
-import { PlusIcon } from '../src/components/icons.jsx'
+import { EntryFormSheet } from '../src/components/EntryFormSheet.jsx'
+import { SettingsSheet } from '../src/components/SettingsSheet.jsx'
 
 const config = {
   ...DEFAULT_CONFIG,
@@ -89,55 +89,146 @@ const deleted = [
   ),
 )
 
-/** `confirming` renders the delete dialog over the surface, which is how it ships. */
-function body(confirming) {
-  const balance = computeBalance(entries)
-  const noop = () => {}
+const noop = () => {}
 
+/**
+ * The same shape `useLedgerView` hands the screen. Built here rather than by calling
+ * the hook, which needs a renderer — the figures still come from `balance.js`, so
+ * they are the app's own arithmetic and not a fixture pretending to be it.
+ */
+const view = {
+  balance: computeBalance(entries),
+  monthSpend: totalSpend(entries),
+  byCategory: spendByCategory(entries),
+  byPerson: spendByPerson(entries),
+  groups: groupByDate(entries),
+  deleted,
+}
+
+/**
+ * `overlay` puts one of the sheets over the surface, which is how each of them
+ * ships. The surface itself is the real `LedgerScreen`, so this cannot drift from
+ * what `App` renders.
+ */
+function body(overlay, { stress = false } = {}) {
   return renderToStaticMarkup(
     <div className="app">
-      <Header config={config} me={PERSON.P1} onRefresh={noop} onOpenSettings={noop} />
-      <main className="layout">
-        <aside className="layout__aside">
-          <BalanceCard balance={balance} config={config} me={PERSON.P1} currency="JPY" />
-          <SummaryCard
-            monthSpend={totalSpend(entries)}
-            byCategory={spendByCategory(entries)}
-            byPerson={spendByPerson(entries)}
-            config={config}
-            me={PERSON.P1}
-            currency="JPY"
-          />
-        </aside>
-        <section className="layout__main">
-          <MonthNav monthKey="2026-08" onChange={noop} />
-          <EntryList
-            groups={groupByDate(entries)}
-            config={config}
-            me={PERSON.P1}
-            currency="JPY"
-            onEdit={noop}
-            onDelete={noop}
-            onAdd={noop}
-          />
-          <DeletedList
-            entries={deleted}
-            config={config}
-            me={PERSON.P1}
-            currency="JPY"
-            onRestore={noop}
-          />
-        </section>
-      </main>
-      <button type="button" className="fab" aria-label={t('list.emptyAction')}>
-        <PlusIcon width={24} height={24} />
-      </button>
-      {confirming && (
-        <ConfirmDeleteSheet entry={confirming} currency="JPY" onConfirm={noop} onClose={noop} />
-      )}
+      <LedgerScreen
+        config={stress ? stressConfig : config}
+        me={PERSON.P1}
+        currency="JPY"
+        view={stress ? stressView : view}
+        monthKey="2026-08"
+        notices={[t('warning.mixedCurrencies')]}
+        refreshing={false}
+        onRefresh={noop}
+        onOpenSettings={noop}
+        onMonthChange={noop}
+        onEdit={noop}
+        onDelete={noop}
+        onRestore={noop}
+        onAdd={noop}
+      />
+      {overlay}
     </div>,
   )
 }
+
+/**
+ * Everything a config tab and a note field can legitimately hold that a 320px phone
+ * has no room for: names with no break opportunity, a category longer than the
+ * control it sits in, an amount in the millions, and a note that wraps three times.
+ * The layout has to absorb all of it without a horizontal scrollbar or a clipped
+ * glyph, which is the one thing no assertion in the suite can check.
+ */
+const stressConfig = {
+  ...config,
+  person1Name: 'Bartholomew',
+  person2Name: 'Wolfeschlegelstein',
+  categories: ['Groceries and household supplies', '公共料金と光熱費の支払い', 'Other'],
+  notePresets: ['Supermarket on the corner', 'コンビニエンスストア', 'Pharmacy'],
+}
+
+const stressEntries = [
+  makeEntry(
+    {
+      id: 's1',
+      type: ENTRY_TYPE.EXPENSE,
+      date: '2026-08-05',
+      payer: PERSON.P1,
+      amountCents: 12345678,
+      currency: 'JPY',
+      category: 'Groceries and household supplies',
+      description: 'Weekly shop plus the birthday things we said we would split evenly',
+      payerShare: 0.7,
+    },
+    '2026-08-05T10:00:00.000Z',
+  ),
+  makeEntry(
+    {
+      id: 's2',
+      type: ENTRY_TYPE.SETTLEMENT,
+      date: '2026-08-04',
+      payer: PERSON.P2,
+      amountCents: 9876543,
+      currency: 'USD',
+      category: '',
+      payerShare: 0,
+    },
+    '2026-08-04T10:00:00.000Z',
+  ),
+]
+
+const stressView = {
+  balance: computeBalance(stressEntries),
+  monthSpend: totalSpend(stressEntries),
+  byCategory: spendByCategory(stressEntries),
+  byPerson: spendByPerson(stressEntries),
+  groups: groupByDate(stressEntries),
+  deleted: [],
+}
+
+/** The three overlays, each the densest thing on a phone screen in its own way. */
+const OVERLAYS = {
+  confirm: <ConfirmDeleteSheet entry={entries[0]} currency="JPY" onConfirm={noop} onClose={noop} />,
+  form: (
+    <EntryFormSheet
+      draft={{ mode: 'edit', entry: { ...entries[0], payerShare: 0.7 } }}
+      config={{ ...config, notePresets: ['オーケー', 'Ozeki', 'Life'] }}
+      me={PERSON.P1}
+      currency="JPY"
+      onSubmit={noop}
+      onDelete={noop}
+      onClose={noop}
+    />
+  ),
+  settings: (
+    <SettingsSheet
+      config={config}
+      me={PERSON.P1}
+      spreadsheetId="preview-sheet-id"
+      tombstoneCount={2}
+      onSetMe={noop}
+      onCompact={noop}
+      onForget={noop}
+      onClose={noop}
+    />
+  ),
+}
+
+/** The settings sheet is where the config tab's own text has least room to fit. */
+const STRESS_SETTINGS = (
+  <SettingsSheet
+    config={stressConfig}
+    me={PERSON.P1}
+    spreadsheetId="preview-sheet-id"
+    tombstoneCount={2}
+    onSetMe={noop}
+    onCompact={noop}
+    onForget={noop}
+    onClose={noop}
+  />
+)
 
 function page(markup, lang, accent) {
   return `<!doctype html>
@@ -169,10 +260,26 @@ for (const [locale, accents] of [
     writeFileSync(new URL(`./${name}`, import.meta.url), page(body(), locale, accent))
     written.push(`scripts/${name}`)
   }
-  // Its own page in both languages: the dialog covers the surface it sits on,
-  // and its copy is the longest sentence in either catalog.
-  const name = `preview-${locale}-confirm.html`
-  writeFileSync(new URL(`./${name}`, import.meta.url), page(body(entries[0]), locale, ACCENTS[0]))
+  // Each overlay gets its own page in both languages: they cover the surface they
+  // sit on, they hold the longest sentences in either catalog, and the form and the
+  // settings sheet are the two screens most likely to overflow a small phone.
+  for (const [variant, overlay] of Object.entries(OVERLAYS)) {
+    const name = `preview-${locale}-${variant}.html`
+    writeFileSync(new URL(`./${name}`, import.meta.url), page(body(overlay), locale, ACCENTS[0]))
+    written.push(`scripts/${name}`)
+  }
+}
+
+// The widths nothing else exercises, in English only: what is being read here is the
+// geometry, not the copy.
+setLocale('en')
+for (const [variant, overlay] of [
+  ['stress', null],
+  ['stress-settings', STRESS_SETTINGS],
+]) {
+  const name = `preview-en-${variant}.html`
+  const markup = page(body(overlay, { stress: true }), 'en', ACCENTS[0])
+  writeFileSync(new URL(`./${name}`, import.meta.url), markup)
   written.push(`scripts/${name}`)
 }
 console.log(`wrote ${written.join(', ')}`)

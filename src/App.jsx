@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useConnection } from './state/useConnection.js'
 import { useLedger } from './state/useLedger.js'
+import { noticeKeys } from './lib/ledgerState.js'
 import { useLedgerView, useInitialMonth } from './state/useLedgerView.js'
 import { useToasts } from './state/useToasts.js'
 import { ENTRY_TYPE, PERSON } from './schema.js'
@@ -8,17 +9,11 @@ import { currentMonthKey, todayIso } from './lib/dates.js'
 import { useT, errorMessage } from './i18n/index.js'
 import { readStoredIdentity, storeIdentity } from './lib/identity.js'
 import { setSafeToReload } from './lib/serviceWorker.js'
-import { Header } from './components/Header.jsx'
-import { MonthNav } from './components/MonthNav.jsx'
-import { BalanceCard } from './components/BalanceCard.jsx'
-import { SummaryCard } from './components/SummaryCard.jsx'
-import { EntryList } from './components/EntryList.jsx'
-import { DeletedList } from './components/DeletedList.jsx'
+import { LedgerScreen } from './components/LedgerScreen.jsx'
 import { EntryFormSheet } from './components/EntryFormSheet.jsx'
 import { ConfirmDeleteSheet } from './components/ConfirmDeleteSheet.jsx'
 import { SettingsSheet } from './components/SettingsSheet.jsx'
 import { Toasts } from './components/Toasts.jsx'
-import { PlusIcon } from './components/icons.jsx'
 import {
   ErrorGate,
   IdentityGate,
@@ -64,6 +59,15 @@ export default function App() {
     setDraft({
       mode: 'add',
       entry: {
+        /**
+         * Minted when the draft opens, not per submit. A `fetch` that rejects after
+         * Google committed the append — the response lost, not the request — leaves
+         * the row on screen as failed; re-submitting with a fresh id would write a
+         * second expense that `reconcileById` cannot collapse, and the balance would
+         * double-count it forever. Same id means the retry is at worst a duplicate
+         * row the client reconciles to one.
+         */
+        id: crypto.randomUUID(),
         type: ENTRY_TYPE.EXPENSE,
         date: todayIso(),
         payer: me ?? PERSON.P1,
@@ -146,73 +150,34 @@ export default function App() {
     return <IdentityGate config={config} onPick={setMe} />
   }
 
-  /**
-   * A refresh failed but the cache is still good, the sheet mixes currencies, or a
-   * row's amount cannot be read: the screen stays up and says so rather than being
-   * replaced by an error, or — for the last of the three — rather than quietly
-   * showing a balance that is missing an expense.
-   *
-   * Translated here rather than mapped from keys below, so the literals stay
-   * visible to the catalog scan in `test/i18n.test.js`.
-   */
-  const notices = [
-    ledger.status === 'stale' && ledger.error && t('warning.staleData'),
-    view.mixedCurrencies && t('warning.mixedCurrencies'),
-    ledger.undecodedRows > 0 && t('warning.undecodedRows', { count: ledger.undecodedRows }),
-  ].filter(Boolean)
+  /** Which notices apply is `noticeKeys`' decision, in lib, where it is testable. */
+  const notices = noticeKeys({
+    status: ledger.status,
+    error: ledger.error,
+    mixedCurrencies: view.mixedCurrencies,
+    configMissing: ledger.configMissing,
+    undecodedRows: ledger.undecodedRows,
+    undatedRows: ledger.undatedRows,
+  }).map(({ key, vars }) => t(key, vars))
 
   return (
     <div className="app">
-      <Header
+      <LedgerScreen
         config={config}
         me={me}
-        busy={ledger.status === 'refreshing'}
+        currency={currency}
+        view={view}
+        monthKey={monthKey}
+        notices={notices}
+        refreshing={ledger.status === 'refreshing'}
         onRefresh={ledger.refresh}
         onOpenSettings={() => setShowSettings(true)}
+        onMonthChange={setMonthKey}
+        onEdit={(entry) => setDraft({ mode: 'edit', entry })}
+        onDelete={setPendingDelete}
+        onRestore={restoreEntry}
+        onAdd={openAdd}
       />
-
-      <main className="layout">
-        <aside className="layout__aside">
-          {notices.map((text) => (
-            <p className="notice" role="status" key={text}>
-              {text}
-            </p>
-          ))}
-          <BalanceCard balance={view.balance} config={config} me={me} currency={currency} />
-          <SummaryCard
-            monthSpend={view.monthSpend}
-            byCategory={view.byCategory}
-            byPerson={view.byPerson}
-            config={config}
-            me={me}
-            currency={currency}
-          />
-        </aside>
-
-        <section className="layout__main">
-          <MonthNav monthKey={monthKey} onChange={setMonthKey} />
-          <EntryList
-            groups={view.groups}
-            config={config}
-            me={me}
-            currency={currency}
-            onEdit={(entry) => setDraft({ mode: 'edit', entry })}
-            onDelete={setPendingDelete}
-            onAdd={openAdd}
-          />
-          <DeletedList
-            entries={view.deleted}
-            config={config}
-            me={me}
-            currency={currency}
-            onRestore={restoreEntry}
-          />
-        </section>
-      </main>
-
-      <button type="button" className="fab" onClick={openAdd} aria-label={t('list.emptyAction')}>
-        <PlusIcon width={24} height={24} />
-      </button>
 
       {draft && (
         <EntryFormSheet

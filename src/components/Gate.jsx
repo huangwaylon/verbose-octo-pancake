@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
+import { Field } from './Field.jsx'
 import { WalletIcon } from './icons.jsx'
 
 /** Full-screen screens shown before the app has what it needs to run. */
@@ -57,10 +58,7 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
           onConnect(value)
         }}
       >
-        <div className="field">
-          <label className="field__label" htmlFor="app-key">
-            {t('gate.keyLabel')}
-          </label>
+        <Field htmlFor="app-key" label={t('gate.keyLabel')}>
           <input
             id="app-key"
             className="input"
@@ -75,7 +73,7 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
             value={value}
             onChange={(event) => setValue(event.target.value)}
           />
-        </div>
+        </Field>
         <button
           type="submit"
           className="btn btn--primary btn--block"

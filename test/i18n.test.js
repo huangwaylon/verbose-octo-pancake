@@ -160,10 +160,7 @@ describe('catalog usage', () => {
 
   it('has no dead keys left in the catalogs', () => {
     const dead = Object.keys(CATALOGS[DEFAULT_LOCALE]).filter(
-      (key) =>
-        !referenced.has(key) &&
-        !DYNAMIC_PREFIXES.some((prefix) => key.startsWith(prefix)) &&
-        !SAME_IN_BOTH.has(key),
+      (key) => !referenced.has(key) && !DYNAMIC_PREFIXES.some((prefix) => key.startsWith(prefix)),
     )
     expect(dead).toEqual([])
   })

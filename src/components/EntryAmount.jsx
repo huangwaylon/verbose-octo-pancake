@@ -14,7 +14,5 @@ import { useMoney } from '../i18n/index.js'
  */
 export function EntryAmount({ entry, currency }) {
   const money = useMoney(entry.currency || currency)
-  return (
-    <span className="entry__amount tnum">{money(entry.amountCents, { trimZeroCents: true })}</span>
-  )
+  return <span className="entry__amount tnum">{money(entry.amountCents)}</span>
 }

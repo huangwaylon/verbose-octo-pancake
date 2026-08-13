@@ -5,10 +5,10 @@ import {
   acknowledge,
   entryById,
   entryFromInput,
-  hasTombstones,
   looksUninitialized,
   mergeLoaded,
   missingExpenseGid,
+  noticeKeys,
   reconcileById,
   reverted,
   settled,
@@ -63,25 +63,57 @@ describe('mergeLoaded', () => {
     expect(merged[1].pending).toBe(true)
   })
 
-  it('drops the local copy once the sheet reports it, taking the server version', () => {
+  it('keeps the local copy while a write is in flight, even once the sheet lists it', () => {
+    // The append reached the sheet but `acknowledge` has not run yet, so the two
+    // copies hold the same data and keeping the local one changes nothing. What it
+    // buys is the edit and delete cases below, where they do NOT agree.
     const current = [{ ...entry('new', { description: 'typed' }), pending: true }]
     const merged = mergeLoaded(current, [entry('new', { description: 'saved' })])
     expect(merged).toHaveLength(1)
+    expect(merged[0].description).toBe('typed')
+    expect(merged[0].pending).toBe(true)
+  })
+
+  it('takes the server version once the write is acknowledged', () => {
+    const current = [entry('new', { description: 'typed' })]
+    const merged = mergeLoaded(current, [entry('new', { description: 'saved' })])
     expect(merged[0].description).toBe('saved')
     expect(merged[0].pending).toBeUndefined()
+  })
+
+  it('does not resurrect a row whose delete is still in flight', () => {
+    // A focus refresh fires, the delete is confirmed 100ms later, and the read
+    // returns with the row still live. Taking the server copy puts the entry back on
+    // screen and back into the balance, persists it that way, and then `settled`
+    // clears `pending` so it reads as saved — while the toast says "Deleted".
+    const deleting = withPendingDeletedAt([entry('a')], 'a', '2026-08-06T00:00:00.000Z')
+    const merged = mergeLoaded(deleting, [entry('a')])
+    expect(merged).toHaveLength(1)
+    expect(merged[0].deletedAt).toBe('2026-08-06T00:00:00.000Z')
+    expect(settled(merged, 'a')[0].deletedAt).toBe('2026-08-06T00:00:00.000Z')
+  })
+
+  it('does not roll back an edit that is still in flight', () => {
+    const editing = withPendingEdit(
+      [entry('a', { amountCents: 1000 })],
+      entry('a', { amountCents: 9000 }),
+    )
+    const merged = mergeLoaded(editing, [entry('a', { amountCents: 1000 })])
+    expect(merged[0].amountCents).toBe(9000)
+  })
+
+  it('keeps the sheet’s order, with a fresh append last', () => {
+    const current = [{ ...entry('mine'), pending: true }]
+    expect(mergeLoaded(current, [entry('theirs'), entry('older')]).map((item) => item.id)).toEqual([
+      'theirs',
+      'older',
+      'mine',
+    ])
   })
 
   it('does not keep a non-pending row the sheet no longer has', () => {
     // The other person deleted it and compacted. It is gone, not in flight.
     expect(mergeLoaded([entry('gone')], [])).toEqual([])
-  })
-
-  it('puts pending rows last, as the newest thing this person did', () => {
-    const current = [{ ...entry('mine'), pending: true }]
-    expect(mergeLoaded(current, [entry('theirs')]).map((item) => item.id)).toEqual([
-      'theirs',
-      'mine',
-    ])
   })
 
   it('mutates neither list', () => {
@@ -143,6 +175,22 @@ describe('an edit', () => {
     expect(next.pending).toBeUndefined()
   })
 
+  it('clears pending on the row it puts back, whatever it was handed', () => {
+    /**
+     * `previous` can itself be a pending copy: tap Restore while the delete is still
+     * in flight, and the delete's `previous` is the row the restore already marked.
+     * A `pending` flag left set there is permanent — `mergeLoaded` keeps a pending
+     * row over the server's forever, so the row freezes, stops receiving the other
+     * person's edits, and blocks `compact` for the life of the install.
+     */
+    const stillGoing = { ...original, pending: true }
+    const [next] = reverted(withPendingEdit([original], edited), 'a', stillGoing)
+    expect(next.pending).toBe(false)
+    expect(next.description).toBe('shop')
+    // And a pending row put back this way is no longer sticky in a merge.
+    expect(mergeLoaded([next], [edited])[0].description).toBe('Ozeki')
+  })
+
   it('leaves the list alone when there is nothing to revert to', () => {
     const list = [original]
     expect(reverted(list, 'a', undefined)).toBe(list)
@@ -194,10 +242,10 @@ describe('counting tombstones', () => {
     expect(tombstoneCount([])).toBe(0)
   })
 
-  it('answers the question compact asks before doing any work', () => {
-    expect(hasTombstones(entries)).toBe(true)
-    expect(hasTombstones([entry('a')])).toBe(false)
-    expect(hasTombstones([])).toBe(false)
+  it('is what compact asks before doing any work', () => {
+    // A separate `hasTombstones` predicate would be this same expression.
+    expect(tombstoneCount([entry('a')])).toBe(0)
+    expect(tombstoneCount([])).toBe(0)
   })
 })
 
@@ -377,5 +425,60 @@ describe('the gids compact needs', () => {
     expect(missingExpenseGid({ [expensesTab(PERSON.P1)]: 0, [expensesTab(PERSON.P2)]: 1 })).toBe(
       false,
     )
+  })
+})
+
+/**
+ * What the screen says about itself. Every notice reports a state where the numbers
+ * on screen are incomplete or suspect, and every one of them is otherwise silent —
+ * which is the whole reason they exist rather than being left to a console.
+ */
+describe('noticeKeys', () => {
+  const keysFor = (state) => noticeKeys(state).map((notice) => notice.key)
+
+  it('says nothing about a healthy sheet', () => {
+    expect(noticeKeys({ status: 'ready', error: null })).toEqual([])
+    expect(noticeKeys()).toEqual([])
+  })
+
+  it('reports cached data only once a read has actually failed', () => {
+    // `stale` alone is where a cached launch starts, before any read has failed;
+    // announcing it there would put a warning over a perfectly good screen.
+    expect(keysFor({ status: 'stale', error: null })).toEqual([])
+    expect(keysFor({ status: 'stale', error: 'boom' })).toEqual(['warning.staleData'])
+    expect(keysFor({ status: 'ready', error: 'boom' })).toEqual([])
+  })
+
+  it('reports a missing config tab, which silently changes the currency', () => {
+    expect(keysFor({ configMissing: true })).toEqual(['warning.configMissing'])
+  })
+
+  it('counts the rows it cannot show, and passes the count for pluralisation', () => {
+    expect(noticeKeys({ undecodedRows: 2 })).toEqual([
+      { key: 'warning.undecodedRows', vars: { count: 2 } },
+    ])
+    expect(noticeKeys({ undatedRows: 1 })).toEqual([
+      { key: 'warning.undatedRows', vars: { count: 1 } },
+    ])
+    expect(keysFor({ undecodedRows: 0, undatedRows: 0 })).toEqual([])
+  })
+
+  it('stacks worst first, because the top one is the one that gets read', () => {
+    expect(
+      keysFor({
+        status: 'stale',
+        error: 'boom',
+        configMissing: true,
+        mixedCurrencies: true,
+        undecodedRows: 1,
+        undatedRows: 1,
+      }),
+    ).toEqual([
+      'warning.staleData',
+      'warning.configMissing',
+      'warning.mixedCurrencies',
+      'warning.undecodedRows',
+      'warning.undatedRows',
+    ])
   })
 })

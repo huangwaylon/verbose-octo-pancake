@@ -43,9 +43,7 @@ export function EntryList({ groups, config, me, currency, onEdit, onDelete, onAd
               typography and whitespace rather than a tinted header bar. */}
           <header className="day-group__label">
             <span>{dayLabel(group.date, { locale, labels })}</span>
-            <span className="day-group__total tnum">
-              {money(group.totalCents, { trimZeroCents: true })}
-            </span>
+            <span className="day-group__total tnum">{money(group.totalCents)}</span>
           </header>
           <ul className="surface">
             {group.entries.map((entry) => (

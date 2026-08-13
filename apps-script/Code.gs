@@ -17,9 +17,9 @@
  * Note that a body of `null` parses fine, so the try/catch below does not fire
  * and `body.key` would dereference null — hence the explicit check.
  *
- * The reply vocabulary is exactly `{token, spreadsheetId}` and
- * `{error:'unauthorized'}` — never an exception message, never an echo of the
- * request.
+ * The reply vocabulary is exactly `{token, spreadsheetId}`,
+ * `{error:'unauthorized'}` and `{error:'unavailable'}` — never an exception
+ * message, never an echo of the request.
  *
  * Never read `e.parameter`. Accepting a key from the query string would write it
  * into Google's request logs; requiring it in the body is what keeps it out.
@@ -41,14 +41,23 @@ function doPost(e) {
   // `null` parses successfully, so this cannot be folded into the catch above.
   if (!body || typeof body !== 'object') return unauthorized()
 
-  var props = PropertiesService.getScriptProperties()
-  var key = props.getProperty('APP_KEY')
-  if (!key || body.key !== key) return unauthorized()
+  // Both of these can throw, which is the one way this function could still return
+  // Google's HTML error page. `getOAuthToken` is the realistic case: the script's
+  // authorization lapses if the consent screen is left in Testing (SETUP.md step 5),
+  // and an HTML reply is classified as transient, so the app would say "busy, try
+  // again in a moment" on every refresh forever instead of naming the cause.
+  try {
+    var props = PropertiesService.getScriptProperties()
+    var key = props.getProperty('APP_KEY')
+    if (!key || body.key !== key) return unauthorized()
 
-  return json({
-    token: ScriptApp.getOAuthToken(),
-    spreadsheetId: props.getProperty('SHEET_ID'),
-  })
+    return json({
+      token: ScriptApp.getOAuthToken(),
+      spreadsheetId: props.getProperty('SHEET_ID'),
+    })
+  } catch (_) {
+    return json({ error: 'unavailable' })
+  }
 }
 
 /**

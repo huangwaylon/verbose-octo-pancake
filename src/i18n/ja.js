@@ -143,6 +143,7 @@ export default {
     other: '{count}行を削除しました。',
   },
   'settings.compactError': 'シートを整理できませんでした。',
+  'settings.compactBusy': '保存中の変更があります。少し待ってからもう一度お試しください。',
   'settings.forgetKey': 'この端末からキーを削除',
 
   // --- gates ----------------------------------------------------------------
@@ -169,6 +170,8 @@ export default {
   'toast.restoreFailed': '元に戻せませんでした。',
   'error.readSheet': 'シートを読み込めませんでした。',
   'error.sheetRequest': 'シートが応答しませんでした。少し待ってからもう一度お試しください。',
+  'error.sheetUnreachable':
+    'このアプリからシートにアクセスできなくなりました。シートの所有アカウントと共有されているか確認してください。',
   'error.notOurSheet':
     'このスプレッドシートには他のタブがあり、このアプリのタブがありません。台帳ではない可能性があります。SHEET_ID プロパティを確認してください。',
   'error.entryGone': 'この項目はもうシートにありません。更新して最新の状態を確認してください。',
@@ -179,6 +182,8 @@ export default {
   'error.offline': 'シートにつながりませんでした。通信を確認してもう一度お試しください。',
   'error.scriptUnavailable':
     'シートのサービスが混み合っているか、利用できません。少し待ってからお試しください。',
+  'error.scriptUnauthorized':
+    'シートのサービスを再承認する必要があります。Apps Script プロジェクトを開いて一度実行し、同意画面を公開してください。',
   'error.scriptMisconfigured':
     'トークン用のエンドポイントがシート ID を返しませんでした。SHEET_ID プロパティを確認してください。',
   'error.missingId': 'ID がありません。',
@@ -191,6 +196,11 @@ export default {
   'warning.staleData': '保存したデータを表示しています。シートにつながりませんでした。',
   'warning.mixedCurrencies': '通貨の違う記録があるため、合計が正しくない可能性があります。',
   // `Intl.PluralRules('ja')` reports only `other`, so a single branch is correct.
+  'warning.configMissing':
+    'config タブが見つからないため、名前・通貨・カテゴリーは既定値です。シートで復元してください。',
+  'warning.undatedRows': {
+    other: 'シートに日付を読み取れない行が {count} 行あるため、どの月にも表示されません。',
+  },
   'warning.undecodedRows': {
     other: 'シートに金額を読み取れない行が {count} 行あるため、合計に含まれていません。',
   },
