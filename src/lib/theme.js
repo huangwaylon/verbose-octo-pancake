@@ -31,7 +31,7 @@ function detect() {
 let current = detect()
 const listeners = new Set()
 
-export function getAccent() {
+function getAccent() {
   return current
 }
 

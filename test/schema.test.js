@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
   EXPENSE_COLUMNS,
-  FIRST_DATA_ROW,
   ENTRY_ERROR,
   ENTRY_TYPE,
   PEOPLE,
@@ -38,7 +37,6 @@ function fullEntry(overrides = {}) {
       description: 'Weekly shop',
       payerShare: EVEN_SHARE,
       createdAt: '2026-03-09T08:30:00.000Z',
-      rowNumber: FIRST_DATA_ROW,
       ...overrides,
     },
     NOW,
@@ -57,15 +55,24 @@ function rawRow(fields) {
 const SHEET = 'USD'
 
 describe('column contract', () => {
-  it('has exactly 11 columns, A..K, matching the declared data range', () => {
+  it('is eleven columns, A..K', () => {
     expect(EXPENSE_COLUMNS).toHaveLength(11)
     expect(columnLetter('id')).toBe('A')
     expect(columnLetter('deleted_at')).toBe('K')
     expect(columnIndex('id')).toBe(0)
     expect(columnIndex('deleted_at')).toBe(10)
+  })
+
+  it('names one tab per person', () => {
     expect(expensesTab(PERSON.P1)).toBe('expenses_p1')
     expect(expensesTab(PERSON.P2)).toBe('expenses_p2')
-    expect(expensesDataRange(PERSON.P1)).toBe(`expenses_p1!A${FIRST_DATA_ROW}:K`)
+  })
+
+  // Literals on the expected side on purpose: interpolating the module's own
+  // FIRST_DATA_ROW would move both sides together and pin nothing.
+  it('builds ranges that start below the header row', () => {
+    expect(expensesDataRange(PERSON.P1)).toBe('expenses_p1!A2:K')
+    expect(expensesDataRange(PERSON.P2)).toBe('expenses_p2!A2:K')
     expect(rowRange(PERSON.P1, 7)).toBe('expenses_p1!A7:K7')
     expect(rowRange(PERSON.P2, 7)).toBe('expenses_p2!A7:K7')
     expect(cellRange(PERSON.P1, 7, 'deleted_at')).toBe('expenses_p1!K7:K7')
@@ -90,29 +97,29 @@ describe('column contract', () => {
 
 describe('rowToEntry', () => {
   it('returns null for blank rows', () => {
-    expect(rowToEntry([], 0, PERSON.P1, SHEET)).toBeNull()
-    expect(rowToEntry(['', '', '', '', '', '', '', '', '', '', ''], 0, PERSON.P1, SHEET)).toBeNull()
-    expect(rowToEntry(['   '], 0, PERSON.P1, SHEET)).toBeNull()
-    expect(rowToEntry(null, 0, PERSON.P1, SHEET)).toBeNull()
-    expect(rowToEntry(undefined, 0, PERSON.P1, SHEET)).toBeNull()
-    expect(rowToEntry('not a row', 0, PERSON.P1, SHEET)).toBeNull()
+    expect(rowToEntry([], PERSON.P1, SHEET)).toBeNull()
+    expect(rowToEntry(['', '', '', '', '', '', '', '', '', '', ''], PERSON.P1, SHEET)).toBeNull()
+    expect(rowToEntry(['   '], PERSON.P1, SHEET)).toBeNull()
+    expect(rowToEntry(null, PERSON.P1, SHEET)).toBeNull()
+    expect(rowToEntry(undefined, PERSON.P1, SHEET)).toBeNull()
+    expect(rowToEntry('not a row', PERSON.P1, SHEET)).toBeNull()
   })
 
   it('returns null when the id is missing even if the rest is filled in', () => {
     const row = rawRow({ type: 'expense', date: '2026-03-09', amount: '42.10' })
-    expect(rowToEntry(row, 0, PERSON.P1, SHEET)).toBeNull()
+    expect(rowToEntry(row, PERSON.P1, SHEET)).toBeNull()
   })
 
   it('returns null for an unparseable amount', () => {
     for (const amount of ['', 'abc', '4-2', '$', 'twelve', '1e3', '-42.10', '12,34.5']) {
       const row = rawRow({ id: 'x', type: 'expense', date: '2026-03-09', amount })
-      expect(rowToEntry(row, 0, PERSON.P1, SHEET)).toBeNull()
+      expect(rowToEntry(row, PERSON.P1, SHEET)).toBeNull()
     }
   })
 
   it('accepts a zero amount as structurally valid — validation is what rejects it', () => {
     const row = rawRow({ id: 'x', amount: '0.00', date: '2026-03-09' })
-    const entry = rowToEntry(row, 0, PERSON.P1, SHEET)
+    const entry = rowToEntry(row, PERSON.P1, SHEET)
     expect(entry.amountCents).toBe(0)
     expect(validateEntryCodes(entry)).toContain(ENTRY_ERROR.BAD_AMOUNT)
   })
@@ -125,19 +132,11 @@ describe('rowToEntry', () => {
     expect(cellText([], 0)).toBe('')
     expect(cellText([null], 0)).toBe('')
     const row = rawRow({ id: 'x', amount: 42.1, date: '2026-03-09' })
-    expect(rowToEntry(row, 0, PERSON.P1, SHEET).amountCents).toBe(4210)
-  })
-
-  it('sets rowNumber to FIRST_DATA_ROW + index', () => {
-    for (const index of [0, 1, 5, 41, 999]) {
-      const row = rawRow({ id: `id-${index}`, amount: '1.00' })
-      expect(rowToEntry(row, index, PERSON.P1, SHEET).rowNumber).toBe(FIRST_DATA_ROW + index)
-    }
-    expect(rowToEntry(rawRow({ id: 'a', amount: '1.00' }), 0, PERSON.P1, SHEET).rowNumber).toBe(2)
+    expect(rowToEntry(row, PERSON.P1, SHEET).amountCents).toBe(4210)
   })
 
   it('tolerates short rows, because Sheets truncates trailing empty cells', () => {
-    const entry = rowToEntry(['id-1', 'expense', '2026-03-09', '42.10'], 0, PERSON.P2, SHEET)
+    const entry = rowToEntry(['id-1', 'expense', '2026-03-09', '42.10'], PERSON.P2, SHEET)
     expect(entry).toMatchObject({
       id: 'id-1',
       type: ENTRY_TYPE.EXPENSE,
@@ -153,33 +152,31 @@ describe('rowToEntry', () => {
 
   it('takes the payer from the tab it was read from, not from any cell', () => {
     const row = rawRow({ id: 'x', amount: '1.00' })
-    expect(rowToEntry(row, 0, PERSON.P1, SHEET).payer).toBe(PERSON.P1)
-    expect(rowToEntry(row, 0, PERSON.P2, SHEET).payer).toBe(PERSON.P2)
+    expect(rowToEntry(row, PERSON.P1, SHEET).payer).toBe(PERSON.P1)
+    expect(rowToEntry(row, PERSON.P2, SHEET).payer).toBe(PERSON.P2)
     // An unrecognised value normalises to the safe default, same as any other
     // stray input this function might see.
-    expect(rowToEntry(row, 0, 'p3', SHEET).payer).toBe(PERSON.P1)
+    expect(rowToEntry(row, 'p3', SHEET).payer).toBe(PERSON.P1)
   })
 
   it('drops a date that is not ISO-shaped instead of passing junk downstream', () => {
     for (const date of ['03/09/2026', '2026-3-9', 'yesterday', '']) {
-      const entry = rowToEntry(rawRow({ id: 'x', amount: '1.00', date }), 0, PERSON.P1, SHEET)
+      const entry = rowToEntry(rawRow({ id: 'x', amount: '1.00', date }), PERSON.P1, SHEET)
       expect(entry.date).toBe('')
     }
     expect(
-      rowToEntry(rawRow({ id: 'x', amount: '1.00', date: '2026-03-09' }), 0, PERSON.P1, SHEET).date,
+      rowToEntry(rawRow({ id: 'x', amount: '1.00', date: '2026-03-09' }), PERSON.P1, SHEET).date,
     ).toBe('2026-03-09')
   })
 
   it('clamps an out-of-range payer_share into [0,1]', () => {
     const high = rowToEntry(
       rawRow({ id: 'x', amount: '1.00', payer_share: '5' }),
-      0,
       PERSON.P1,
       SHEET,
     )
     const low = rowToEntry(
       rawRow({ id: 'x', amount: '1.00', payer_share: '-3' }),
-      0,
       PERSON.P1,
       SHEET,
     )
@@ -190,13 +187,11 @@ describe('rowToEntry', () => {
   it('defaults payer_share by type when the cell is blank or junk', () => {
     const expense = rowToEntry(
       rawRow({ id: 'x', amount: '1.00', type: 'expense' }),
-      0,
       PERSON.P1,
       SHEET,
     )
     const settlement = rowToEntry(
       rawRow({ id: 'y', amount: '1.00', type: 'settlement' }),
-      0,
       PERSON.P1,
       SHEET,
     )
@@ -205,7 +200,6 @@ describe('rowToEntry', () => {
     expect(
       rowToEntry(
         rawRow({ id: 'z', amount: '1.00', type: 'expense', payer_share: 'huh' }),
-        0,
         PERSON.P1,
         SHEET,
       ).payerShare,
@@ -214,14 +208,13 @@ describe('rowToEntry', () => {
 
   it('normalises an unknown type to the safe default', () => {
     const row = rawRow({ id: 'x', amount: '1.00', type: 'REFUND' })
-    expect(rowToEntry(row, 0, PERSON.P1, SHEET).type).toBe(ENTRY_TYPE.EXPENSE)
+    expect(rowToEntry(row, PERSON.P1, SHEET).type).toBe(ENTRY_TYPE.EXPENSE)
   })
 
   it('normalises an empty deleted_at cell to null so isActive works', () => {
-    const live = rowToEntry(rawRow({ id: 'x', amount: '1.00' }), 0, PERSON.P1, SHEET)
+    const live = rowToEntry(rawRow({ id: 'x', amount: '1.00' }), PERSON.P1, SHEET)
     const dead = rowToEntry(
       rawRow({ id: 'y', amount: '1.00', deleted_at: NOW }),
-      0,
       PERSON.P1,
       SHEET,
     )
@@ -311,14 +304,14 @@ describe('rowToEntry / entryToRow round trip', () => {
     it(`is lossless: ${name}`, () => {
       // The payer is supplied from the outside, exactly as loadAll does when
       // it reads each per-person tab.
-      const restored = rowToEntry(entryToRow(entry), 0, entry.payer, entry.currency)
+      const restored = rowToEntry(entryToRow(entry), entry.payer, entry.currency)
       expect(restored).toEqual(entry)
     })
   }
 
   it('is stable over a second trip through the sheet', () => {
     const once = entryToRow(fullEntry())
-    const twice = entryToRow(rowToEntry(once, 0, PERSON.P1, SHEET))
+    const twice = entryToRow(rowToEntry(once, PERSON.P1, SHEET))
     expect(twice).toEqual(once)
   })
 
@@ -337,13 +330,13 @@ describe('rowToEntry / entryToRow round trip', () => {
       const entry = fullEntry({ description })
       const row = entryToRow(entry)
       expect(row[columnIndex('description')]).toBe(description)
-      expect(rowToEntry(row, 0, PERSON.P1, SHEET).description).toBe(description)
+      expect(rowToEntry(row, PERSON.P1, SHEET).description).toBe(description)
     }
   })
 
   it('keeps a description that looks like another column value from bleeding across', () => {
     const entry = fullEntry({ description: 'p2, 99.99, settlement' })
-    const restored = rowToEntry(entryToRow(entry), 0, PERSON.P1, SHEET)
+    const restored = rowToEntry(entryToRow(entry), PERSON.P1, SHEET)
     expect(restored.payer).toBe(PERSON.P1)
     expect(restored.amountCents).toBe(4210)
     expect(restored.type).toBe(ENTRY_TYPE.EXPENSE)

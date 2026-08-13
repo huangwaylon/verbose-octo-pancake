@@ -49,8 +49,6 @@ export const EXPENSE_COLUMNS = [
 /** Sheet rows are 1-indexed and row 1 is the header, so data starts at 2. */
 export const FIRST_DATA_ROW = 2
 
-const LAST_COLUMN = String.fromCharCode(64 + EXPENSE_COLUMNS.length)
-
 export function expensesHeaderRange(person) {
   return `${expensesTab(person)}!A1:${LAST_COLUMN}1`
 }
@@ -78,7 +76,8 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 function isRealDate(value) {
   if (!ISO_DATE.test(value ?? '')) return false
   const [year, month, day] = value.split('-').map(Number)
-  if (month < 1 || month > 12 || day < 1) return false
+  // The UTC round-trip is the whole check: a month or day out of range lands in
+  // a different month or year, which the three comparisons below catch.
   const probe = new Date(Date.UTC(year, month - 1, day))
   return (
     probe.getUTCFullYear() === year &&
@@ -109,6 +108,8 @@ export function columnLetter(field) {
   return String.fromCharCode(65 + columnIndex(field))
 }
 
+const LAST_COLUMN = columnLetter(EXPENSE_COLUMNS[EXPENSE_COLUMNS.length - 1])
+
 export function cellRange(person, rowNumber, field) {
   const letter = columnLetter(field)
   return `${expensesTab(person)}!${letter}${rowNumber}:${letter}${rowNumber}`
@@ -126,15 +127,18 @@ export function cellText(row, index) {
  * The payer is not a column — it is which of the two per-person tabs the row
  * came from — so the caller passes it in rather than it being read here.
  *
+ * The row's position is deliberately not part of the result: it shifts whenever
+ * anyone edits the sheet in the Sheets UI, so every write re-resolves id → row
+ * immediately beforehand and a stored position could only ever be a trap.
+ *
  * @param {string[]} row       Cell values as returned by values.get
- * @param {number}   index     0-based offset within that tab's data range
  * @param {string}   payer     'p1' or 'p2': whichever tab this row was read from
  * @param {string}   currency  the sheet's currency, used only when a row's own
  *   currency cell is blank (a row somebody added by hand). It MUST be resolved
  *   before the amount: "1250" is ¥1250 or $12.50 depending on nothing else.
  * @returns {object|null}      null for blank or structurally invalid rows
  */
-export function rowToEntry(row, index, payer, currency) {
+export function rowToEntry(row, payer, currency) {
   if (!Array.isArray(row)) return null
 
   const get = (field) => cellText(row, columnIndex(field))
@@ -171,7 +175,6 @@ export function rowToEntry(row, index, payer, currency) {
     createdAt: get('created_at'),
     updatedAt: get('updated_at'),
     deletedAt: deletedAt || null,
-    rowNumber: FIRST_DATA_ROW + index,
   }
 }
 
@@ -232,7 +235,6 @@ export function makeEntry(input, now = new Date().toISOString()) {
     createdAt: input.createdAt || now,
     updatedAt: now,
     deletedAt: input.deletedAt ?? null,
-    rowNumber: input.rowNumber,
   }
 }
 

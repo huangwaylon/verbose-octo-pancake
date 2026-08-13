@@ -1,22 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { mergeConfig } from '../config.js'
 import { PEOPLE, expensesTab, makeEntry, validateEntryCodes } from '../schema.js'
-import { t } from '../i18n/index.js'
+import { i18nError, t } from '../i18n/index.js'
 import * as sheets from '../lib/sheets.js'
 import { readSnapshot, writeSnapshot } from '../lib/snapshot.js'
 
 /** Floor between focus-triggered refreshes. Window switching is constant. */
 const REFRESH_THROTTLE_MS = 30_000
-
-/**
- * An error the UI can translate at render time, in whatever locale is current,
- * while `message` stays a readable English fallback for anything that only logs.
- */
-function i18nError(key, vars) {
-  const error = new Error(t(key, vars))
-  error.i18nKey = key
-  return error
-}
 
 /** A missing tab or range surfaces as a 400 from the values endpoint. */
 function looksUninitialized(cause) {
@@ -27,9 +17,8 @@ function looksUninitialized(cause) {
  * Owns the entry list for one spreadsheet.
  *
  * The id is a parameter rather than state: it arrives from the token endpoint
- * alongside the access token, so this hook no longer chooses or stores a
- * spreadsheet. There is no picker and no "switch sheet" — there is exactly one
- * ledger, named by the script's SHEET_ID property.
+ * alongside the access token. There is exactly one ledger, named by the script's
+ * SHEET_ID property, so nothing here chooses or stores a spreadsheet.
  *
  * Every mutation is applied to local state first and reconciled against the
  * sheet afterwards, because each write is a ~400ms round trip on phone data. A
@@ -87,7 +76,6 @@ export function useLedger(spreadsheetId) {
       // at `config.currency`, so entries seeded against a stale currency render
       // at the wrong scale. Same ordering rule as `loadAll`.
       setConfig(mergeConfig(data.sheetConfig))
-      if (data.sheetIds) setSheetIds(data.sheetIds)
       setError(null)
       setStatus('ready')
       everLoaded.current = true
@@ -97,8 +85,8 @@ export function useLedger(spreadsheetId) {
   )
 
   const load = useCallback(
-    async (id, { quiet = false } = {}) => {
-      if (!quiet) setStatus((current) => (current === 'idle' ? 'loading' : 'refreshing'))
+    async (id) => {
+      setStatus((current) => (current === 'idle' ? 'loading' : 'refreshing'))
 
       /** Cached data beats an error screen — the sheet has not changed just
           because we cannot reach it. This is the offline launch. */
@@ -186,10 +174,8 @@ export function useLedger(spreadsheetId) {
 
       setEntries((current) => [...current, { ...entry, pending: true }])
       try {
-        const { rowNumber } = await sheets.appendEntry(spreadsheetId, entry)
-        setEntries((current) =>
-          current.map((item) => (item.id === entry.id ? { ...entry, rowNumber } : item)),
-        )
+        await sheets.appendEntry(spreadsheetId, entry)
+        setEntries((current) => current.map((item) => (item.id === entry.id ? entry : item)))
         return entry
       } catch (cause) {
         setEntries((current) => current.filter((item) => item.id !== entry.id))
@@ -210,7 +196,7 @@ export function useLedger(spreadsheetId) {
         current.map((item) => {
           if (item.id !== entry.id) return item
           previous = item
-          return { ...entry, rowNumber: item.rowNumber, pending: true }
+          return { ...entry, pending: true }
         }),
       )
       try {
@@ -276,7 +262,7 @@ export function useLedger(spreadsheetId) {
       setSheetIds(refreshed ?? {})
       gids = refreshed ?? {}
     }
-    if (missingGid()) throw new Error('Could not find the expenses tabs.')
+    if (missingGid()) throw i18nError('error.missingTabs')
 
     const result = await sheets.compact(spreadsheetId, gids)
     await refresh()

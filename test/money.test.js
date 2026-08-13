@@ -347,10 +347,15 @@ describe('formatCents', () => {
 })
 
 describe('a caller that forgets the currency', () => {
-  // Passing the currency is the contract, but a display path that misses it must
-  // degrade to the two-decimal default rather than take the render down with it.
-  it('still writes and formats an amount instead of throwing', () => {
-    expect(centsToSheetString(4210)).toBe('42.10')
+  // The two directions differ on purpose. A write with no currency would be a
+  // silent 100x error in the sheet, so it throws; a display path that misses one
+  // must degrade to the ISO default rather than take the render down.
+  it('refuses to encode for the sheet', () => {
+    expect(() => centsToSheetString(4210)).toThrow(TypeError)
+    expect(() => centsToSheetString(4210, '')).toThrow(TypeError)
+  })
+
+  it('still formats for display', () => {
     expect(() => formatCents(4210)).not.toThrow()
     expect(formatCents(4210)).toContain('42.10')
   })

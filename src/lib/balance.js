@@ -18,7 +18,8 @@
 import { PERSON, ENTRY_TYPE, isActive } from '../schema.js'
 import { splitCents, sumCents } from './money.js'
 
-const UNCATEGORIZED = 'Uncategorized'
+/** Where a blank category lands. Exported so the UI labels exactly this bucket. */
+export const UNCATEGORIZED = 'Uncategorized'
 const MONTH_KEY = /^\d{4}-\d{2}$/
 
 function activeEntries(entries) {
@@ -86,21 +87,30 @@ export function computeBalance(entries) {
  * never appear in spend totals or category breakdowns — counting them would
  * double-count money already counted as the original expense.
  *
+ * Per-payer and per-category figures come from `spendByPerson` and
+ * `spendByCategory`, which is why this takes no filters.
+ *
  * @param {object[]} entries
- * @param {object} [opts]
- * @param {string} [opts.payer] restrict to expenses paid by 'p1' or 'p2'
- * @param {string} [opts.category] restrict to one category ('Uncategorized' matches blanks)
  * @returns {number} integer cents
  */
-export function totalSpend(entries, opts = {}) {
-  const { payer, category } = opts
-  const matching = activeEntries(entries).filter((entry) => {
-    if (!isExpense(entry)) return false
-    if (payer != null && entry.payer !== payer) return false
-    if (category != null && (entry.category || UNCATEGORIZED) !== category) return false
-    return true
-  })
-  return sumCents(matching.map((entry) => entry.amountCents))
+export function totalSpend(entries) {
+  const expenses = activeEntries(entries).filter(isExpense)
+  return sumCents(expenses.map((entry) => entry.amountCents))
+}
+
+/**
+ * Whether any entry is priced in something other than the sheet's currency.
+ *
+ * Aggregates sum integers across scales, which is arithmetically meaningless,
+ * and there are no FX rates anywhere in this app — so the UI says so rather than
+ * presenting a confident wrong total.
+ *
+ * @param {object[]} entries
+ * @param {string} currency the sheet's configured currency
+ * @returns {boolean}
+ */
+export function hasMixedCurrencies(entries, currency) {
+  return activeEntries(entries).some((entry) => entry.currency && entry.currency !== currency)
 }
 
 /**

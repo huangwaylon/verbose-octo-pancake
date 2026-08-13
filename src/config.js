@@ -61,10 +61,13 @@ export function writeStored(key, value) {
  *
  * `currency` is per-sheet; the UI language is per-device. Deliberately
  * independent — a yen sheet read in English is a normal thing to want.
+ *
+ * The two people's names are deliberately absent. A name defaulted here would
+ * shadow `nameOf`'s localized fallback, so a Japanese device with no names in the
+ * config tab would read "Person 1" instead of 「ひとり目」. What gets seeded INTO a
+ * fresh sheet is `SEED_NAMES` in `sheets.js`, which must stay unlocalized.
  */
 export const DEFAULT_CONFIG = {
-  person1Name: 'Person 1',
-  person2Name: 'Person 2',
   currency: 'JPY',
   categories: ['Groceries', 'Dining', 'Household', 'Other'],
   /**

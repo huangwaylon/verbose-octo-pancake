@@ -176,6 +176,8 @@ export default {
   'toast.restored': '元に戻しました',
   'toast.restoreFailed': '元に戻せませんでした。',
   'error.readSheet': 'シートを読み込めませんでした。',
+  'error.entryGone': 'この項目はもうシートにありません。更新して最新の状態を確認してください。',
+  'error.missingTabs': 'シートに支出タブが見つかりませんでした。',
   'error.badKey': 'このアプリキーは受け付けられませんでした。',
   'error.keyRequired': 'アプリキーを入力してください。',
   'error.offline': 'シートにつながりませんでした。通信を確認してもう一度お試しください。',

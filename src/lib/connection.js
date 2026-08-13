@@ -5,8 +5,7 @@
  * that owns the ledger spreadsheet, holds a permanent grant and mints
  * short-lived Google access tokens for anyone presenting the app key. So no
  * popup, redirect, or hourly re-consent exists anywhere in this app, and a token
- * can be re-issued from a plain `fetch` with no user gesture behind it — which
- * is the whole reason this replaced the browser OAuth flow.
+ * can be re-issued from a plain `fetch` with no user gesture behind it.
  *
  * The key is typed once per device and lives only on the device. SCRIPT_URL is
  * public (see config.js): the key is the sole access control, and nothing here

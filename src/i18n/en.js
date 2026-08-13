@@ -194,6 +194,8 @@ export default {
   'toast.restored': 'Restored',
   'toast.restoreFailed': 'Could not restore that.',
   'error.readSheet': 'Could not read the sheet.',
+  'error.entryGone': 'That entry is no longer in the sheet. Refresh to see the latest data.',
+  'error.missingTabs': 'Could not find the expenses tabs in the sheet.',
   'error.badKey': 'That app key was rejected.',
   'error.keyRequired': 'Enter your app key.',
   'error.offline': 'Could not reach the sheet. Check your connection and try again.',

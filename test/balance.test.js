@@ -9,13 +9,22 @@ import {
   monthKeysPresent,
   groupByDate,
   deletedEntries,
+  hasMixedCurrencies,
 } from '../src/lib/balance.js'
 import { makeEntry, PERSON, ENTRY_TYPE, EVEN_SHARE } from '../src/schema.js'
 
-/** Deterministic entry factory: explicit id, injected `now`, no crypto. */
+/**
+ * Deterministic entry factory: explicit id, injected `now`, no crypto.
+ *
+ * One fixed `createdAt` for every entry unless a test says otherwise. Deriving it
+ * from the id — as this once did, via `id.length` — made `groupByDate`'s
+ * within-a-day ordering depend on how long the ids were typed, so renaming a
+ * fixture could flip an expectation. Tests that care pass `now`.
+ */
+const FIXED_NOW = '2026-03-01T00:00:00.000Z'
+
 function entry(id, overrides = {}) {
-  const now = overrides.now ?? `2026-03-01T00:00:0${id.length % 10}.000Z`
-  const { now: _drop, ...rest } = overrides
+  const { now = FIXED_NOW, ...rest } = overrides
   return makeEntry({ id, ...rest }, now)
 }
 
@@ -373,16 +382,29 @@ describe('totalSpend', () => {
     expect(totalSpend(null)).toBe(0)
   })
 
-  it('can be narrowed to one payer or one category', () => {
-    expect(totalSpend(entries, { payer: PERSON.P1 })).toBe(4000)
-    expect(totalSpend(entries, { payer: PERSON.P2 })).toBe(2000)
-    expect(totalSpend(entries, { category: 'Dining' })).toBe(2000)
-    expect(totalSpend(entries, { category: 'Uncategorized' })).toBe(3000)
-    expect(totalSpend(entries, { payer: PERSON.P2, category: 'Groceries' })).toBe(0)
-  })
-
   it('returns an integer, never a float', () => {
     expect(Number.isInteger(totalSpend(entries))).toBe(true)
+  })
+})
+
+describe('hasMixedCurrencies', () => {
+  const jpy = (id, currency) => expense(id, 1000, { currency })
+
+  it('is false when every entry matches the sheet, or says nothing', () => {
+    expect(hasMixedCurrencies([jpy('a', 'JPY'), jpy('b', '')], 'JPY')).toBe(false)
+    expect(hasMixedCurrencies([], 'JPY')).toBe(false)
+    expect(hasMixedCurrencies(null, 'JPY')).toBe(false)
+  })
+
+  it('is true as soon as one entry is priced in something else', () => {
+    expect(hasMixedCurrencies([jpy('a', 'JPY'), jpy('b', 'USD')], 'JPY')).toBe(true)
+  })
+
+  // Otherwise a tombstoned USD row makes the warning permanent, on totals that
+  // no longer include it.
+  it('ignores deleted entries, like every other aggregate', () => {
+    const gone = expense('x', 1000, { currency: 'USD', deletedAt: '2026-03-02T00:00:00.000Z' })
+    expect(hasMixedCurrencies([jpy('a', 'JPY'), gone], 'JPY')).toBe(false)
   })
 })
 

@@ -195,30 +195,30 @@ describe('schema rows carry their own currency', () => {
   ]
 
   it('reads a JPY row as whole yen', () => {
-    const entry = rowToEntry(row('1250', 'JPY'), 0, 'p1', 'JPY')
+    const entry = rowToEntry(row('1250', 'JPY'), 'p1', 'JPY')
     expect(entry.amountCents).toBe(1250)
     expect(entry.currency).toBe('JPY')
   })
 
   it('reads a USD row as cents', () => {
-    const entry = rowToEntry(row('42.10', 'USD'), 0, 'p1', 'USD')
+    const entry = rowToEntry(row('42.10', 'USD'), 'p1', 'USD')
     expect(entry.amountCents).toBe(4210)
   })
 
   it('decodes a blank currency cell at the sheet currency it was passed', () => {
     // A row somebody typed straight into Sheets has no currency cell, and the
     // same text is a hundred times apart on the two sheets: ¥1250 or $1250.00.
-    const jpy = rowToEntry(row('1250', ''), 0, 'p1', 'JPY')
+    const jpy = rowToEntry(row('1250', ''), 'p1', 'JPY')
     expect(jpy.amountCents).toBe(1250)
     expect(jpy.currency).toBe('JPY')
 
-    const usd = rowToEntry(row('1250', ''), 0, 'p1', 'USD')
+    const usd = rowToEntry(row('1250', ''), 'p1', 'USD')
     expect(usd.amountCents).toBe(125000)
     expect(usd.currency).toBe('USD')
   })
 
   it("lets a row's own currency beat the sheet's, so a mixed sheet stays correct", () => {
-    const entry = rowToEntry(row('42.10', 'USD'), 0, 'p1', 'JPY')
+    const entry = rowToEntry(row('42.10', 'USD'), 'p1', 'JPY')
     expect(entry.amountCents).toBe(4210)
     expect(entry.currency).toBe('USD')
   })
@@ -243,7 +243,7 @@ describe('schema rows carry their own currency', () => {
       ['42.10', 'USD', 4210],
       ['1.234', 'KWD', 1234],
     ]) {
-      const entry = rowToEntry(row(amount, currency), 0, 'p1', currency)
+      const entry = rowToEntry(row(amount, currency), 'p1', currency)
       expect(entry.amountCents).toBe(expected)
       expect(entryToRow(entry)[3]).toBe(amount)
     }

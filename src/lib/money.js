@@ -151,10 +151,25 @@ export function parseAmountToCents(input, currency) {
   return Number.isSafeInteger(minor) ? minor : null
 }
 
+/** Digits and a dot at a known scale: no symbol, no grouping, no locale. */
+function decimalString(minor, digits) {
+  const sign = minor < 0 ? '-' : ''
+  const abs = Math.abs(minor)
+  const scale = 10 ** digits
+  const whole = Math.floor(abs / scale)
+  if (digits === 0) return `${sign}${whole}`
+  return `${sign}${whole}.${String(abs % scale).padStart(digits, '0')}`
+}
+
 /**
  * Minor units -> the exact string that lands in a sheet cell: the currency's own
  * precision, '.' separator, no grouping, no symbol, so it is locale-independent
  * and re-parseable. A JPY amount writes "1250", not "1250.00".
+ *
+ * Refuses a missing currency rather than assuming the two-digit default, which
+ * is the difference between ¥1250 and "12.50" in somebody's spreadsheet. The
+ * display formatters below stay lenient in the same situation on purpose — a
+ * missing currency must not take a render down, but it must never be written.
  *
  * @param {number} minor integer minor units
  * @param {string} currency
@@ -162,13 +177,8 @@ export function parseAmountToCents(input, currency) {
  */
 export function centsToSheetString(minor, currency) {
   assertCents(minor)
-  const digits = minorDigits(currency)
-  const sign = minor < 0 ? '-' : ''
-  const abs = Math.abs(minor)
-  const scale = 10 ** digits
-  const whole = Math.floor(abs / scale)
-  if (digits === 0) return `${sign}${whole}`
-  return `${sign}${whole}.${String(abs % scale).padStart(digits, '0')}`
+  if (!currency) throw new TypeError('currency is required to encode an amount for the sheet')
+  return decimalString(minor, minorDigits(currency))
 }
 
 /**
@@ -207,10 +217,11 @@ export function formatCents(cents, currency, opts = {}) {
     const { formatter, value } = currencyFormat(cents, currency, opts)
     return formatter.format(value)
   } catch {
-    // An unknown code in the sheet's config tab must not crash a render. Append
-    // the code only when there is one, or a missing argument renders as the word
-    // "undefined" next to a real amount.
-    const plain = centsToSheetString(cents, currency)
+    // An unknown code in the sheet's config tab must not crash a render. Not via
+    // `centsToSheetString`, which refuses a missing currency: this is the display
+    // path, where the amount still has to appear. Append the code only when there
+    // is one, or a missing argument renders as the word "undefined".
+    const plain = decimalString(cents, minorDigits(currency))
     return currency ? `${plain} ${currency}` : plain
   }
 }

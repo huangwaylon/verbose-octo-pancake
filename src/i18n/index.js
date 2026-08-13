@@ -142,6 +142,22 @@ export function t(key, vars) {
 }
 
 /**
+ * An error whose message is already in the reader's language, with the key kept on
+ * the error so a caller can re-translate if it wants to.
+ *
+ * The one home for this: `useLedger` and `sheets.js` both surface failures through
+ * a toast or a gate that renders `cause.message` directly, so a bare English
+ * `new Error('...')` on either path reaches the screen untranslated. `connection.js`
+ * deliberately does not use it — its messages stay English for logs and the UI
+ * translates `i18nKey` at render time instead.
+ */
+export function i18nError(key, vars) {
+  const error = new Error(translate(current, key, vars))
+  error.i18nKey = key
+  return error
+}
+
+/**
  * The hook components use. The third `getServerSnapshot` argument is
  * load-bearing: without it `useSyncExternalStore` throws "Missing
  * getServerSnapshot" under `renderToStaticMarkup`, which is exactly how the

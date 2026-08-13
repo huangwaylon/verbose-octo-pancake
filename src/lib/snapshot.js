@@ -56,8 +56,9 @@ export function readSnapshot(spreadsheetId) {
 let lastPayload = null
 
 /**
- * @param {object[]} entries as returned by a successful read — never optimistic
- *   rows, whose `pending` flag would come back looking like a saved entry
+ * @param {object[]} entries as returned by a successful read. Never the merged
+ *   list `useLedger` holds in state: an unacknowledged optimistic row persisted
+ *   here comes back on the next launch looking like a saved entry.
  * @param {object} sheetConfig the partial config, pre-merge
  */
 export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
@@ -66,10 +67,9 @@ export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
     v: VERSION,
     spreadsheetId,
     config: sheetConfig ?? {},
-    // `rowNumber` is advisory everywhere (updateEntry and setDeletedAt re-resolve
-    // id -> row before writing) and meaningless once the sheet has been edited
-    // elsewhere, so it is not worth persisting.
-    entries: entries.map(({ rowNumber, pending, ...entry }) => entry),
+    // `pending` is stripped as a second line of defence behind that @param: a
+    // row that came back from the sheet is saved by definition.
+    entries: entries.map(({ pending, ...entry }) => entry),
   })
   if (payload === lastPayload) return
   if (payload.length > MAX_CHARS) return

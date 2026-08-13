@@ -57,12 +57,12 @@ describe('round trip', () => {
     expect(read.entries[0].currency).toBe('JPY')
   })
 
-  it('drops rowNumber and pending, which do not survive a relaunch', async () => {
+  it('drops pending, which does not survive a relaunch', async () => {
     const { snapshot } = await load()
-    snapshot.writeSnapshot(SHEET, [{ ...entry(), rowNumber: 7, pending: true }], {})
+    snapshot.writeSnapshot(SHEET, [{ ...entry(), pending: true }], {})
     const [restored] = snapshot.readSnapshot(SHEET).entries
-    expect(restored.rowNumber).toBeUndefined()
     expect(restored.pending).toBeUndefined()
+    expect(restored.id).toBe(entry().id)
   })
 
   it('stores the partial config, so a changed default still applies', async () => {

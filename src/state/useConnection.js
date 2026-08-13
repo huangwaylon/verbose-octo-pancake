@@ -13,10 +13,9 @@ import { isConfigured } from '../config.js'
 /**
  * Connection state for the UI.
  *
- * Much smaller than the OAuth hook it replaces, because nothing here can expire
- * in a way the user has to see: a token is re-minted by a plain `fetch`, so there
- * is no gesture to collect, no popup to survive, and no "your session ended"
- * state to tell apart from a deliberate sign-out.
+ * Nothing here can expire in a way the user has to see: a token is re-minted by a
+ * plain `fetch`, so there is no gesture to collect, no popup to survive, and no
+ * "your session ended" state to tell apart from a deliberate sign-out.
  *
  * A key the endpoint has rejected is reported as `suspect` and KEPT — see
  * `connection.js` for why that is the better failure mode.

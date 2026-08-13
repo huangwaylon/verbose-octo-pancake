@@ -29,6 +29,7 @@ import {
   rowToEntry,
 } from '../schema.js'
 import { getAccessToken, refreshToken } from './connection.js'
+import { i18nError } from '../i18n/index.js'
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
 const RAW = 'RAW'
@@ -45,11 +46,10 @@ function idColumnRange(person) {
  * directions cannot drift. `list` and `fraction` values are not plain strings,
  * so they need explicit parsers; everything else is text.
  *
- * There are deliberately no email keys. Identity used to be resolved by matching
- * the signed-in Google address against them, but the access token now belongs to
- * the account that owns the sheet rather than to either person, so nothing can
- * produce an address to match. Which of the two people this is has become a
- * per-device choice, like the locale and the accent.
+ * There are deliberately no email keys. The access token belongs to the account
+ * that owns the sheet rather than to either person, so nothing can produce an
+ * address to match against — which of the two people this is is a per-device
+ * choice, like the locale and the accent.
  */
 const CONFIG_FIELDS = [
   ['person1_name', 'person1Name', 'text'],
@@ -81,17 +81,10 @@ function parseFraction(value) {
   return Math.min(1, Math.max(0, fraction))
 }
 
-/**
- * Tab title -> numeric sheetId for the one spreadsheet this session is
- * connected to. `values.batchGet` cannot reveal gids, so `compact` depends on
- * whatever `readSheetIds` last cached.
- */
-let gidCache = { spreadsheetId: null, sheetIds: {} }
-
 function buildQuery(params) {
   const query = new URLSearchParams()
+  // Several callers pass no params at all — `:batchUpdate` takes only a body.
   for (const [key, value] of Object.entries(params ?? {})) {
-    if (value == null) continue
     if (Array.isArray(value)) {
       for (const item of value) query.append(key, String(item))
     } else {
@@ -195,9 +188,18 @@ export function parseConfigRows(rows) {
   return parsed
 }
 
+/**
+ * What a freshly seeded `config` tab says the two people are called, and the only
+ * place these strings exist. They are NOT in `DEFAULT_CONFIG`: a default there
+ * would shadow the localized fallback `nameOf` applies when the sheet says
+ * nothing, and everything written to the sheet stays unlocalized regardless of
+ * whose device seeded it.
+ */
+const SEED_NAMES = { person1Name: 'Person 1', person2Name: 'Person 2' }
+
 function defaultConfigRows() {
   return CONFIG_FIELDS.map(([key, field]) => {
-    const value = DEFAULT_CONFIG[field]
+    const value = SEED_NAMES[field] ?? DEFAULT_CONFIG[field]
     return [key, Array.isArray(value) ? value.join(', ') : String(value ?? '')]
   })
 }
@@ -212,42 +214,39 @@ function defaultConfigRows() {
  * Returns the sheet's own partial config as well as the merged one, because the
  * snapshot cache has to store the partial — see `mergeConfig`.
  *
- * @returns {Promise<{entries: object[], config: object, sheetConfig: object, sheetIds: Record<string, number>}>}
+ * @returns {Promise<{entries: object[], config: object, sheetConfig: object}>}
  */
 export async function loadAll(spreadsheetId) {
   const ranges = [expensesDataRange(PERSON.P1), expensesDataRange(PERSON.P2), CONFIG_RANGE]
   let valueRanges
-  let hasConfigRange = true
 
   try {
     const data = await batchGetValues(spreadsheetId, ranges)
     valueRanges = data.valueRanges ?? []
   } catch (error) {
     // A missing config tab makes the API reject the whole batch, so retry
-    // without it and fall back to the defaults.
+    // without it. The shortened reply then has no third range, and the defaults
+    // win by way of `parseConfigRows([])`.
     if (error.status !== 400 && error.status !== 404) throw error
     const data = await batchGetValues(spreadsheetId, ranges.slice(0, 2))
     valueRanges = data.valueRanges ?? []
-    hasConfigRange = false
   }
 
-  const sheetConfig = parseConfigRows(hasConfigRange ? (valueRanges[2]?.values ?? []) : [])
+  const sheetConfig = parseConfigRows(valueRanges[2]?.values ?? [])
   const config = mergeConfig(sheetConfig)
 
   const entries = PEOPLE.flatMap((person, index) =>
     // Same order as `ranges` above: p1's tab, then p2's, then the config.
     (valueRanges[index]?.values ?? [])
-      .map((row, offset) => rowToEntry(row, offset, person, config.currency))
+      .map((row) => rowToEntry(row, person, config.currency))
       .filter(Boolean),
   )
 
-  const sheetIds = gidCache.spreadsheetId === spreadsheetId ? gidCache.sheetIds : {}
-  return { entries, config, sheetConfig, sheetIds }
+  return { entries, config, sheetConfig }
 }
 
-/** @returns {Promise<{rowNumber: number|null}>} rowNumber of the appended row */
 export async function appendEntry(spreadsheetId, entry) {
-  const data = await request(
+  await request(
     `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(expensesTab(entry.payer))}:append`,
     {
       method: 'POST',
@@ -255,9 +254,6 @@ export async function appendEntry(spreadsheetId, entry) {
       body: { values: [entryToRow(entry)] },
     },
   )
-
-  const match = /![A-Z]+(\d+)/.exec(data.updates?.updatedRange ?? '')
-  return { rowNumber: match ? Number(match[1]) : null }
 }
 
 /**
@@ -269,9 +265,8 @@ export async function appendEntry(spreadsheetId, entry) {
 async function resolveRow(spreadsheetId, person, id) {
   const data = await getValues(spreadsheetId, idColumnRange(person))
   const index = (data.values ?? []).findIndex((row) => cellText(row, 0) === id)
-  if (index < 0) {
-    throw new Error(`That entry is no longer in the sheet (id ${id}). Reload to see the latest data.`)
-  }
+  // Reaches the screen through a toast, so it is translated rather than English.
+  if (index < 0) throw i18nError('error.entryGone')
   return FIRST_DATA_ROW + index
 }
 
@@ -370,7 +365,6 @@ async function readSheetIds(spreadsheetId) {
     const { title, sheetId } = sheet.properties ?? {}
     if (title != null) sheetIds[title] = sheetId
   }
-  gidCache = { spreadsheetId, sheetIds }
   return sheetIds
 }
 

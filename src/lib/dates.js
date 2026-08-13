@@ -51,7 +51,8 @@ export function shiftMonth(monthKey, delta) {
  * @param {string} monthKey 'YYYY-MM'
  * @param {object} [opts]
  * @param {string} [opts.locale] undefined means the runtime locale
- * @param {Date} [opts.now] injectable so the same-year branch is testable
+ * @param {Date} [opts.now] injected by `test/dates.test.js` to pin the same-year
+ *   branch; the app always takes the default
  */
 export function monthLabel(monthKey, { locale, now = new Date() } = {}) {
   const [year, month] = String(monthKey ?? '')

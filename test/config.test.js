@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
 import { parseConfigRows } from '../src/lib/sheets.js'
-import { DEFAULT_CONFIG } from '../src/config.js'
+import { DEFAULT_CONFIG, mergeConfig } from '../src/config.js'
+import { nameOf } from '../src/lib/identity.js'
+import { PERSON } from '../src/schema.js'
 
 /**
  * The config tab is hand-edited by two non-programmers in a spreadsheet, so the
@@ -134,5 +136,24 @@ describe('default split', () => {
   it('defaults to an even split for both people', () => {
     expect(DEFAULT_CONFIG.defaultSplitP1).toBe(0.5)
     expect(DEFAULT_CONFIG.defaultSplitP2).toBe(0.5)
+  })
+})
+
+describe('the two people’s names', () => {
+  // The sheet is the only source of a name. A default here would shadow the
+  // localized fallback in `nameOf`, so a Japanese device reading a sheet with no
+  // names in its config tab would say "Person 1" rather than 「ひとり目」 — and
+  // nothing else in the suite would notice.
+  it('is absent from the defaults, so the localized fallback stays reachable', () => {
+    expect('person1Name' in DEFAULT_CONFIG).toBe(false)
+    expect('person2Name' in DEFAULT_CONFIG).toBe(false)
+    expect(mergeConfig().person1Name).toBeUndefined()
+    expect(nameOf(mergeConfig(), PERSON.P1, { p1: 'ひとり目', p2: 'ふたり目' })).toBe('ひとり目')
+  })
+
+  it('wins over the fallback as soon as the sheet says one', () => {
+    const config = mergeConfig(parseConfigRows(rows([['person1_name', 'Waylon']])))
+    expect(nameOf(config, PERSON.P1, { p1: 'ひとり目', p2: 'ふたり目' })).toBe('Waylon')
+    expect(nameOf(config, PERSON.P2, { p1: 'ひとり目', p2: 'ふたり目' })).toBe('ふたり目')
   })
 })
