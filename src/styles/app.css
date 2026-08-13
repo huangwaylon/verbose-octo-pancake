@@ -39,7 +39,9 @@
   min-width: 0;
 }
 
-.brand__title {
+/* Shared with .month-nav__label below: the same heading step in both places. */
+.brand__title,
+.month-nav__label {
   font-size: var(--fs-lg);
   font-weight: 600;
   line-height: var(--lh-tight);
@@ -185,12 +187,6 @@
   letter-spacing: -0.022em;
   font-feature-settings: "tnum" 1, "palt" 1;
   font-variant-numeric: tabular-nums;
-}
-
-@supports not (container-type: inline-size) {
-  .balance__amount {
-    font-size: clamp(1.75rem, 8vw, 2rem);
-  }
 }
 
 /* Symbol and minor units recede; the integer part carries the weight. */
@@ -407,12 +403,6 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-}
-
-.month-nav__label {
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  line-height: var(--lh-tight);
 }
 
 /* =========================================================================
@@ -689,16 +679,13 @@
   }
 }
 
-.settings__value {
-  margin: 0;
-  color: var(--ink-2);
-  font-size: var(--fs-label);
-  line-height: var(--lh-prose);
-}
-
-/* A confirmation's one sentence. Body size at prose leading, not --field__hint's
-   caption: it is the question being asked, not a footnote to it. */
-.confirm__text {
+/* Three sentences that are content rather than annotation: a settings value, a
+   confirmation's question, a gate's explanation. Label size at prose leading,
+   deliberately not `.field__hint`'s caption — a hint is a footnote to a control,
+   and none of these is. One rule because three identical ones drift. */
+.settings__value,
+.confirm__text,
+.gate__text {
   margin: 0;
   color: var(--ink-2);
   font-size: var(--fs-label);
@@ -749,20 +736,6 @@
   font-size: var(--fs-xl);
   font-weight: 600;
   line-height: var(--lh-tight);
-}
-
-.gate__text {
-  margin: 0;
-  color: var(--ink-2);
-  font-size: var(--fs-label);
-  line-height: var(--lh-prose);
-}
-
-.gate__fine {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-prose);
 }
 
 .gate__actions {

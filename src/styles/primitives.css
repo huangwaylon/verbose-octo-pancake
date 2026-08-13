@@ -257,8 +257,11 @@
     color var(--transition-fast);
 }
 
-/* The radio itself is hidden but focusable; the ring is drawn on the label. */
-.segmented__option input {
+/* Both radio sets hide the input but keep it focusable — `opacity: 0` rather than
+   `.visually-hidden`'s clip, so the focus ring the label draws still tracks it.
+   The segmented thumb and the accent swatch differ only in what sits on top. */
+.segmented__option input,
+.swatch input {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -315,7 +318,6 @@
   /* Set inline from the preset's own accent: a CSS var cannot be indexed by an
      attribute value, and each disc must show the color it selects. */
   background-color: var(--accent);
-  transition: box-shadow var(--transition-fast);
 }
 
 /* A ring in the page ground, not a checkmark: the disc is small and a glyph on
@@ -397,7 +399,9 @@
   padding: var(--space-3) var(--space-4) var(--space-3) var(--space-5);
 }
 
-.sheet__title {
+/* Shared with .empty__title below: one heading step, one rule. */
+.sheet__title,
+.empty__title {
   font-size: var(--fs-lg);
   font-weight: 600;
   line-height: var(--lh-tight);
@@ -513,12 +517,6 @@
   background-color: var(--sunken);
   border-radius: var(--radius-full);
   color: var(--ink-3);
-}
-
-.empty__title {
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  line-height: var(--lh-tight);
 }
 
 .empty__text {

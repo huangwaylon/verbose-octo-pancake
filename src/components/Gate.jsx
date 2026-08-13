@@ -89,7 +89,7 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
           the key was kept deliberately, so say why this screen came back. */}
       {suspect && !error && <p className="field__error">{t('error.badKey')}</p>}
       {error && <p className="field__error">{error}</p>}
-      <p className="gate__fine">{t('gate.keyFine')}</p>
+      <p className="field__hint">{t('gate.keyFine')}</p>
     </Panel>
   )
 }
@@ -115,7 +115,7 @@ export function IdentityGate({ config, onPick }) {
           </button>
         ))}
       </div>
-      <p className="gate__fine">{tn('gate.identityFine', { tab: <code>{CONFIG_TAB}</code> })}</p>
+      <p className="field__hint">{tn('gate.identityFine', { tab: <code>{CONFIG_TAB}</code> })}</p>
     </Panel>
   )
 }
