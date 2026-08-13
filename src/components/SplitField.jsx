@@ -1,17 +1,8 @@
 import { useState } from 'react'
 import { EVEN_SHARE } from '../schema.js'
-import { defaultSplitFor } from '../lib/identity.js'
+import { defaultSplitFor, nextSplit, toSplit } from '../lib/split.js'
 import { useT } from '../i18n/index.js'
 import { Segmented } from './Segmented.jsx'
-
-/**
- * A share as the two split controls see it. An even share drives the segmented
- * control to "Even" and hides the slider; anything else opens Custom showing
- * that number, which is what makes a configured 80% land ready to submit.
- */
-function toSplit(share) {
-  return { mode: share === EVEN_SHARE ? 'even' : 'custom', percent: Math.round(share * 100) }
-}
 
 /**
  * The payer's own share of an entry, as the form holds it.
@@ -24,6 +15,8 @@ function toSplit(share) {
  * An entry being edited carries an explicit share instead, so it opens on the
  * number actually stored and changing its payer leaves that number alone: a saved
  * row records a decision someone already made.
+ *
+ * Every transition is in `lib/split.js`; this holds only the one piece of state.
  */
 export function useEntrySplit(entry, config, payer) {
   const stored = Number.isFinite(entry.payerShare) ? entry.payerShare : null
@@ -38,15 +31,7 @@ export function useEntrySplit(entry, config, payer) {
     payerShare: mode === 'even' ? EVEN_SHARE : percent / 100,
     /** Dragging or hitting a preset pins the entry, so it survives a payer switch. */
     setPercent: (next) => setOverride({ mode: 'custom', percent: next }),
-    setMode: (next) =>
-      setOverride(
-        next === 'even'
-          ? { mode: 'even', percent: 50 }
-          : // Custom re-opens on the payer's configured default rather than a
-            // hardcoded 50, so a couple on 80/20 who tap Even and back does not
-            // have to drag the slider to where the sheet already says it is.
-            { mode: 'custom', percent: Math.round(configuredShare * 100) },
-      ),
+    setMode: (next) => setOverride(nextSplit(next, configuredShare)),
   }
 }
 

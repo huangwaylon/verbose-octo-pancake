@@ -5,7 +5,7 @@ import { useLedgerView, useInitialMonth } from './state/useLedgerView.js'
 import { useToasts } from './state/useToasts.js'
 import { ENTRY_TYPE, PERSON } from './schema.js'
 import { currentMonthKey, todayIso } from './lib/dates.js'
-import { useT } from './i18n/index.js'
+import { useT, errorMessage } from './i18n/index.js'
 import { readStoredIdentity, storeIdentity } from './lib/identity.js'
 import { setSafeToReload } from './lib/serviceWorker.js'
 import { Header } from './components/Header.jsx'
@@ -82,38 +82,40 @@ export default function App() {
 
   /**
    * The two write paths that report to a toast. `useLedger` has already reverted
-   * the optimistic change by the time either catch runs, so there is nothing to
-   * undo here — only something to say.
+   * the optimistic change by the time the catch runs, so there is nothing to undo
+   * here — only something to say.
    */
-  const removeEntry = async (entry) => {
-    setPendingDelete(null)
+  const report = async (write, okKey, failKey) => {
     try {
-      await ledger.removeEntry(entry.id, entry.payer)
-      toasts.push({ message: t('toast.deleted') })
+      await write()
+      toasts.push({ message: t(okKey) })
     } catch (cause) {
-      toasts.error(cause.message || t('toast.deleteFailed'))
+      toasts.error(errorMessage(cause, failKey))
     }
   }
 
-  const restoreEntry = async (entry) => {
-    try {
-      await ledger.restoreEntry(entry.id, entry.payer)
-      toasts.push({ message: t('toast.restored') })
-    } catch (cause) {
-      toasts.error(cause.message || t('toast.restoreFailed'))
-    }
+  const removeEntry = (entry) => {
+    setPendingDelete(null)
+    return report(
+      () => ledger.removeEntry(entry.id, entry.payer),
+      'toast.deleted',
+      'toast.deleteFailed',
+    )
   }
+
+  const restoreEntry = (entry) =>
+    report(
+      () => ledger.restoreEntry(entry.id, entry.payer),
+      'toast.restored',
+      'toast.restoreFailed',
+    )
 
   const forgetKey = () => {
     setShowSettings(false)
     connection.forget()
   }
 
-  const connectionError = connection.error
-    ? connection.error.i18nKey
-      ? t(connection.error.i18nKey)
-      : connection.error.message
-    : null
+  const connectionError = connection.error ? errorMessage(connection.error, 'error.offline') : null
 
   if (connection.status === 'unconfigured') return <UnconfiguredGate />
   if (connection.status === 'no-key') {
@@ -145,9 +147,10 @@ export default function App() {
   }
 
   /**
-   * A refresh failed but the cache is still good, or the sheet mixes currencies:
-   * either way the screen stays up and says so, rather than being replaced by an
-   * error — which is what an offline launch did before there was a cache.
+   * A refresh failed but the cache is still good, the sheet mixes currencies, or a
+   * row's amount cannot be read: the screen stays up and says so rather than being
+   * replaced by an error, or — for the last of the three — rather than quietly
+   * showing a balance that is missing an expense.
    *
    * Translated here rather than mapped from keys below, so the literals stay
    * visible to the catalog scan in `test/i18n.test.js`.
@@ -155,6 +158,7 @@ export default function App() {
   const notices = [
     ledger.status === 'stale' && ledger.error && t('warning.staleData'),
     view.mixedCurrencies && t('warning.mixedCurrencies'),
+    ledger.undecodedRows > 0 && t('warning.undecodedRows', { count: ledger.undecodedRows }),
   ].filter(Boolean)
 
   return (

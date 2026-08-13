@@ -31,36 +31,49 @@ const MAX_INT_DIGITS = 13
  * forever, and `Intl.NumberFormat().resolvedOptions()` would tie the stored
  * format to the browser's ICU version.
  */
-// prettier-ignore — eight codes a line is a table, not a list of sixteen things.
+// Eight codes a line: this is a table, not a list of sixteen things. The
+// directive has to be exactly `prettier-ignore` — any trailing text makes it
+// inert and Prettier unrolls the table to one code per line.
+// prettier-ignore
 const ZERO_DECIMAL = new Set([
-  'BIF',
-  'CLP',
-  'DJF',
-  'GNF',
-  'ISK',
-  'JPY',
-  'KMF',
-  'KRW',
-  'PYG',
-  'RWF',
-  'UGX',
-  'VND',
-  'VUV',
-  'XAF',
-  'XOF',
-  'XPF',
+  'BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW',
+  'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
 ])
-const THREE_DECIMAL = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND'])
+// prettier-ignore
+const THREE_DECIMAL = new Set([
+  'BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND',
+])
+
+/** A currency code is exactly three letters; anything else is not one. */
+const CURRENCY_CODE = /^[A-Za-z]{3}$/
+
+/**
+ * The one spelling of a currency code, so `'jpy'`, `' JPY '` and `'JPY'` are the
+ * same currency everywhere. Without this the codes only agree by luck:
+ * `minorDigits` folds case internally, but `hasMixedCurrencies` compares two
+ * codes with `!==` and an entry carries whatever its cell said, so one lowercase
+ * config cell latches the mixed-currency warning on over totals that are
+ * homogeneous.
+ *
+ * @param {string} value
+ * @returns {string} the upper-cased code, or '' if it is not a code at all
+ */
+export function normalizeCurrency(value) {
+  const code = typeof value === 'string' ? value.trim() : ''
+  return CURRENCY_CODE.test(code) ? code.toUpperCase() : ''
+}
 
 /**
  * Minor-unit digits for a currency: 0 for JPY (the yen *is* the minor unit), 2
- * for USD, 3 for KWD. An unrecognised code answers 2, the ISO 4217 default.
+ * for USD, 3 for KWD. An unrecognised code answers 2, the ISO 4217 default —
+ * which is why a typo in the config tab's `currency` is a silent 100x error and
+ * why `normalizeCurrency` rejects one at the boundary instead.
  *
  * @param {string} currency
  * @returns {0|2|3}
  */
 export function minorDigits(currency) {
-  const code = typeof currency === 'string' ? currency.trim().toUpperCase() : ''
+  const code = normalizeCurrency(currency)
   if (ZERO_DECIMAL.has(code)) return 0
   if (THREE_DECIMAL.has(code)) return 3
   return 2
@@ -260,6 +273,26 @@ export function formatCentsParts(cents, currency, opts = {}) {
   } catch {
     return null
   }
+}
+
+/**
+ * Read a share of an expense — a `payer_share` cell, or a `default_split_p*` row
+ * — into a fraction in [0,1].
+ *
+ * Anything above 1 reads as a percentage, because a spreadsheet is where people
+ * write 50 rather than 0.5. Both places a human can type a share go through this
+ * one rule: with two readings of it, the same `50` would mean "half" in the config
+ * tab and "the payer covers all of it" in the `payer_share` column.
+ *
+ * @param {unknown} value
+ * @returns {number|null} null for junk, so the caller's own default wins rather
+ *   than NaN reaching `splitCents`
+ */
+export function parseShare(value) {
+  const raw = typeof value === 'number' ? value : Number.parseFloat(value)
+  if (!Number.isFinite(raw) || raw < 0) return null
+  const fraction = raw > 1 ? raw / 100 : raw
+  return Math.min(1, Math.max(0, fraction))
 }
 
 /**

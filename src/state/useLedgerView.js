@@ -6,7 +6,7 @@ import {
   filterByMonth,
   groupByDate,
   hasMixedCurrencies,
-  monthKeysPresent,
+  initialMonthKey,
   spendByCategory,
   spendByPerson,
   totalSpend,
@@ -43,7 +43,9 @@ export function useLedgerView(entries, currency, monthKey) {
 
 /**
  * Land on the newest month that actually has data, once per session, so a sheet
- * whose last entry was a while ago does not open on an empty screen.
+ * whose last entry was a while ago does not open on an empty screen. Which month
+ * that is is `initialMonthKey`'s decision; this only owns the once-per-session
+ * latch and the effect.
  *
  * Runs on the cached paint too (`stale`), which is the point: waiting for `ready`
  * would move the month out from under someone who had already started using the
@@ -57,7 +59,7 @@ export function useInitialMonth(status, active, setMonthKey) {
     if (status !== 'ready' && status !== 'stale') return
     if (!active.length) return
     jumped.current = true
-    const months = monthKeysPresent(active)
-    if (months.length && !months.includes(currentMonthKey())) setMonthKey(months[0])
+    const next = initialMonthKey(active, currentMonthKey())
+    if (next) setMonthKey(next)
   }, [status, active, setMonthKey])
 }

@@ -24,13 +24,8 @@ function toIso(date) {
   return `${year}-${month}-${day}`
 }
 
-/** '2026-08-05' -> '2026-08' */
-function monthKeyOf(iso) {
-  return typeof iso === 'string' ? iso.slice(0, 7) : ''
-}
-
 export function currentMonthKey(now = new Date()) {
-  return monthKeyOf(toIso(now))
+  return toIso(now).slice(0, 7)
 }
 
 function partsOf(iso) {
@@ -38,10 +33,27 @@ function partsOf(iso) {
   return new Date(year, month - 1, day)
 }
 
-/** Shift a 'YYYY-MM' key by n months. */
+/**
+ * A 'YYYY-MM' key as numbers, or null for anything that is not one. The single
+ * parser for the two functions below: without a guard, `shiftMonth` answers the
+ * string 'NaN-NaN' for junk, which then matches no entry in any month and reads on
+ * screen as an empty month rather than as a bug.
+ */
+function monthParts(monthKey) {
+  const [year, month] = String(monthKey ?? '')
+    .split('-')
+    .map(Number)
+  if (!Number.isInteger(year) || year < 1 || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null
+  }
+  return { year, month }
+}
+
+/** Shift a 'YYYY-MM' key by n months. A key that is not one is returned as ''. */
 export function shiftMonth(monthKey, delta) {
-  const [year, month] = monthKey.split('-').map(Number)
-  const date = new Date(year, month - 1 + delta, 1)
+  const parts = monthParts(monthKey)
+  if (!parts) return ''
+  const date = new Date(parts.year, parts.month - 1 + delta, 1)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
@@ -55,11 +67,9 @@ export function shiftMonth(monthKey, delta) {
  *   branch; the app always takes the default
  */
 export function monthLabel(monthKey, { locale, now = new Date() } = {}) {
-  const [year, month] = String(monthKey ?? '')
-    .split('-')
-    .map(Number)
-  if (!year || !month) return ''
-  const date = new Date(year, month - 1, 1)
+  const parts = monthParts(monthKey)
+  if (!parts) return ''
+  const date = new Date(parts.year, parts.month - 1, 1)
   const sameYear = date.getFullYear() === now.getFullYear()
   return date.toLocaleDateString(locale, {
     month: 'long',

@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs'
 /**
  * The CSS has no test that renders it, and it does not need one — but merging two
  * identical rules into a selector list is a routine tidy-up that can silently
- * attach a selector to the WRONG block. That happened once: `.sheet__title` was
- * merged with `.empty__title` and landed on `.sheet__body`, turning the sheet
- * heading into a scroll container. Every one of the 356 other tests passed.
+ * attach a selector to the WRONG block. Merge `.sheet__title` with `.empty__title`
+ * and land it on `.sheet__body`, and the sheet heading becomes a scroll container
+ * while every other test in the suite still passes.
  *
  * So this file pins the declarations of the shared rules only, and asserts that a
  * heading never picks up layout properties from the block below it.

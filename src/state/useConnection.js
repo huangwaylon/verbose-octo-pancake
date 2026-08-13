@@ -78,7 +78,6 @@ export function useConnection() {
 
   const forget = useCallback(() => {
     setError(null)
-    bootstrapped.current = false
     forgetKey()
   }, [])
 

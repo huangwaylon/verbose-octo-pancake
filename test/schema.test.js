@@ -84,6 +84,15 @@ describe('column contract', () => {
     expect(() => columnIndex('nope')).toThrow(/Unknown column/)
   })
 
+  it('stays within the 26 columns single-letter arithmetic can name', () => {
+    // `columnLetter` is `String.fromCharCode(65 + index)`, so a 27th column would
+    // answer '[' and the API would reject every range built from it. This is the
+    // assertion that fails the day somebody appends past Z; the RangeError in
+    // `columnLetter` is what makes it loud at runtime rather than opaque.
+    expect(EXPENSE_COLUMNS.length).toBeLessThanOrEqual(26)
+    expect(columnLetter(EXPENSE_COLUMNS[EXPENSE_COLUMNS.length - 1])).toMatch(/^[A-Z]$/)
+  })
+
   it('lists exactly the two people, each with their own tab', () => {
     expect(PEOPLE).toEqual([PERSON.P1, PERSON.P2])
     expect(new Set(PEOPLE.map(expensesTab)).size).toBe(2)
@@ -155,9 +164,11 @@ describe('rowToEntry', () => {
     const row = rawRow({ id: 'x', amount: '1.00' })
     expect(rowToEntry(row, PERSON.P1, SHEET).payer).toBe(PERSON.P1)
     expect(rowToEntry(row, PERSON.P2, SHEET).payer).toBe(PERSON.P2)
-    // An unrecognised value normalises to the safe default, same as any other
-    // stray input this function might see.
-    expect(rowToEntry(row, 'p3', SHEET).payer).toBe(PERSON.P1)
+    // Refuses rather than picking one. The tab a row came from IS its payer, so a
+    // caller that cannot name one has lost track of which tab it is reading, and
+    // every entry it decodes would be attributed to the wrong person.
+    expect(() => rowToEntry(row, 'p3', SHEET)).toThrow(TypeError)
+    expect(() => rowToEntry(row, undefined, SHEET)).toThrow(TypeError)
   })
 
   it('drops a date that is not ISO-shaped instead of passing junk downstream', () => {
@@ -170,11 +181,17 @@ describe('rowToEntry', () => {
     ).toBe('2026-03-09')
   })
 
-  it('clamps an out-of-range payer_share into [0,1]', () => {
-    const high = rowToEntry(rawRow({ id: 'x', amount: '1.00', payer_share: '5' }), PERSON.P1, SHEET)
-    const low = rowToEntry(rawRow({ id: 'x', amount: '1.00', payer_share: '-3' }), PERSON.P1, SHEET)
-    expect(high.payerShare).toBe(1)
-    expect(low.payerShare).toBe(0)
+  it('reads payer_share as a percentage above 1, exactly like the config tab', () => {
+    const share = (payer_share) =>
+      rowToEntry(rawRow({ id: 'x', amount: '1.00', payer_share }), PERSON.P1, SHEET).payerShare
+    // The rule that matters: somebody typing 80 into the column means 80%, not
+    // "the payer covers all of it" — the same reading the config tab gives it.
+    expect(share('80')).toBe(0.8)
+    expect(share('0.8')).toBe(0.8)
+    expect(share('100')).toBe(1)
+    expect(share('0')).toBe(0)
+    // Junk falls through to the type's default rather than reaching splitCents.
+    expect(share('-3')).toBe(EVEN_SHARE)
   })
 
   it('defaults payer_share by type when the cell is blank or junk', () => {
@@ -356,16 +373,29 @@ describe('makeEntry', () => {
     expect(makeEntry({ id: 'c', payerShare: 0 }, NOW).payerShare).toBe(0)
   })
 
-  it('defaults type, payer, and deletedAt, and leaves a missing currency blank', () => {
+  it('passes an unrecognised payer through so validation can refuse it', () => {
     const entry = makeEntry({ id: 'a', payer: 'nonsense', type: 'nonsense' }, NOW)
     expect(entry.type).toBe(ENTRY_TYPE.EXPENSE)
-    expect(entry.payer).toBe(PERSON.P1)
+    // Not rewritten to p1. Guessing made BAD_PAYER unreachable from every write
+    // path and filed the expense under the wrong person's tab.
+    expect(entry.payer).toBe('nonsense')
+    expect(validateEntryCodes(entry)).toContain(ENTRY_ERROR.BAD_PAYER)
     // Blank rather than a guessed code: a scale invented here would be a silent
     // 100x error, so validation refuses the entry instead.
     expect(entry.currency).toBe('')
     expect(validateEntryCodes(entry)).toContain(ENTRY_ERROR.MISSING_CURRENCY)
     expect(entry.deletedAt).toBeNull()
     expect(entry.amountCents).toBe(0)
+  })
+
+  it('normalises the currency code and refuses anything that is not one', () => {
+    expect(makeEntry({ id: 'a', currency: ' jpy ' }, NOW).currency).toBe('JPY')
+    // Not a three-letter code, so there is no scale to write the amount at.
+    for (const currency of ['JP', 'YENS', '¥', '']) {
+      const entry = makeEntry({ id: 'a', currency }, NOW)
+      expect(entry.currency).toBe('')
+      expect(validateEntryCodes(entry)).toContain(ENTRY_ERROR.MISSING_CURRENCY)
+    }
   })
 })
 
@@ -480,9 +510,9 @@ describe('validateEntryCodes', () => {
 })
 
 describe('a tab name is never guessed', () => {
-  // It used to answer `expenses_p1` for anything unrecognised, which turned "we do
-  // not know which tab this row is in" into a write against the wrong person's
-  // ledger. Every caller either iterates PEOPLE or holds a row's real payer.
+  // Answering `expenses_p1` for anything unrecognised would turn "we do not know
+  // which tab this row is in" into a write against the wrong person's ledger.
+  // Every caller either iterates PEOPLE or holds a row's real payer.
   it('throws for anything that is not one of the two people', () => {
     expect(expensesTab(PERSON.P1)).toBe('expenses_p1')
     expect(expensesTab(PERSON.P2)).toBe('expenses_p2')

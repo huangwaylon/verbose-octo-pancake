@@ -19,16 +19,15 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # A wedged install burned 1m11s before crashing; without a cap a stuck step
-    # can hold a runner for hours.
+    # Without a cap, a step that wedges rather than fails holds a runner for hours.
     timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      # Node 24 ships npm 11. Note that the npm version was never the cause of
-      # the "Exit handler never called!" install failures — see the lockfile
-      # registry gotcha in CLAUDE.md — but there is no reason to go back to 22.
+      # Node 24, which ships npm 11. An "Exit handler never called!" install
+      # failure here is the lockfile registry gotcha in CLAUDE.md, not the npm
+      # version.
       - name: Set up Node
         uses: actions/setup-node@v7
         with:
@@ -39,8 +38,8 @@ jobs:
         run: npm ci --no-audit --no-fund
 
       # An npm-internal crash prints no stack trace to the step log — it only
-      # writes one to ~/.npm/_logs. Uploading it is what finally identified the
-      # private-registry URLs baked into package-lock.json, so it stays.
+      # writes one to ~/.npm/_logs, which is where a bad `resolved` URL in
+      # package-lock.json is actually named.
       - name: Collect npm logs
         if: failure()
         run: |
@@ -55,8 +54,8 @@ jobs:
           path: /tmp/npm-logs
           if-no-files-found: ignore
 
-      # JavaScript only, and the same command a developer runs. A lost format run
-      # once left 18 spaces inside JSX, which is a real text node in the output.
+      # JavaScript only, and the same command a developer runs. Unformatted JSX is
+      # not cosmetic: stray indentation between tags is a real text node.
       - name: Check formatting
         run: npm run format:check
 

@@ -11,13 +11,13 @@ scope harmless, and that is a permanent condition rather than a setup detail.
 
 Neither person ever sees an OAuth client, an API key, a consent screen or a file
 picker — the script's own consent screen, in step 5, is authorized once by the
-dedicated account and never again. If you are looking for those, they were removed;
-see the Security model in [README.md](README.md).
+dedicated account and never again. The Security model in [README.md](README.md) says
+what that buys and what it costs.
 
 | Value used throughout | |
 | --- | --- |
 | GitHub username `huangwaylon` | the Pages origin, `https://huangwaylon.github.io` |
-| Repo name `verbose-octo-pancake` | the Pages path; `vite.config.js` sets `base` to `/verbose-octo-pancake/` to match |
+| Repo name `verbose-octo-pancake` | the Pages path; `base.js` sets the bundle's base to `/verbose-octo-pancake/` to match |
 
 ## 1. The dedicated account and the sheet
 

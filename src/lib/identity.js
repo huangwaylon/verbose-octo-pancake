@@ -8,7 +8,7 @@
  * labels things and must not follow the data to the other person's phone.
  */
 
-import { EVEN_SHARE, PERSON } from '../schema.js'
+import { PERSON } from '../schema.js'
 import { STORAGE_KEYS, readStored, writeStored } from '../config.js'
 
 export function readStoredIdentity() {
@@ -27,17 +27,4 @@ export function storeIdentity(person) {
 export function nameOf(config, person, fallbacks = { p1: 'Person 1', p2: 'Person 2' }) {
   if (person === PERSON.P2) return config?.person2Name || fallbacks.p2
   return config?.person1Name || fallbacks.p1
-}
-
-/**
- * The share `person` covers by default on an expense they paid for. Keyed on the
- * payer because `payer_share` is the payer's own share: with 0.8 for p1 and 0.2
- * for p2, p1 bears 80% of the cost whichever of them actually paid.
- *
- * Falls back to an even split per person, so a config tab carrying only one of
- * the two keys still behaves sensibly for the other.
- */
-export function defaultSplitFor(config, person) {
-  const value = person === PERSON.P2 ? config?.defaultSplitP2 : config?.defaultSplitP1
-  return Number.isFinite(value) ? value : EVEN_SHARE
 }

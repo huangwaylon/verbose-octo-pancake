@@ -168,6 +168,9 @@ export default {
   'toast.restored': '元に戻しました',
   'toast.restoreFailed': '元に戻せませんでした。',
   'error.readSheet': 'シートを読み込めませんでした。',
+  'error.sheetRequest': 'シートが応答しませんでした。少し待ってからもう一度お試しください。',
+  'error.notOurSheet':
+    'このスプレッドシートには他のタブがあり、このアプリのタブがありません。台帳ではない可能性があります。SHEET_ID プロパティを確認してください。',
   'error.entryGone': 'この項目はもうシートにありません。更新して最新の状態を確認してください。',
   'error.missingTabs': 'シートに支出タブが見つかりませんでした。',
   'error.badKey':
@@ -187,4 +190,8 @@ export default {
   'error.missingCurrency': 'このシートの config タブに通貨が設定されていません。',
   'warning.staleData': '保存したデータを表示しています。シートにつながりませんでした。',
   'warning.mixedCurrencies': '通貨の違う記録があるため、合計が正しくない可能性があります。',
+  // `Intl.PluralRules('ja')` reports only `other`, so a single branch is correct.
+  'warning.undecodedRows': {
+    other: 'シートに金額を読み取れない行が {count} 行あるため、合計に含まれていません。',
+  },
 }

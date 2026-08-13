@@ -50,6 +50,44 @@ describe('text and list keys', () => {
   })
 })
 
+describe('the currency code', () => {
+  it('normalises case and padding to one spelling', () => {
+    // Everything downstream compares codes with `!==`: an entry carries whatever
+    // its cell said, so a lowercase config cell latches the mixed-currency warning
+    // on over totals that are perfectly homogeneous.
+    expect(parseConfigRows(rows([['currency', ' jpy ']]))).toEqual({ currency: 'JPY' })
+    expect(parseConfigRows(rows([['currency', 'Usd']]))).toEqual({ currency: 'USD' })
+  })
+
+  it('omits anything that is not a three-letter code, so the default wins', () => {
+    // A code decides the minor-unit scale, and an unrecognised one silently
+    // answers 2 digits — a 100x error on a yen sheet.
+    for (const value of ['JP', 'YENS', '¥', '123', 'JP¥']) {
+      expect(parseConfigRows(rows([['currency', value]]))).toEqual({})
+    }
+  })
+})
+
+describe('mergeConfig', () => {
+  it('layers the sheet over the defaults, keeping unspecified keys', () => {
+    const merged = mergeConfig({ currency: 'USD' })
+    expect(merged.currency).toBe('USD')
+    expect(merged.categories).toEqual(DEFAULT_CONFIG.categories)
+  })
+
+  it('hands out array copies, so a caller cannot corrupt the shared defaults', () => {
+    // DEFAULT_CONFIG is a module singleton reused by every later merge, including
+    // the reset on disconnect. Mutation there would survive the rest of the session.
+    const merged = mergeConfig()
+    merged.categories.push('Poisoned')
+    merged.notePresets.push('Poisoned')
+    expect(DEFAULT_CONFIG.categories).not.toContain('Poisoned')
+    expect(DEFAULT_CONFIG.notePresets).not.toContain('Poisoned')
+    expect(mergeConfig().categories).not.toContain('Poisoned')
+    expect(mergeConfig().notePresets).not.toContain('Poisoned')
+  })
+})
+
 describe('note presets', () => {
   it('reads a comma-separated list', () => {
     expect(parseConfigRows(rows([['note_presets', 'OK Mart, Ozeki, Life']]))).toEqual({

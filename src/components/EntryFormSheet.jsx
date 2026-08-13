@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { centsToSheetString, minorDigits, parseAmountToCents, splitCents } from '../lib/money.js'
 import { ENTRY_TYPE, PEOPLE, PERSON, otherPerson } from '../schema.js'
-import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
+import { errorMessage, usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { NoteField } from './NoteField.jsx'
 import { Segmented } from './Segmented.jsx'
 import { SplitField, useEntrySplit } from './SplitField.jsx'
@@ -36,10 +36,21 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
   const [description, setDescription] = useState(entry.description ?? '')
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
+  const errorId = useId()
 
   const split = useEntrySplit(entry, config, payer)
   const cents = parseAmountToCents(amount, entryCurrency)
   const payerShare = isSettlement ? 0 : split.payerShare
+
+  /**
+   * The stored category first, even if the config tab no longer lists it. A
+   * `<select>` whose value matches no option renders blank and then silently saves
+   * the invisible old value — so editing a row whose category has since been
+   * renamed would quietly rewrite it.
+   */
+  const categories = config.categories.includes(category)
+    ? config.categories
+    : [category, ...config.categories].filter(Boolean)
 
   const { label } = usePeopleLabels(config, me)
   const payerLabel = label(payer)
@@ -79,7 +90,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
       onClose()
     } catch (cause) {
       setBusy(false)
-      setError(cause.i18nKey ? t(cause.i18nKey) : cause.message || t('form.saveError'))
+      setError(errorMessage(cause, 'form.saveError'))
     }
   }
 
@@ -135,6 +146,9 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             aria-invalid={error && cents == null ? 'true' : undefined}
+            /* The message sits at the foot of the form, so without this a screen
+               reader reaches the failed field and is told nothing about why. */
+            aria-describedby={error ? errorId : undefined}
           />
         </div>
 
@@ -174,7 +188,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
               >
-                {config.categories.map((name) => (
+                {categories.map((name) => (
                   <option key={name} value={name}>
                     {name}
                   </option>
@@ -193,7 +207,11 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
           </>
         )}
 
-        {error && <p className="field__error">{error}</p>}
+        {error && (
+          <p className="field__error" id={errorId} role="status">
+            {error}
+          </p>
+        )}
       </form>
     </BottomSheet>
   )

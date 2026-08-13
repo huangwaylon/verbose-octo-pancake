@@ -178,9 +178,11 @@ export function filterByMonth(entries, monthKey) {
 }
 
 /**
- * Every month present in the data, newest first, for the month switcher.
- * 'YYYY-MM' strings sort lexicographically the same way they sort
- * chronologically, so no date parsing is needed here either.
+ * Every month present in the data, newest first. 'YYYY-MM' strings sort
+ * lexicographically the same way they sort chronologically, so no date parsing is
+ * needed here either. `initialMonthKey` is the only caller in the app; it stays
+ * exported because its ordering and de-duplication are what `balance.test.js`
+ * pins directly.
  *
  * @param {object[]} entries
  * @returns {string[]}
@@ -191,6 +193,22 @@ export function monthKeysPresent(entries) {
     if (hasDate(entry)) keys.add(entry.date.slice(0, 7))
   }
   return [...keys].sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
+}
+
+/**
+ * Which month to open on: the newest one that actually has data, so a sheet whose
+ * last entry was a while ago does not open on an empty screen. `null` means stay
+ * where you are, which is the answer whenever the current month has data of its
+ * own — moving off it would be surprising.
+ *
+ * @param {object[]} entries
+ * @param {string} currentKey 'YYYY-MM' for today
+ * @returns {string|null}
+ */
+export function initialMonthKey(entries, currentKey) {
+  const months = monthKeysPresent(entries)
+  if (!months.length || months.includes(currentKey)) return null
+  return months[0]
 }
 
 /**

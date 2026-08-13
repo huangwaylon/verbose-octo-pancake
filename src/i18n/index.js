@@ -145,18 +145,38 @@ export function t(key, vars) {
 
 /**
  * An error whose message is already in the reader's language, with the key kept on
- * the error so a caller can re-translate if it wants to.
+ * the error so a caller can re-translate it.
  *
- * The one home for this: `useLedger` and `sheets.js` both surface failures through
- * a toast or a gate that renders `cause.message` directly, so a bare English
- * `new Error('...')` on either path reaches the screen untranslated. `connection.js`
- * deliberately does not use it — its messages stay English for logs and the UI
- * translates `i18nKey` at render time instead.
+ * The one way to throw something a person will read. `connection.js` deliberately
+ * does not use it — its messages stay English for logs and carry an `i18nKey` the
+ * UI translates at render time instead, which is the same shape `sheets.js` uses
+ * for a failed request.
  */
 export function i18nError(key, vars) {
   const error = new Error(translate(current, key, vars))
   error.i18nKey = key
+  // Kept alongside the key so `errorMessage` can re-translate the same sentence
+  // rather than rendering a bare `{count}` where the value should be.
+  if (vars) error.i18nVars = vars
   return error
+}
+
+/**
+ * The one way a caught error becomes a sentence on screen.
+ *
+ * `cause.message` is never shown: `sheets.js` keeps the API's own English text
+ * there on purpose, for consoles and bug reports, and a Japanese reader must not
+ * be handed "The caller does not have permission (HTTP 403)". A cause carrying an
+ * `i18nKey` says something specific and useful ("that entry is no longer in the
+ * sheet"); anything else falls back to the caller's own key, which names the
+ * action that failed rather than the transport that failed it.
+ *
+ * @param {unknown} cause
+ * @param {string} fallbackKey
+ * @returns {string}
+ */
+export function errorMessage(cause, fallbackKey) {
+  return cause?.i18nKey ? t(cause.i18nKey, cause.i18nVars) : t(fallbackKey)
 }
 
 /**

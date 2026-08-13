@@ -190,6 +190,12 @@ export default {
   'toast.restored': 'Restored',
   'toast.restoreFailed': 'Could not restore that.',
   'error.readSheet': 'Could not read the sheet.',
+  // Every failed Sheets request lands here. The API's own English text stays on
+  // the error for the console; this is what the person is told.
+  'error.sheetRequest': 'The sheet would not answer. Try again in a moment.',
+  // `ensureStructure` refusing to adopt a spreadsheet that is somebody else's work.
+  'error.notOurSheet':
+    'That spreadsheet already has other tabs and none of this app’s, so it is probably not the ledger. Check the SHEET_ID script property.',
   'error.entryGone': 'That entry is no longer in the sheet. Refresh to see the latest data.',
   'error.missingTabs': 'Could not find the expenses tabs in the sheet.',
   // Both paths that report a bad key end here: the reply to a just-typed key,
@@ -209,4 +215,11 @@ export default {
   'error.missingCurrency': 'This sheet has no currency set in its config tab.',
   'warning.staleData': 'Showing saved data — could not reach the sheet.',
   'warning.mixedCurrencies': 'Some entries use a different currency, so totals may be wrong.',
+  // A row whose amount cell cannot be read at all is left out of every total, so
+  // the balance is short by it. Naming the count is the only way anyone would know.
+  'warning.undecodedRows': {
+    one: '{count} row in the sheet has an amount that cannot be read, so it is left out of the totals.',
+    other:
+      '{count} rows in the sheet have amounts that cannot be read, so they are left out of the totals.',
+  },
 }

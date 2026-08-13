@@ -1,8 +1,8 @@
 /**
  * Visual harness: renders the signed-in app surface to static HTML with the real
  * stylesheets, so it can be screenshotted at phone and desktop widths. A green
- * test suite says nothing about whether the page looks right — the donut chart
- * once shipped white-on-white with every test passing.
+ * test suite says nothing about whether the page looks right: a chart rendering
+ * white-on-white passes every assertion in the suite.
  *
  * One file per locale, and each carries every accent preset as a query-free
  * variant so a color change can be eyeballed across all five.

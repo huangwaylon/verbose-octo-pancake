@@ -262,12 +262,6 @@ describe('sumCents', () => {
     expect(sumCents([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])).toBe(10)
   })
 
-  // The float equivalent, `Array(10).fill(0.1).reduce(add)`, does not equal 1.
-  // Integers are the whole reason this function exists.
-  it('sums ten of the same unit exactly', () => {
-    expect(sumCents(new Array(10).fill(10))).toBe(100)
-  })
-
   it('throws on a non-array or a non-integer member instead of returning NaN', () => {
     expect(() => sumCents(null)).toThrow(TypeError)
     expect(() => sumCents(undefined)).toThrow(TypeError)

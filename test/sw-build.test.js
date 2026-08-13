@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { buildFromDist, precachePaths } from '../scripts/build-sw.js'
+import { DEFAULT_BASE, resolveBase } from '../base.js'
 
 /**
  * The service worker's failure modes are completely silent, which is why this file
@@ -13,7 +14,7 @@ import { buildFromDist, precachePaths } from '../scripts/build-sw.js'
  * update and the new `index.html` never reaches the device.
  */
 
-const BASE = '/verbose-octo-pancake/'
+const BASE = DEFAULT_BASE
 
 /** The shape a real `dist` has: a hashed bundle plus verbatim `public/` files. */
 function fixture() {
@@ -115,5 +116,27 @@ describe('the build wiring', () => {
     // Without this the whole file above tests something that never executes.
     const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
     expect(pkg.scripts.build).toContain('build-sw.js')
+  })
+
+  it('emits a worker that is valid JavaScript', () => {
+    // Every other assertion in this file is a substring check, so a typo inside the
+    // template literal produces a syntactically invalid sw.js that still contains
+    // all of them: green suite, `install` fails, no worker activates. `Function`
+    // compiles without executing, so no `self` or `caches` is needed.
+    const { source } = buildFromDist(fixture(), BASE)
+    expect(() => new Function(source)).not.toThrow()
+  })
+
+  it('builds the bundle and the worker against the same base path', () => {
+    // Vite writes asset URLs under its `base`; the worker precaches BASE + path.
+    // Two different prefixes means every precached URL 404s, `install` rejects, and
+    // no worker ever activates — with nothing on screen looking wrong.
+    const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8')
+    expect(viteConfig).toContain('resolveBase')
+    const builder = readFileSync(new URL('../scripts/build-sw.js', import.meta.url), 'utf8')
+    expect(builder).toContain('resolveBase')
+    // And that both would follow the same override.
+    expect(resolveBase({ VITE_BASE: '/' })).toBe('/')
+    expect(resolveBase({})).toBe(DEFAULT_BASE)
   })
 })

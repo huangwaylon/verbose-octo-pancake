@@ -213,8 +213,11 @@ describe('summary card renders', () => {
     expect(markup).toContain('Dining')
     expect(markup).toContain('Sam paid')
     expect(markup).toContain('You paid')
-    // The settlement must not be counted as spending.
-    expect(markup).not.toContain('$100.00')
+    // The settlement must not be counted as spending. Asserted as the total that
+    // is right and the total that would be wrong: the fixture's settlement is
+    // $10.00, so a "not $100.00" check passes either way and proves nothing.
+    expect(markup).toContain('$83.59')
+    expect(markup).not.toContain('$93.59')
   })
 
   it('renders nothing at all for a month with no spend', () => {

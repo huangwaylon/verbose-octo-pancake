@@ -304,13 +304,8 @@
   cursor: pointer;
 }
 
-.swatch input {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  opacity: 0;
-}
-
+/* The input itself is hidden by the shared rule above, alongside the segmented
+   control's — the two radio sets differ only in what is drawn on top of it. */
 .swatch__disc {
   width: 1.75rem;
   height: 1.75rem;

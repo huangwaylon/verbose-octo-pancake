@@ -29,23 +29,27 @@ import {
   rowRange,
   rowToEntry,
 } from '../schema.js'
+import { normalizeCurrency, parseShare } from './money.js'
+import { reconcileById } from './ledgerState.js'
 import { getAccessToken, refreshToken } from './connection.js'
 import { i18nError } from '../i18n/index.js'
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
 const RAW = 'RAW'
 
-const ID_COLUMN = columnLetter('id')
+const ID_INDEX = columnIndex('id')
 const DELETED_AT_INDEX = columnIndex('deleted_at')
 
-function idColumnRange(person) {
-  return `${expensesTab(person)}!${ID_COLUMN}${FIRST_DATA_ROW}:${ID_COLUMN}`
+/** One column of one person's tab, e.g. "expenses_p1!K2:K". */
+function columnRange(person, field) {
+  const letter = columnLetter(field)
+  return `${expensesTab(person)}!${letter}${FIRST_DATA_ROW}:${letter}`
 }
 
 /**
  * Sheet key <-> config field, plus how to read the value. One list so the two
- * directions cannot drift. `list` and `fraction` values are not plain strings,
- * so they need explicit parsers; everything else is text.
+ * directions cannot drift. `list`, `fraction` and `code` values are not plain
+ * strings, so they need explicit parsers; everything else is text.
  *
  * There are deliberately no email keys. The access token belongs to the account
  * that owns the sheet rather than to either person, so nothing can produce an
@@ -55,31 +59,26 @@ function idColumnRange(person) {
 const CONFIG_FIELDS = [
   ['person1_name', 'person1Name', 'text'],
   ['person2_name', 'person2Name', 'text'],
-  ['currency', 'currency', 'text'],
+  ['currency', 'currency', 'code'],
   ['categories', 'categories', 'list'],
   ['default_split_p1', 'defaultSplitP1', 'fraction'],
   ['default_split_p2', 'defaultSplitP2', 'fraction'],
   ['note_presets', 'notePresets', 'list'],
 ]
 
-function parseList(value) {
-  return value
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
-
-/**
- * A share written either as a percentage ("50") or a fraction ("0.5"). Anything
- * above 1 reads as a percentage, because a spreadsheet is where people write 50
- * rather than 0.5. Returns null for junk so the caller's default wins instead of
- * NaN reaching `splitCents`.
- */
-function parseFraction(value) {
-  const raw = Number.parseFloat(value)
-  if (!Number.isFinite(raw) || raw < 0) return null
-  const fraction = raw > 1 ? raw / 100 : raw
-  return Math.min(1, Math.max(0, fraction))
+/** Each kind answers null for a value it cannot use, so the default wins. */
+const PARSERS = {
+  text: (value) => value,
+  code: (value) => normalizeCurrency(value) || null,
+  fraction: parseShare,
+  list: (value) => {
+    const list = value
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+    // An empty list must never shadow a default, or the category picker is empty.
+    return list.length ? list : null
+  },
 }
 
 function buildQuery(params) {
@@ -107,7 +106,11 @@ function buildQuery(params) {
  * recovery is silent. `refreshToken` guarantees a token newer than any mint that
  * was already in flight when the 401 arrived.
  *
- * Thrown errors carry `.status` so callers can tell 401/403/404 apart.
+ * Thrown errors carry `.status` so callers can tell 401/403/404 apart, and an
+ * `i18nKey` so the sentence that reaches the screen is in the reader's language.
+ * The `.message` stays English and keeps the API's own text, because that is what
+ * ends up in a console and a bug report — a Japanese reader must never be shown
+ * "The caller does not have permission (HTTP 403)".
  */
 async function request(path, { method = 'GET', params, body, allowRetry = true } = {}) {
   const token = await getAccessToken()
@@ -133,6 +136,7 @@ async function request(path, { method = 'GET', params, body, allowRetry = true }
   const message = payload?.error?.message ?? response.statusText ?? 'Request failed'
   const error = new Error(`Google Sheets: ${message} (HTTP ${response.status})`)
   error.status = response.status
+  error.i18nKey = 'error.sheetRequest'
   throw error
 }
 
@@ -161,8 +165,7 @@ function updateValues(spreadsheetId, range, values) {
  * and the percentage-vs-fraction rule needs cases pinned to it.
  *
  * A key that is absent, or present with a blank or unparseable value, is omitted
- * so the caller's defaults win. An empty list must never shadow a default, or
- * the category picker ends up empty.
+ * so the caller's defaults win.
  */
 export function parseConfigRows(rows) {
   const byKey = new Map(CONFIG_FIELDS.map(([key, field, kind]) => [key, { field, kind }]))
@@ -174,15 +177,8 @@ export function parseConfigRows(rows) {
     const spec = byKey.get(key)
     if (!spec || !value) continue
 
-    if (spec.kind === 'list') {
-      const list = parseList(value)
-      if (list.length) parsed[spec.field] = list
-    } else if (spec.kind === 'fraction') {
-      const fraction = parseFraction(value)
-      if (fraction != null) parsed[spec.field] = fraction
-    } else {
-      parsed[spec.field] = value
-    }
+    const result = PARSERS[spec.kind](value)
+    if (result != null) parsed[spec.field] = result
   }
 
   return parsed
@@ -214,7 +210,17 @@ function defaultConfigRows() {
  * Returns the sheet's own partial config as well as the merged one, because the
  * snapshot cache has to store the partial — see `mergeConfig`.
  *
- * @returns {Promise<{entries: object[], config: object, sheetConfig: object}>}
+ * The two counts are how the sheet reports what it holds and the app does not
+ * show. `supersededRows` counts only the TOMBSTONES `reconcileById` hid, because
+ * its consumer is the compact button and `compact` removes exactly the tombstoned
+ * rows: counting a hidden *live* duplicate there would offer a removal that can
+ * never happen and a count that never clears. `undecodedRows` counts live rows
+ * with an id whose amount cannot be read at all — a hand-typed "12,34.5" — which
+ * would otherwise leave the ledger silently short one expense. A tombstoned row is
+ * excluded from that count because it is correctly out of the totals already.
+ *
+ * @returns {Promise<{entries: object[], config: object, sheetConfig: object,
+ *   supersededRows: number, undecodedRows: number}>}
  */
 export async function loadAll(spreadsheetId) {
   const ranges = [expensesDataRange(PERSON.P1), expensesDataRange(PERSON.P2), CONFIG_RANGE]
@@ -235,14 +241,28 @@ export async function loadAll(spreadsheetId) {
   const sheetConfig = parseConfigRows(valueRanges[2]?.values ?? [])
   const config = mergeConfig(sheetConfig)
 
-  const entries = PEOPLE.flatMap((person, index) =>
+  let undecodedRows = 0
+  const decoded = PEOPLE.flatMap((person, index) =>
     // Same order as `ranges` above: p1's tab, then p2's, then the config.
-    (valueRanges[index]?.values ?? [])
-      .map((row) => rowToEntry(row, person, config.currency))
-      .filter(Boolean),
+    (valueRanges[index]?.values ?? []).flatMap((row) => {
+      const entry = rowToEntry(row, person, config.currency)
+      if (entry) return [entry]
+      // A row with no id is a blank one, which is expected and says nothing; a
+      // tombstoned one is already meant to be absent from every total.
+      if (cellText(row, ID_INDEX) && !cellText(row, DELETED_AT_INDEX)) undecodedRows += 1
+      return []
+    }),
   )
 
-  return { entries, config, sheetConfig }
+  const entries = reconcileById(decoded)
+  const tombstones = (list) => list.filter((entry) => entry.deletedAt).length
+  return {
+    entries,
+    config,
+    sheetConfig,
+    supersededRows: tombstones(decoded) - tombstones(entries),
+    undecodedRows,
+  }
 }
 
 export async function appendEntry(spreadsheetId, entry) {
@@ -263,7 +283,7 @@ export async function appendEntry(spreadsheetId, entry) {
  * overwrites a different expense.
  */
 async function resolveRow(spreadsheetId, person, id) {
-  const data = await getValues(spreadsheetId, idColumnRange(person))
+  const data = await getValues(spreadsheetId, columnRange(person, 'id'))
   const index = (data.values ?? []).findIndex((row) => cellText(row, 0) === id)
   // Reaches the screen through a toast, so it is translated rather than English.
   if (index < 0) throw i18nError('error.entryGone')
@@ -317,8 +337,8 @@ export async function setDeletedAt(spreadsheetId, person, id, deletedAtIso) {
  * Permanently remove every tombstoned row from both people's tabs.
  *
  * Reads each tab's own deleted_at column rather than trusting a caller-supplied
- * id list, because an id is no longer a unique lookup key once an edited entry
- * can have left a tombstone in one tab while the live row sits in the other.
+ * id list, because an id is not a unique lookup key: an edited entry can have left
+ * a tombstone in one tab while the live row sits in the other.
  *
  * @param {Record<string, number>} sheetGids expensesTab(person) -> numeric sheetId
  * @returns {Promise<{removed: number}>}
@@ -330,6 +350,11 @@ export async function compact(spreadsheetId, sheetGids) {
     const sheetGid = sheetGids[expensesTab(person)]
     if (sheetGid == null) continue
 
+    // The FULL row range, not just the deleted_at column, and that is not waste.
+    // Row numbers here are derived from position (`FIRST_DATA_ROW + index`), and
+    // that only holds while every data row is present in the reply. `deleted_at`
+    // is empty on most rows, so a single-column read cannot be trusted to line up
+    // — and being one row out here hard-deletes somebody else's expense.
     const data = await getValues(spreadsheetId, expensesDataRange(person))
     const rowNumbers = []
     ;(data.values ?? []).forEach((row, index) => {
@@ -400,11 +425,11 @@ export async function ensureStructure(spreadsheetId) {
   // and adding three tabs to an unrelated spreadsheet is not something undo can
   // reach. A freshly created spreadsheet has exactly one default tab, so several
   // tabs with none of ours among them is not the ledger we were pointed at.
+  //
+  // Translated, because this is the one failure whose message a person has to act
+  // on: it names the property to fix, and it reaches an error gate.
   if (missing.length === wantedTabs.length && Object.keys(sheetIds).length > 1) {
-    throw new Error(
-      `That spreadsheet already has other tabs and none of this app's, so it is ` +
-        `probably not the ledger. Check the SHEET_ID script property.`,
-    )
+    throw i18nError('error.notOurSheet')
   }
 
   if (missing.length > 0) {
@@ -430,7 +455,9 @@ export async function ensureStructure(spreadsheetId) {
   })
 
   const configRows = valueRanges[PEOPLE.length]?.values ?? []
-  const configIsEmpty = configRows.every((row) => (row ?? []).every((cell) => !cellText([cell], 0)))
+  const configIsEmpty = configRows.every((row) =>
+    (row ?? []).every((_, index) => !cellText(row, index)),
+  )
   if (configIsEmpty) {
     // A header row for the human who edits this tab; parseConfigRows ignores it.
     data.push({ range: `${CONFIG_TAB}!A1`, values: [['key', 'value'], ...defaultConfigRows()] })

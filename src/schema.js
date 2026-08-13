@@ -7,7 +7,12 @@
  * interpreted as a formula, and dates must not be reformatted per locale.
  */
 
-import { centsToSheetString, parseAmountToCents } from './lib/money.js'
+import {
+  centsToSheetString,
+  normalizeCurrency,
+  parseAmountToCents,
+  parseShare,
+} from './lib/money.js'
 
 export const PERSON = {
   P1: 'p1',
@@ -33,10 +38,10 @@ export const CONFIG_TAB = 'config'
  * Which tab a row lives in is itself the payer, so there is nothing to keep in
  * sync and no way for a row to disagree with its own tab.
  *
- * Throws on anything that is not one of the two people. It used to answer
- * `expenses_p1` for an unrecognised value, which turned "we do not know which tab
- * this row is in" into a write against the wrong person's tab — the quietest
- * possible way to corrupt a ledger.
+ * Throws on anything that is not one of the two people. Answering `expenses_p1`
+ * for an unrecognised value would turn "we do not know which tab this row is in"
+ * into a write against the wrong person's tab — the quietest possible way to
+ * corrupt a ledger.
  */
 export function expensesTab(person) {
   if (person === PERSON.P1) return 'expenses_p1'
@@ -115,9 +120,22 @@ export function columnIndex(field) {
   return index
 }
 
-/** Column letter for a named field, e.g. columnLetter('deleted_at') -> 'K'. */
+/**
+ * Column letter for a named field, e.g. columnLetter('deleted_at') -> 'K'.
+ *
+ * Single-character arithmetic, which is the whole reason EXPENSE_COLUMNS is
+ * capped at 26: column 27 would answer '[' and every range built from it would
+ * be rejected by the API as an opaque error on every read and write. Refusing
+ * here puts the failure at the append rather than at runtime in the field.
+ */
 export function columnLetter(field) {
-  return String.fromCharCode(65 + columnIndex(field))
+  const index = columnIndex(field)
+  if (index > 25) {
+    throw new RangeError(
+      `EXPENSE_COLUMNS cannot exceed 26 columns: '${field}' is number ${index + 1}`,
+    )
+  }
+  return String.fromCharCode(65 + index)
 }
 
 const LAST_COLUMN = columnLetter(EXPENSE_COLUMNS[EXPENSE_COLUMNS.length - 1])
@@ -151,6 +169,12 @@ export function cellText(row, index) {
  * @returns {object|null}      null for blank or structurally invalid rows
  */
 export function rowToEntry(row, payer, currency) {
+  // Refuse rather than guess, exactly as `expensesTab` does: the tab a row came
+  // from IS its payer, so a caller that cannot name one has lost track of which
+  // tab it is reading and every entry it produces would be attributed wrongly.
+  if (!isPerson(payer)) {
+    throw new TypeError(`rowToEntry needs the tab's person, got ${String(payer)}`)
+  }
   if (!Array.isArray(row)) return null
 
   const get = (field) => cellText(row, columnIndex(field))
@@ -158,18 +182,16 @@ export function rowToEntry(row, payer, currency) {
   const id = get('id')
   if (!id) return null
 
-  const rowCurrency = get('currency') || currency
+  const rowCurrency = normalizeCurrency(get('currency')) || currency
   const amountCents = parseAmountToCents(get('amount'), rowCurrency)
   if (amountCents == null) return null
 
   const type = get('type') === ENTRY_TYPE.SETTLEMENT ? ENTRY_TYPE.SETTLEMENT : ENTRY_TYPE.EXPENSE
 
-  const rawShare = Number.parseFloat(get('payer_share'))
-  const payerShare = Number.isFinite(rawShare)
-    ? Math.min(1, Math.max(0, rawShare))
-    : type === ENTRY_TYPE.SETTLEMENT
-      ? 0
-      : EVEN_SHARE
+  // Same percentage-or-fraction rule as the config tab's default_split rows:
+  // both are a share somebody may have typed by hand.
+  const share = parseShare(get('payer_share'))
+  const payerShare = share ?? (type === ENTRY_TYPE.SETTLEMENT ? 0 : EVEN_SHARE)
 
   const date = get('date')
   const deletedAt = get('deleted_at')
@@ -178,7 +200,7 @@ export function rowToEntry(row, payer, currency) {
     id,
     type,
     date: isRealDate(date) ? date : '',
-    payer: payer === PERSON.P2 ? PERSON.P2 : PERSON.P1,
+    payer,
     amountCents,
     currency: rowCurrency,
     category: get('category'),
@@ -224,6 +246,12 @@ export function entryToRow(entry) {
 /**
  * Build a complete entry from partial user input, filling in id/timestamps.
  * `now` is injected so tests stay deterministic.
+ *
+ * Nothing here guesses: an unrecognised payer is passed through so
+ * `validateEntryCodes` can refuse it, rather than being rewritten to p1 — which
+ * made BAD_PAYER unreachable and filed the expense under the wrong person's tab.
+ * A currency that is not a three-letter code becomes '' for the same reason: the
+ * amount's scale is meaningless without one, so the write must fail loudly.
  */
 export function makeEntry(input, now = new Date().toISOString()) {
   const type = input.type === ENTRY_TYPE.SETTLEMENT ? ENTRY_TYPE.SETTLEMENT : ENTRY_TYPE.EXPENSE
@@ -231,9 +259,9 @@ export function makeEntry(input, now = new Date().toISOString()) {
     id: input.id || crypto.randomUUID(),
     type,
     date: input.date ?? '',
-    payer: input.payer === PERSON.P2 ? PERSON.P2 : PERSON.P1,
+    payer: input.payer ?? '',
     amountCents: input.amountCents ?? 0,
-    currency: input.currency ?? '',
+    currency: normalizeCurrency(input.currency),
     category: input.category ?? '',
     description: input.description ?? '',
     payerShare:
@@ -273,7 +301,7 @@ export function validateEntryCodes(entry) {
   if (!Number.isInteger(entry.amountCents) || entry.amountCents <= 0) {
     errors.push(ENTRY_ERROR.BAD_AMOUNT)
   }
-  if (entry.payer !== PERSON.P1 && entry.payer !== PERSON.P2) {
+  if (!isPerson(entry.payer)) {
     errors.push(ENTRY_ERROR.BAD_PAYER)
   }
   if (

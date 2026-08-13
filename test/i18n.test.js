@@ -3,7 +3,15 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { CATALOGS, DEFAULT_LOCALE, LOCALE_LABELS, SUPPORTED } from '../src/i18n/catalogs.js'
-import { getLocale, interpolate, setLocale, t, translate } from '../src/i18n/index.js'
+import {
+  errorMessage,
+  getLocale,
+  i18nError,
+  interpolate,
+  setLocale,
+  t,
+  translate,
+} from '../src/i18n/index.js'
 import { ENTRY_ERROR } from '../src/schema.js'
 import { CONNECTION_ERROR } from '../src/lib/connection.js'
 import { ACCENTS } from '../src/lib/theme.js'
@@ -122,7 +130,10 @@ describe('catalog usage', () => {
   const DYNAMIC_PREFIXES = ['error.', 'accent.']
 
   const referenced = new Set()
-  for (const file of sourceFiles('src')) {
+  // The catalogs themselves are excluded, or every key marks itself as referenced
+  // by being defined and the dead-key check below becomes vacuous.
+  const CATALOG_FILES = ['en.js', 'ja.js'].map((name) => join('src', 'i18n', name))
+  for (const file of sourceFiles('src').filter((path) => !CATALOG_FILES.includes(path))) {
     const source = readFileSync(file, 'utf8')
     for (const match of source.matchAll(/\b(?:t|tn)\(\s*['"]([\w.]+)['"]/g)) {
       referenced.add(match[1])
@@ -130,6 +141,13 @@ describe('catalog usage', () => {
     // The explicit-locale form, used where a hook cannot be: translate(locale, 'key').
     for (const match of source.matchAll(/\btranslate\(\s*[^,]+,\s*['"]([\w.]+)['"]/g)) {
       referenced.add(match[1])
+    }
+    // Keys handed to a helper rather than to `t` directly — `errorMessage`'s
+    // fallback key, `App`'s report(). Matching every literal that IS a catalog key
+    // covers all of them without encoding each helper's argument position, at the
+    // cost of counting a key named in a comment as referenced.
+    for (const match of source.matchAll(/['"](\w+(?:\.\w+)+)['"]/g)) {
+      if (match[1] in CATALOGS[DEFAULT_LOCALE]) referenced.add(match[1])
     }
   }
 
@@ -198,8 +216,12 @@ describe('no hardcoded user-facing strings in components', () => {
    * An attribute nobody sees rendered is the easiest place to leave English
    * behind — `aria-label="Add an expense"` shipped on the FAB and no catalog
    * check could see it, because the string never went near a catalog.
+   *
+   * `aria-valuetext` earns its place here: the split slider's spoken value is a
+   * whole sentence, and it is the only spoken string in the app that is not also
+   * visible on screen, so nothing else would catch it going untranslated.
    */
-  const SPOKEN_ATTRIBUTES = ['aria-label', 'placeholder', 'title']
+  const SPOKEN_ATTRIBUTES = ['aria-label', 'aria-valuetext', 'alt', 'placeholder', 'title']
 
   it('passes every spoken attribute through t(), not a bare literal', () => {
     const offenders = []
@@ -249,6 +271,49 @@ describe('engine', () => {
   it('falls back to the reference locale for a key a translation lacks', () => {
     // Simulated by asking for a locale that does not exist at all.
     expect(translate('de', 'balance.title')).toBe('Balance')
+  })
+})
+
+/**
+ * The one path from a caught error to a sentence on screen. `cause.message` must
+ * never be it: `sheets.js` and `connection.js` keep the API's own English there for
+ * consoles, so showing it hands a Japanese reader "HTTP 403".
+ */
+describe('errorMessage', () => {
+  it('prefers the error’s own key, which says something specific', () => {
+    expect(errorMessage(i18nError('error.entryGone'), 'toast.deleteFailed')).toBe(
+      translate('en', 'error.entryGone'),
+    )
+  })
+
+  it('falls back to the caller’s key, naming the action rather than the transport', () => {
+    const transport = new Error('Google Sheets: The caller does not have permission (HTTP 403)')
+    transport.i18nKey = 'error.sheetRequest'
+    expect(errorMessage(transport, 'toast.deleteFailed')).toBe(
+      translate('en', 'error.sheetRequest'),
+    )
+
+    for (const cause of [new Error('raw English'), undefined, null, {}]) {
+      expect(errorMessage(cause, 'toast.deleteFailed')).toBe(translate('en', 'toast.deleteFailed'))
+    }
+  })
+
+  it('never returns the raw message, whatever the cause looks like', () => {
+    expect(errorMessage(new Error('HTTP 403'), 'error.readSheet')).not.toContain('403')
+  })
+
+  it('keeps an error’s interpolation vars, so no placeholder reaches the screen', () => {
+    // No error key carries a placeholder today; this is what stops the first one
+    // that does from rendering the literal '{count}'.
+    const cause = i18nError('settings.removedRows', { count: 3 })
+    expect(errorMessage(cause, 'error.readSheet')).toBe('Removed 3 deleted rows.')
+    expect(errorMessage(cause, 'error.readSheet')).not.toContain('{count}')
+  })
+
+  it('translates into the active locale, not the one the error was thrown in', () => {
+    const cause = i18nError('error.entryGone')
+    setLocale('ja')
+    expect(errorMessage(cause, 'error.readSheet')).toBe(translate('ja', 'error.entryGone'))
   })
 })
 

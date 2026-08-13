@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
-import { defaultSplitFor } from '../lib/identity.js'
-import { usePeopleLabels, useT } from '../i18n/index.js'
+import { defaultSplitFor } from '../lib/split.js'
+import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
 import { LOCALE_LABELS, SUPPORTED } from '../i18n/catalogs.js'
 import { ACCENTS, setAccent, useAccent } from '../lib/theme.js'
@@ -33,7 +33,7 @@ export function SettingsSheet({
       const { removed } = await onCompact()
       setMessage(t('settings.removedRows', { count: removed }))
     } catch (cause) {
-      setMessage(cause.message || t('settings.compactError'))
+      setMessage(errorMessage(cause, 'settings.compactError'))
     } finally {
       setBusy(false)
     }
@@ -168,7 +168,13 @@ export function SettingsSheet({
               ? t('settings.removeRows', { count: tombstoneCount })
               : t('settings.nothingToRemove')}
           </button>
-          {message && <p className="field__hint">{message}</p>}
+          {/* The only irreversible action in the app, and its outcome is a number
+              nobody can infer from the screen — so it is spoken, not just shown. */}
+          {message && (
+            <p className="field__hint" role="status">
+              {message}
+            </p>
+          )}
         </div>
       </div>
     </BottomSheet>

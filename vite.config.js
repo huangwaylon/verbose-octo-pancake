@@ -1,11 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { resolveBase } from './base.js'
 
-// GitHub Pages serves project sites from /<repo>/, so the bundle needs a base
-// path matching the repository name. Override with VITE_BASE=/ for a custom
-// domain, or with a different path if the repo is ever renamed.
+// The base path lives in base.js, which scripts/build-sw.js reads too — the two
+// must agree or the service worker precaches URLs that do not exist.
 export default defineConfig({
-  base: process.env.VITE_BASE ?? '/verbose-octo-pancake/',
+  base: resolveBase(),
   plugins: [react()],
   test: {
     environment: 'node',

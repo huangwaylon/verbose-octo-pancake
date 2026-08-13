@@ -15,12 +15,38 @@ export function BottomSheet({ title, onClose, children, footer }) {
   const panel = useRef(null)
   const titleId = useId()
 
+  /**
+   * Read through a ref so the effects below do not depend on `onClose`'s identity.
+   * Every caller passes a fresh inline arrow, so a re-render of the screen behind
+   * the sheet — a focus refresh landing while someone types — would otherwise
+   * re-run the open effect and yank focus back to the first field mid-entry.
+   */
+  const close = useRef(onClose)
+  close.current = onClose
+
+  // Opening the sheet: lock the background and move focus in, exactly once.
+  useEffect(() => {
+    const node = panel.current
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+
+    // Focus the first control rather than the panel, so a phone keyboard
+    // comes straight up for the amount field.
+    const focusable = node?.querySelector('input, select, textarea, button:not([data-dismiss])')
+    focusable?.focus({ preventScroll: true })
+
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [])
+
+  // Escape, the focus trap, and keeping the focused field above the keyboard.
   useEffect(() => {
     const node = panel.current
 
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
-        onClose()
+        close.current()
         return
       }
       if (event.key !== 'Tab' || !node) return
@@ -48,20 +74,11 @@ export function BottomSheet({ title, onClose, children, footer }) {
     const onFocusIn = (event) => event.target.scrollIntoView?.({ block: 'nearest' })
     node?.addEventListener('focusin', onFocusIn)
 
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    // Focus the first control rather than the panel, so a phone keyboard
-    // comes straight up for the amount field.
-    const focusable = node?.querySelector('input, select, textarea, button:not([data-dismiss])')
-    focusable?.focus({ preventScroll: true })
-
     return () => {
       document.removeEventListener('keydown', onKeyDown)
       node?.removeEventListener('focusin', onFocusIn)
-      document.body.style.overflow = previousOverflow
     }
-  }, [onClose])
+  }, [])
 
   return (
     <div className="sheet">

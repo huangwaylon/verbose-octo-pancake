@@ -53,6 +53,14 @@ describe('shiftMonth', () => {
     expect(shiftMonth('2026-01', 1)).toBe('2026-02')
     expect(shiftMonth('2026-03', -1)).toBe('2026-02')
   })
+
+  it('returns nothing for a key that is not one, rather than the string NaN-NaN', () => {
+    // 'NaN-NaN' is a month key that matches no entry, so the screen reads as an
+    // empty month rather than as a bug.
+    for (const key of ['', 'nope', '2026', '2026-13', undefined, null, {}]) {
+      expect(shiftMonth(key, 1)).toBe('')
+    }
+  })
 })
 
 describe('monthLabel', () => {

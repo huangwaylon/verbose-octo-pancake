@@ -9,8 +9,7 @@ import { describe, expect, it } from 'vitest'
  * internal Apple mirror. `npm install` bakes whatever registry it used into
  * every `resolved` URL, producing a lockfile that works locally and fails on
  * any other machine with `getaddrinfo ENOTFOUND` — which npm surfaces as the
- * useless "Exit handler never called!". It cost several rounds of debugging, so
- * it gets a test.
+ * useless "Exit handler never called!", naming neither the registry nor the file.
  *
  * A repo-level .npmrc cannot prevent this: npm ranks environment variables
  * above project .npmrc, so the env var wins. Regenerate with an explicit

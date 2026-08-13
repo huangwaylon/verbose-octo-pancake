@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
-import { PERSON, expensesTab, makeEntry } from '../src/schema.js'
+import { ENTRY_ERROR, PERSON, expensesTab, makeEntry } from '../src/schema.js'
 import {
   acknowledge,
   entryById,
+  entryFromInput,
   hasTombstones,
+  looksUninitialized,
   mergeLoaded,
   missingExpenseGid,
+  reconcileById,
   reverted,
   settled,
   shouldRefresh,
@@ -43,7 +46,10 @@ const entry = (id, over = {}) =>
   )
 
 describe('mergeLoaded', () => {
-  it('takes the server list when nothing is in flight', () => {
+  it('hands back the server list itself when nothing is in flight', () => {
+    // Referential identity, not just equality: `applyLoad` passes the same array to
+    // `setEntries` and to `writeSnapshot`, so a needless copy here is a needless
+    // divergence between what is on screen and what is persisted.
     const loaded = [entry('a'), entry('b')]
     expect(mergeLoaded([entry('a')], loaded)).toBe(loaded)
   })
@@ -226,6 +232,134 @@ describe('the refresh floor', () => {
 
   it('allows one exactly at the floor', () => {
     expect(shouldRefresh(60_000, 30_000, 30_000)).toBe(true)
+  })
+})
+
+/**
+ * Editing an entry to change who paid moves the row between tabs: the new row is
+ * appended before the old one is tombstoned, so the sheet legitimately holds two
+ * rows with one id until `compact` runs. Every case below is what goes wrong if the
+ * dead copy is the one an id lookup finds.
+ */
+describe('reconcileById', () => {
+  const live = (id, over) => entry(id, over)
+  const dead = (id, over) => entry(id, { deletedAt: '2026-08-06T00:00:00.000Z', ...over })
+
+  it('keeps the live row when a tombstone shares its id', () => {
+    // p1's tab is read first, so the tombstone is the copy `.find` would return.
+    const reconciled = reconcileById([
+      dead('moved', { payer: PERSON.P1 }),
+      live('moved', { payer: PERSON.P2 }),
+    ])
+    expect(reconciled).toHaveLength(1)
+    expect(reconciled[0].payer).toBe(PERSON.P2)
+    expect(reconciled[0].deletedAt).toBeNull()
+  })
+
+  it('keeps the live row whichever tab it was read from first', () => {
+    const reconciled = reconcileById([
+      live('moved', { payer: PERSON.P1 }),
+      dead('moved', { payer: PERSON.P2 }),
+    ])
+    expect(reconciled[0].payer).toBe(PERSON.P1)
+  })
+
+  it('is what stops the next edit appending a second live row', () => {
+    // `useLedger` hands `previous.payer` to `updateEntry` as the tab the row is in
+    // NOW. Picking the tombstone names the wrong tab, so the write moves the row
+    // again — appending a duplicate and tombstoning an already-dead row.
+    const entries = reconcileById([
+      dead('moved', { payer: PERSON.P1 }),
+      live('moved', { payer: PERSON.P2 }),
+    ])
+    expect(entryById(entries, 'moved').payer).toBe(PERSON.P2)
+  })
+
+  it('never lets an edit or a delete touch two copies of one entry', () => {
+    const entries = reconcileById([
+      dead('moved', { payer: PERSON.P1 }),
+      live('moved', { payer: PERSON.P2 }),
+    ])
+    // Both map by id, so an unreconciled list would put two of the same expense
+    // on screen and count it twice in the balance.
+    expect(withPendingEdit(entries, entry('moved', { amountCents: 500 }))).toHaveLength(1)
+    expect(withPendingDeletedAt(entries, 'moved', 'now')).toHaveLength(1)
+  })
+
+  it('breaks a tie between two tombstones on the later edit', () => {
+    const older = dead('moved', { payer: PERSON.P1 })
+    const newer = { ...dead('moved', { payer: PERSON.P2 }), updatedAt: '2026-09-01T00:00:00.000Z' }
+    expect(reconcileById([older, newer])[0].payer).toBe(PERSON.P2)
+    expect(reconcileById([newer, older])[0].payer).toBe(PERSON.P2)
+  })
+
+  it('returns the same array when there is nothing to reconcile', () => {
+    // Which is every load but the ones following a payer change.
+    const entries = [entry('a'), entry('b'), dead('c')]
+    expect(reconcileById(entries)).toBe(entries)
+    expect(reconcileById([])).toEqual([])
+  })
+})
+
+describe('looksUninitialized', () => {
+  it('is true only for the statuses a sheet with no tabs answers with', () => {
+    // This gates the ONLY path that writes tabs into somebody's spreadsheet, so a
+    // 403 or a 500 must never lead there.
+    expect(looksUninitialized({ status: 400 })).toBe(true)
+    expect(looksUninitialized({ status: 404 })).toBe(true)
+    for (const status of [401, 403, 429, 500, 503]) {
+      expect(looksUninitialized({ status })).toBe(false)
+    }
+    expect(looksUninitialized(undefined)).toBe(false)
+    expect(looksUninitialized(new Error('network'))).toBe(false)
+  })
+})
+
+describe('entryFromInput', () => {
+  const input = {
+    id: 'a',
+    date: '2026-08-05',
+    payer: PERSON.P1,
+    amountCents: 1000,
+    currency: 'JPY',
+    category: 'Groceries',
+  }
+
+  it('returns a complete entry for valid input', () => {
+    expect(entryFromInput(input, '2026-08-05T10:00:00.000Z')).toMatchObject({
+      id: 'a',
+      payer: PERSON.P1,
+      amountCents: 1000,
+      currency: 'JPY',
+    })
+  })
+
+  it('throws the first problem as a translatable key, never an English sentence', () => {
+    const thrown = (over) => {
+      try {
+        entryFromInput({ ...input, ...over })
+        return null
+      } catch (cause) {
+        return cause.i18nKey
+      }
+    }
+    expect(thrown({ amountCents: 0 })).toBe(`error.${ENTRY_ERROR.BAD_AMOUNT}`)
+    expect(thrown({ payer: 'nobody' })).toBe(`error.${ENTRY_ERROR.BAD_PAYER}`)
+    expect(thrown({ currency: '' })).toBe(`error.${ENTRY_ERROR.MISSING_CURRENCY}`)
+    expect(thrown({ category: '' })).toBe(`error.${ENTRY_ERROR.MISSING_CATEGORY}`)
+    expect(thrown({ date: '2026-02-31' })).toBe(`error.${ENTRY_ERROR.BAD_DATE}`)
+  })
+
+  it('reports the problem nearest the top of the form when there are several', () => {
+    // One message slot, so four at once is a wall; the first is the useful one.
+    // Note MISSING_ID is not among them and cannot be: `makeEntry` mints an id for
+    // a new entry, so the date is the first thing a person can actually get wrong.
+    try {
+      entryFromInput({ ...input, date: 'nope', amountCents: 0, payer: 'x', currency: '' })
+      throw new Error('should have thrown')
+    } catch (cause) {
+      expect(cause.i18nKey).toBe(`error.${ENTRY_ERROR.BAD_DATE}`)
+    }
   })
 })
 

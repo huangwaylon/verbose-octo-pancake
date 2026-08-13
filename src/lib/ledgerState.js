@@ -1,17 +1,55 @@
 /**
  * The bookkeeping behind optimistic writes, as pure functions.
  *
- * `useLedger` used to hold all of this inline, which made it untestable: the
- * interesting parts are list transitions and status decisions, and reaching them
- * meant rendering a hook, which needs a DOM this project does not have. None of it
- * is actually React — it is "given the list now, what is the list next" — so it
- * lives here and the hook becomes a wrapper that owns only the effects.
+ * Everything interesting about the ledger is a list transition or a status
+ * decision — "given the list now, what is the list next" — and none of it is
+ * actually React. Reaching it inside a hook would mean rendering one, which needs
+ * a DOM this project does not have, so it lives here and `useLedger` is left
+ * owning only state, effects and the order of the calls.
  *
- * Every function returns a new array and mutates nothing: React state, and any
+ * Every function returns a new value and mutates nothing: React state, and any
  * list that has been handed to `writeSnapshot`, must never be edited in place.
  */
 
-import { PEOPLE, expensesTab } from '../schema.js'
+import { PEOPLE, expensesTab, isActive, makeEntry, validateEntryCodes } from '../schema.js'
+import { i18nError } from '../i18n/index.js'
+
+/**
+ * One entry per id, keeping the row that is actually live.
+ *
+ * An id is not unique across the two tabs. Editing an entry to change who paid
+ * moves the row: `updateEntry` appends to the new payer's tab and tombstones the
+ * old row, deliberately in that order, so the sheet legitimately holds two rows
+ * with one id — one live, one a tombstone — until `compact` runs.
+ *
+ * Left unreconciled, the tombstone is the copy every id lookup finds first
+ * (`loadAll` reads p1's tab before p2's), and each of the three consumers goes
+ * wrong in a way nothing reports: `entryById` hands the next edit the payer of a
+ * dead row, so the write moves tabs again and appends a SECOND live row;
+ * `deletedEntries` offers the tombstone for restore, which brings a duplicate of
+ * a visible expense back into the balance permanently; and `withPendingEdit`
+ * rewrites both copies, putting two of the same expense on screen.
+ *
+ * A live row therefore always wins, and between two tombstones the one edited
+ * last does. Returns the input array itself when there is nothing to reconcile,
+ * which is every load but the ones following a payer change.
+ *
+ * @param {object[]} entries
+ * @returns {object[]}
+ */
+export function reconcileById(entries) {
+  const byId = new Map()
+  for (const entry of entries) {
+    const kept = byId.get(entry.id)
+    if (!kept || supersedes(entry, kept)) byId.set(entry.id, entry)
+  }
+  return byId.size === entries.length ? entries : [...byId.values()]
+}
+
+function supersedes(entry, kept) {
+  if (isActive(entry) !== isActive(kept)) return isActive(entry)
+  return String(entry.updatedAt ?? '') > String(kept.updatedAt ?? '')
+}
 
 /**
  * Fold a fresh server read into what is on screen, keeping optimistic rows the
@@ -128,4 +166,34 @@ export function shouldRefresh(now, lastAt, floorMs) {
  */
 export function missingExpenseGid(sheetIds) {
   return PEOPLE.some((person) => sheetIds?.[expensesTab(person)] == null)
+}
+
+/**
+ * Whether a failed read means "this spreadsheet has no tabs yet" rather than
+ * "the read failed". A missing tab or range surfaces as a 400 from the values
+ * endpoint, a missing spreadsheet as a 404; either way the answer is to build
+ * structure once and retry. Anything else must not lead there — `ensureStructure`
+ * is the only path that writes tabs into somebody's spreadsheet.
+ */
+export function looksUninitialized(cause) {
+  return cause?.status === 400 || cause?.status === 404
+}
+
+/**
+ * Turn form input into a complete entry, or throw something the person can read.
+ *
+ * Both write paths validate identically and report the FIRST problem only: a form
+ * with one message slot showing four at once is a wall, and the first is always
+ * the one nearest the top of the sheet. The codes are the stable contract, so the
+ * thrown error carries `error.<code>` rather than an English sentence.
+ *
+ * @param {object} input
+ * @param {string} [now] injected so tests stay deterministic
+ * @returns {object}
+ */
+export function entryFromInput(input, now) {
+  const entry = makeEntry(input, now)
+  const problems = validateEntryCodes(entry)
+  if (problems.length) throw i18nError(`error.${problems[0]}`)
+  return entry
 }

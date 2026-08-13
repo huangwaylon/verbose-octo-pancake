@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { mergeConfig } from '../config.js'
-import { makeEntry, validateEntryCodes } from '../schema.js'
-import { i18nError, t } from '../i18n/index.js'
+import { errorMessage, i18nError } from '../i18n/index.js'
 import * as sheets from '../lib/sheets.js'
 import {
   acknowledge,
   entryById,
+  entryFromInput,
   hasTombstones,
+  looksUninitialized,
   mergeLoaded,
   missingExpenseGid,
   reverted,
@@ -24,11 +25,6 @@ import { readSnapshot, writeSnapshot } from '../lib/snapshot.js'
 
 /** Floor between focus-triggered refreshes. Window switching is constant. */
 const REFRESH_THROTTLE_MS = 30_000
-
-/** A missing tab or range surfaces as a 400 from the values endpoint. */
-function looksUninitialized(cause) {
-  return cause?.status === 400 || cause?.status === 404
-}
 
 /**
  * Owns the entry list for one spreadsheet.
@@ -60,10 +56,29 @@ export function useLedger(spreadsheetId) {
   const [sheetIds, setSheetIds] = useState({})
   const [status, setStatus] = useState(() => (seed ? 'stale' : 'idle'))
   const [error, setError] = useState(null)
+  /**
+   * What the last read found in the sheet and could not put in `entries`:
+   * tombstones `reconcileById` hid behind a live row, and rows whose amount is
+   * unreadable. Both are things the person needs told about, and neither can be
+   * recovered from the entry list, because being absent from it is the point.
+   */
+  const [sheetExtras, setSheetExtras] = useState({ supersededRows: 0, undecodedRows: 0 })
 
   const loadedFor = useRef(null)
   /** Whether there has ever been something real to show, cached or loaded. */
   const everLoaded = useRef(Boolean(seed))
+
+  /**
+   * `entries` as of the last render, so a write can read the entry it is about to
+   * replace WITHOUT side-effecting inside a `setEntries` updater. An updater only
+   * runs synchronously while React's eager-state bailout applies, which any other
+   * pending update on this component defeats — and `App` sets its own state in the
+   * same handler as a delete. Reading through the updater therefore leaves
+   * `previous` undefined exactly when a revert matters, and a failed delete stays
+   * tombstoned on screen while the row is still live in the sheet.
+   */
+  const entriesRef = useRef(entries)
+  entriesRef.current = entries
 
   /**
    * Serialising the whole ledger is the expensive half of the cache, and
@@ -90,6 +105,10 @@ export function useLedger(spreadsheetId) {
       // at `config.currency`, so entries seeded against a stale currency render
       // at the wrong scale. Same ordering rule as `loadAll`.
       setConfig(mergeConfig(data.sheetConfig))
+      setSheetExtras({
+        supersededRows: data.supersededRows ?? 0,
+        undecodedRows: data.undecodedRows ?? 0,
+      })
       setError(null)
       setStatus('ready')
       everLoaded.current = true
@@ -105,7 +124,7 @@ export function useLedger(spreadsheetId) {
       setStatus(statusOnLoadStart)
 
       const fail = (cause) => {
-        setError(cause.message || t('error.readSheet'))
+        setError(errorMessage(cause, 'error.readSheet'))
         setStatus(statusOnLoadFailure(everLoaded.current))
       }
 
@@ -140,6 +159,7 @@ export function useLedger(spreadsheetId) {
       setEntries([])
       setConfig(mergeConfig())
       setSheetIds({})
+      setSheetExtras({ supersededRows: 0, undecodedRows: 0 })
       setStatus('idle')
       setError(null)
       return
@@ -180,17 +200,9 @@ export function useLedger(spreadsheetId) {
     }
   }, [spreadsheetId, refresh])
 
-  /** Both write paths validate the same way: codes, never English sentences. */
-  const validated = (input) => {
-    const entry = makeEntry(input)
-    const problems = validateEntryCodes(entry)
-    if (problems.length) throw i18nError(`error.${problems[0]}`)
-    return entry
-  }
-
   const addEntry = useCallback(
     async (input) => {
-      const entry = validated(input)
+      const entry = entryFromInput(input)
 
       setEntries((current) => withPending(current, entry))
       try {
@@ -207,27 +219,24 @@ export function useLedger(spreadsheetId) {
 
   const editEntry = useCallback(
     async (input) => {
-      const entry = validated(input)
-
-      let previous
-      setEntries((current) => {
-        previous = entryById(current, entry.id)
-        return withPendingEdit(current, entry)
-      })
+      const entry = entryFromInput(input)
 
       /**
        * Refuse rather than guess which tab the row is in.
        *
        * `previous.payer` is the row's CURRENT tab, which is what `updateEntry`
-       * needs before it can move the row. If the entry is not in local state —
-       * the other person deleted it and a focus refresh dropped it while this
-       * form was open — then passing `undefined` made `previousPayer !==
-       * entry.payer` true, so the write took the payer-changed branch: it
-       * appended a second row and then looked for the original in whichever tab
-       * `expensesTab` defaulted to. A duplicate expense, silently.
+       * needs before it can move the row. Passing `undefined` makes
+       * `previousPayer !== entry.payer` true, so the write takes the payer-changed
+       * branch: it appends a second row and then looks for the original in
+       * whichever tab it guessed. A duplicate expense, silently.
+       *
+       * The entry can genuinely be gone — the other person deleted it and a focus
+       * refresh dropped it while this form was open.
        */
+      const previous = entryById(entriesRef.current, entry.id)
       if (!previous) throw i18nError('error.entryGone')
 
+      setEntries((current) => withPendingEdit(current, entry))
       try {
         await sheets.updateEntry(spreadsheetId, entry, previous.payer)
         setEntries((current) => settled(current, entry.id))
@@ -242,11 +251,8 @@ export function useLedger(spreadsheetId) {
 
   const setDeleted = useCallback(
     async (id, payer, deletedAt) => {
-      let previous
-      setEntries((current) => {
-        previous = entryById(current, id)
-        return withPendingDeletedAt(current, id, deletedAt)
-      })
+      const previous = entryById(entriesRef.current, id)
+      setEntries((current) => withPendingDeletedAt(current, id, deletedAt))
       try {
         await sheets.setDeletedAt(spreadsheetId, payer, id, deletedAt)
         setEntries((current) => settled(current, id))
@@ -266,7 +272,7 @@ export function useLedger(spreadsheetId) {
 
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
   const compact = useCallback(async () => {
-    if (!hasTombstones(entries)) return { removed: 0 }
+    if (!hasTombstones(entries) && !sheetExtras.supersededRows) return { removed: 0 }
 
     let gids = sheetIds
     if (missingExpenseGid(gids)) {
@@ -281,14 +287,20 @@ export function useLedger(spreadsheetId) {
     const result = await sheets.compact(spreadsheetId, gids)
     await refresh()
     return result
-  }, [entries, sheetIds, spreadsheetId, refresh])
+  }, [entries, sheetExtras.supersededRows, sheetIds, spreadsheetId, refresh])
 
   return {
     entries,
     config,
     status,
     error,
-    tombstoneCount: tombstoneCount(entries),
+    /**
+     * What `compact` would remove, which is every tombstone in the sheet — so the
+     * ones `reconcileById` hid behind a live row count too, or the button offers
+     * nothing to remove while the sheet still holds removable rows.
+     */
+    tombstoneCount: tombstoneCount(entries) + sheetExtras.supersededRows,
+    undecodedRows: sheetExtras.undecodedRows,
     refresh,
     addEntry,
     editEntry,

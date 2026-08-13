@@ -14,8 +14,8 @@
  * instead of JSON, and the client classifies a non-JSON reply as a transient
  * failure and retries. A throw on the reject path therefore becomes a silent
  * retry loop, so this function must be structurally incapable of throwing.
- * A body of `null` used to do exactly that: it parses fine, so the try/catch
- * did not fire, and `body.key` then dereferenced null.
+ * Note that a body of `null` parses fine, so the try/catch below does not fire
+ * and `body.key` would dereference null — hence the explicit check.
  *
  * The reply vocabulary is exactly `{token, spreadsheetId}` and
  * `{error:'unauthorized'}` — never an exception message, never an echo of the
@@ -25,12 +25,12 @@
  * into Google's request logs; requiring it in the body is what keeps it out.
  */
 
-/** The legitimate body is ~100 bytes. Anything larger is not worth parsing. */
-var MAX_BODY_BYTES = 1024
+/** The legitimate body is a 64-character key. Anything larger is not worth parsing. */
+var MAX_BODY_CHARS = 1024
 
 function doPost(e) {
   if (!e || !e.postData || !e.postData.contents) return unauthorized()
-  if (e.postData.contents.length > MAX_BODY_BYTES) return unauthorized()
+  if (e.postData.contents.length > MAX_BODY_CHARS) return unauthorized()
 
   var body = null
   try {

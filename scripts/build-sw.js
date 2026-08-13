@@ -1,7 +1,11 @@
 /**
  * Emits `dist/sw.js` after a Vite build.
  *
- * Two things here look like implementation detail and are not:
+ * Three things here look like implementation detail and are not:
+ *
+ * The base path comes from `base.js`, which `vite.config.js` reads too. A worker
+ * built against a different prefix from the bundle precaches URLs that 404, so
+ * `install` rejects and no worker ever activates.
  *
  * The precache list comes from walking `dist/`, NOT from `.vite/manifest.json`.
  * That manifest is not even emitted without `build.manifest`, and when it is, its
@@ -20,8 +24,7 @@ import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-
-const DEFAULT_BASE = '/verbose-octo-pancake/'
+import { resolveBase } from '../base.js'
 
 function walk(dir, found = []) {
   for (const name of readdirSync(dir)) {
@@ -134,7 +137,7 @@ export function buildFromDist(distDir, base) {
 
 // Only when run as a script, so the test can import the builder without writing.
 if (process.argv[1] && process.argv[1] === fileURLToPath(import.meta.url)) {
-  const base = process.env.VITE_BASE ?? DEFAULT_BASE
+  const base = resolveBase()
   const { paths, source } = buildFromDist('dist', base)
   writeFileSync(join('dist', 'sw.js'), source)
   console.log(`sw.js: ${paths.length} files precached under ${base}`)

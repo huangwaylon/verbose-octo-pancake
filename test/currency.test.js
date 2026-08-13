@@ -5,6 +5,7 @@ import {
   formatCents,
   formatCentsParts,
   minorDigits,
+  normalizeCurrency,
   parseAmountToCents,
   splitCents,
 } from '../src/lib/money.js'
@@ -51,6 +52,31 @@ describe('minorDigits', () => {
     expect(minorDigits(null)).toBe(2)
     expect(minorDigits(undefined)).toBe(2)
     expect(minorDigits(42)).toBe(2)
+  })
+})
+
+describe('normalizeCurrency', () => {
+  it('folds case and padding to one spelling', () => {
+    expect(normalizeCurrency(' jpy ')).toBe('JPY')
+    expect(normalizeCurrency('Usd')).toBe('USD')
+    expect(normalizeCurrency('KWD')).toBe('KWD')
+  })
+
+  it('rejects anything that is not a three-letter code', () => {
+    // Because two codes are compared with `!==` downstream. An unnormalised code
+    // is not a rendering problem, it is a mixed-currency warning that never clears
+    // over totals that are homogeneous.
+    for (const value of ['JP', 'YENS', '¥', '1PY', 'JP¥', '', ' ', null, undefined, 42, {}]) {
+      expect(normalizeCurrency(value)).toBe('')
+    }
+  })
+
+  it('agrees with minorDigits on every scale', () => {
+    // minorDigits normalises internally; if the two ever disagreed, a row could be
+    // written at one scale and read back at another.
+    for (const code of [' jpy ', 'Kwd', 'usd', 'NOTACODE']) {
+      expect(minorDigits(code)).toBe(minorDigits(normalizeCurrency(code) || code))
+    }
   })
 })
 
@@ -194,6 +220,20 @@ describe('schema rows carry their own currency', () => {
     const usd = rowToEntry(row('1250', ''), 'p1', 'USD')
     expect(usd.amountCents).toBe(125000)
     expect(usd.currency).toBe('USD')
+  })
+
+  it('normalises a row’s currency cell, so one lowercase cell is not a second currency', () => {
+    const entry = rowToEntry(row('1250', ' jpy '), 'p1', 'JPY')
+    expect(entry.currency).toBe('JPY')
+    expect(entry.amountCents).toBe(1250)
+  })
+
+  it('falls back to the sheet currency for a cell that is not a code at all', () => {
+    // 'JP' would otherwise be carried onto the entry, read as 2 minor digits, and
+    // then flagged as a different currency from the sheet's forever.
+    const entry = rowToEntry(row('1250', 'JP'), 'p1', 'JPY')
+    expect(entry.currency).toBe('JPY')
+    expect(entry.amountCents).toBe(1250)
   })
 
   it("lets a row's own currency beat the sheet's, so a mixed sheet stays correct", () => {

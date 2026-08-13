@@ -33,14 +33,14 @@
 
   /* ---- Accent ----------------------------------------------------------
      One hue, swappable: `[data-accent]` at the bottom of this file redefines
-     the five properties below and nothing else, so a preset cannot reach into
-     the neutrals or the chart series. Every accent in the set keeps white text
-     at or above 7.5:1 and sits at or above 6.8:1 against --bg, so buttons,
-     focus rings and the FAB stay compliant whichever one is chosen.
+     three properties and nothing else, so a preset cannot reach into the
+     neutrals or the chart series. Every accent in the set keeps white text at or
+     above 7.5:1 and sits at or above 6.8:1 against --bg, so buttons, focus rings
+     and the FAB stay compliant whichever one is chosen.
 
-     --accent-shadow and --accent-ring are derived with color-mix rather than
-     restating the accent's channels as literals, which is what made adding a
-     preset a five-value change instead of a one-value one. */
+     --accent-text is fixed for every preset, and --accent-shadow and
+     --accent-ring are derived with color-mix rather than restating the accent's
+     channels — which is what keeps adding a preset a three-value change. */
   --accent: #3d4e8b;
   --accent-hover: #313f73;
   --accent-text: #ffffff;
@@ -151,15 +151,21 @@
     0 8px 24px -6px var(--accent-shadow);
 
   /* ---- Metrics ---------------------------------------------------------
-     --shell-max = --aside-w + gap + --main-max. The main column cap is the
-     number that matters: past ~48rem an expense row's description and amount
-     drift apart into a thin strip with a canyon between them. */
+     --main-max is the number that matters: past ~48rem an expense row's
+     description and amount drift apart into a thin strip with a canyon between
+     them. --shell-max has to leave room for it —
+
+       --shell-max = --aside-w + gap + --main-max + 2x padding-inline
+                   =   22rem   + 2rem +   46rem   +    2x 2rem       = 74rem
+
+     — because .layout is border-box, so a shell any narrower makes the 1fr main
+     track resolve below --main-max and the cap never binds at any width. */
   --tap-target: 44px;
   /* Secondary controls: chips, the segmented thumb, the row's delete button.
      Still clears WCAG 2.5.8's 24px floor with room to spare. */
   --tap-target-sm: 36px;
   --header-height: 56px;
-  --shell-max: 72rem;
+  --shell-max: 74rem;
   --column-max: 36rem;
   --main-max: 46rem;
   --sheet-max: 30rem;
@@ -175,7 +181,8 @@
      without needing !important anywhere.
 
      Only background-color, border-color, color, opacity and transform are ever
-     transitioned. Never box-shadow, width, height, or `all`. */
+     transitioned. The single carve-out is box-shadow on the text control's focus
+     ring, which `test/styles.test.js` pins; never width, height, or `all`. */
   --transition-fast: 120ms ease;
   --transition-base: 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 

@@ -120,8 +120,9 @@ describe('resolving a row before writing to it', () => {
     await sheets.setDeletedAt(SHEET, PERSON.P2, 'e1', '2026-08-06T00:00:00.000Z')
 
     const [, write] = calls
-    const letter = String.fromCharCode(65 + columnIndex('deleted_at'))
-    expect(write.url).toContain(`expenses_p2!${letter}2:${letter}2`)
+    // The literal, not `columnLetter('deleted_at')` — deriving it from the module
+    // under test would only assert the module against a copy of its own arithmetic.
+    expect(write.url).toContain('expenses_p2!K2:K2')
     expect(write.body.values).toEqual([['2026-08-06T00:00:00.000Z']])
   })
 
@@ -178,8 +179,8 @@ describe('changing who paid moves the row between tabs', () => {
   })
 
   it('refuses a previousPayer that is not one of the two people', async () => {
-    // `undefined` here used to mean "append a duplicate, then look for the
-    // original in whichever tab expensesTab defaulted to".
+    // Without the guard, `undefined` means "append a duplicate, then look for the
+    // original in whichever tab expensesTab guessed".
     const calls = installSheets(() => ({}))
     await expect(sheets.updateEntry(SHEET, entry(), undefined)).rejects.toThrow(TypeError)
     expect(writes(calls)).toHaveLength(0)
@@ -263,6 +264,111 @@ describe('loadAll', () => {
     installSheets(() => ({ __status: 500 }))
     await expect(sheets.loadAll(SHEET)).rejects.toThrow(/HTTP 500/)
   })
+
+  it('carries a translation key on a failed request, so no English reaches the screen', async () => {
+    installSheets(() => ({ __status: 403 }))
+
+    const cause = await sheets.loadAll(SHEET).catch((error) => error)
+
+    // The API's own text stays on `.message` for the console; the UI shows the key.
+    expect(cause.message).toContain('HTTP 403')
+    expect(cause.i18nKey).toBe('error.sheetRequest')
+    expect(cause.status).toBe(403)
+  })
+
+  it('keeps the live row when a payer change left a tombstone under the same id', async () => {
+    // Exactly what `updateEntry`'s move branch leaves behind: p1's row tombstoned,
+    // p2's row live, one id. Unreconciled, the tombstone is the copy every id
+    // lookup finds first, because p1's tab is read first.
+    installSheets(() => ({
+      valueRanges: [
+        values([
+          row({ id: 'moved', date: '2026-08-05', amount: '1000', deleted_at: '2026-08-06T00:00Z' }),
+        ]),
+        values([row({ id: 'moved', date: '2026-08-05', amount: '1000' })]),
+        values([['currency', 'JPY']]),
+      ],
+    }))
+
+    const { entries, supersededRows } = await sheets.loadAll(SHEET)
+
+    expect(entries).toHaveLength(1)
+    expect(entries[0].payer).toBe(PERSON.P2)
+    expect(entries[0].deletedAt).toBeNull()
+    // Still a real row in the sheet, and still something `compact` will remove, so
+    // the settings count has to add it back or the button offers nothing to do.
+    expect(supersededRows).toBe(1)
+  })
+
+  it('reports rows whose amount cannot be read, rather than dropping them silently', async () => {
+    // A hand-typed amount that no rule can parse leaves the ledger short by that
+    // expense, with nothing on screen saying the balance is incomplete.
+    installSheets(() => ({
+      valueRanges: [
+        values([
+          row({ id: 'ok', date: '2026-08-05', amount: '1000' }),
+          row({ id: 'bad', date: '2026-08-05', amount: '12,34.5' }),
+          row({ id: 'also-bad', date: '2026-08-05', amount: 'about ten' }),
+          // A row with no id is a blank one. Expected, and says nothing.
+          row({ amount: '999' }),
+        ]),
+        {},
+        values([['currency', 'JPY']]),
+      ],
+    }))
+
+    const { entries, undecodedRows } = await sheets.loadAll(SHEET)
+
+    expect(entries.map((item) => item.id)).toEqual(['ok'])
+    expect(undecodedRows).toBe(2)
+  })
+
+  it('counts only tombstones as superseded, never a hidden live duplicate', async () => {
+    // Two LIVE rows with one id is what an interrupted payer move leaves behind:
+    // `updateEntry` appends before it tombstones, on purpose. `reconcileById` hides
+    // one, but `compact` removes tombstones only — so counting it would offer a
+    // removal that can never happen and a count that never clears.
+    installSheets(() => ({
+      valueRanges: [
+        values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
+        values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
+        values([['currency', 'JPY']]),
+      ],
+    }))
+
+    const { entries, supersededRows } = await sheets.loadAll(SHEET)
+
+    expect(entries).toHaveLength(1)
+    expect(supersededRows).toBe(0)
+  })
+
+  it('does not report a tombstoned row as missing from the totals', async () => {
+    // It is correctly out of them already, so the notice would say the balance is
+    // short when it is not — and the row is not in `entries` to be cleared either.
+    installSheets(() => ({
+      valueRanges: [
+        values([
+          row({ id: 'bad', date: '2026-08-05', amount: 'nonsense', deleted_at: '2026-08-06' }),
+        ]),
+        {},
+        values([['currency', 'JPY']]),
+      ],
+    }))
+
+    expect(await sheets.loadAll(SHEET)).toMatchObject({ undecodedRows: 0 })
+  })
+
+  it('reports no counts for an ordinary sheet', async () => {
+    installSheets(() => ({
+      valueRanges: [
+        values([row({ id: 'a', date: '2026-08-05', amount: '100' })]),
+        values([row({ id: 'b', date: '2026-08-05', amount: '200' })]),
+        values([['currency', 'JPY']]),
+      ],
+    }))
+
+    expect(await sheets.loadAll(SHEET)).toMatchObject({ supersededRows: 0, undecodedRows: 0 })
+  })
 })
 
 describe('compact', () => {
@@ -318,7 +424,9 @@ describe('compact', () => {
     const batch = globalThis.fetch.mock.calls.find(([url]) => String(url).includes(':batchUpdate'))
     for (const { deleteDimension } of JSON.parse(batch[1].body).requests) {
       expect(deleteDimension.range.endIndex - deleteDimension.range.startIndex).toBe(1)
-      expect(deleteDimension.dimension ?? deleteDimension.range.dimension).toBe('ROWS')
+      // The nested shape specifically. `dimension` at the top level is not what
+      // the API reads, so accepting either would pass on a request it rejects.
+      expect(deleteDimension.range.dimension).toBe('ROWS')
     }
   })
 
@@ -358,6 +466,11 @@ describe('ensureStructure', () => {
       call.url.includes('fields=sheets') ? sheetList(['Budget 2024', 'Notes', 'Pivot']) : {},
     )
 
+    // Translated, and it must stay so: this is the one failure whose message a
+    // person has to act on, and the UI shows `i18nKey` rather than `.message`.
+    await expect(sheets.ensureStructure(SHEET)).rejects.toMatchObject({
+      i18nKey: 'error.notOurSheet',
+    })
     await expect(sheets.ensureStructure(SHEET)).rejects.toThrow(/SHEET_ID/)
     expect(writes(calls)).toHaveLength(0)
   })

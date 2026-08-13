@@ -7,6 +7,7 @@ import {
   spendByPerson,
   filterByMonth,
   monthKeysPresent,
+  initialMonthKey,
   groupByDate,
   deletedEntries,
   hasMixedCurrencies,
@@ -233,10 +234,9 @@ describe('soft deletes are excluded from every aggregate', () => {
     expect(spendByPerson(entries)).toEqual({ p1: 5000, p2: 0 })
   })
 
-  it('filterByMonth and monthKeysPresent', () => {
+  it('filterByMonth', () => {
     expect(filterByMonth(entries, '2020-01')).toEqual([])
     expect(filterByMonth(entries, '2026-03')).toEqual([live])
-    expect(monthKeysPresent(entries)).toEqual(['2026-03'])
   })
 
   it('groupByDate', () => {
@@ -364,10 +364,6 @@ describe('totalSpend', () => {
     expect(totalSpend(entries)).toBe(6000)
     expect(totalSpend([])).toBe(0)
     expect(totalSpend(null)).toBe(0)
-  })
-
-  it('returns an integer, never a float', () => {
-    expect(Number.isInteger(totalSpend(entries))).toBe(true)
   })
 })
 
@@ -675,5 +671,33 @@ describe('end-to-end: a month of shared life', () => {
     })
     expect(computeBalance([...march, payoff]).netCents).toBe(0)
     expect(computeBalance([...entries, payoff]).netCents).not.toBe(0)
+  })
+})
+
+/**
+ * Which month the app opens on. A sheet whose last entry was months ago should not
+ * open on an empty screen, but somebody who has been using the app this month must
+ * not have it moved out from under them either.
+ */
+describe('initialMonthKey', () => {
+  const march = expense('m', 1000, { date: '2026-03-10' })
+  const january = expense('j', 1000, { date: '2026-01-10' })
+
+  it('stays put when the current month has data of its own', () => {
+    expect(initialMonthKey([march, january], '2026-03')).toBeNull()
+  })
+
+  it('jumps to the newest month with data when the current one has none', () => {
+    expect(initialMonthKey([january, march], '2026-08')).toBe('2026-03')
+  })
+
+  it('stays put when there is no data at all, rather than jumping to nothing', () => {
+    expect(initialMonthKey([], '2026-08')).toBeNull()
+    // A dated-but-deleted row is not data: monthKeysPresent filters it out.
+    expect(initialMonthKey([expense('d', 1000, { deletedAt: 'x' })], '2026-08')).toBeNull()
+  })
+
+  it('ignores rows with no usable date', () => {
+    expect(initialMonthKey([expense('n', 1000, { date: '' })], '2026-08')).toBeNull()
   })
 })

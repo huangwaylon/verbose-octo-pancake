@@ -1,7 +1,7 @@
 # Shared Finances
 
 A static React app for two people to track shared expenses, with a single Google Sheet as
-the database. There is no sign-in: a ~25-line Apps Script web app, owned by a dedicated
+the database. There is no sign-in: a small Apps Script web app, owned by a dedicated
 account that owns the sheet, mints short-lived Google tokens for whoever presents a shared
 app key, and the browser then talks straight to the Sheets API. Google Cloud setup is in
 [SETUP.md](SETUP.md); the invariants that fail silently if broken are in
@@ -13,7 +13,9 @@ One spreadsheet, three tabs — `expenses_p1`, `expenses_p2`, `config` — laid 
 exactly one place, `src/schema.js`. Each person has their own expenses tab, so which tab
 a row lives in *is* the payer and no `payer` column can disagree with it. Row 1 is the
 header, data starts at row 2, and editing an entry to change who paid appends it to the
-other person's tab and tombstones the original row.
+other person's tab and tombstones the original row — in that order, so a failure between
+the two leaves the entry visible rather than gone. Both rows then carry the same id until
+a compact runs, and the client keeps the live one.
 
 | Col | Field | Example | Notes |
 | --- | --- | --- | --- |
@@ -21,10 +23,10 @@ other person's tab and tombstones the original row.
 | B | `type` | `expense` | `expense` or `settlement` |
 | C | `date` | `2026-08-05` | ISO `YYYY-MM-DD`, checked for calendar validity — `2026-02-31` reads as unset |
 | D | `amount` | `1250` | Decimal string at *this row's* currency scale: `1250` is ¥1250, `42.50` is $42.50 |
-| E | `currency` | `JPY` | Decoded before the amount, or the same string means two different sums. Blank means the sheet's configured currency |
+| E | `currency` | `JPY` | Decoded before the amount, or the same string means two different sums. Upper-cased on read; blank, or anything that is not a three-letter code, means the sheet's configured currency |
 | F | `category` | `Groceries` | Required for an `expense` |
 | G | `description` | `weekly shop` | Free text, stored literally |
-| H | `payer_share` | `0.5` | Fraction of the entry the payer covers themselves, clamped to `0`–`1`; `1` means nobody owes them |
+| H | `payer_share` | `0.5` | Share of the entry the payer covers themselves; `1` means nobody owes them. Read like the `default_split` keys, so anything above 1 is a percentage |
 | I | `created_at` | `2026-08-05T18:02:11.004Z` | ISO timestamp |
 | J | `updated_at` | `2026-08-05T18:02:11.004Z` | ISO timestamp |
 | K | `deleted_at` | *(empty)* | A timestamp here soft-deletes the row |
@@ -38,7 +40,9 @@ already carrying the type still read, display and edit correctly. Amounts are in
 minor units (whole yen for JPY, cents for USD, fils for KWD) and every conversion takes
 the currency explicitly, with no default, because `1250` at the wrong scale is a silent
 100x error. Every write is `valueInputOption: RAW`, so a note of `=SUM(A:A)` stays
-literal text and dates are never reformatted.
+literal text and dates are never reformatted. A row whose amount cannot be parsed at all
+is left out of every total and reported on screen as a count, because a ledger quietly
+short one expense is worse than an ugly notice.
 
 Both people are full Editors of one sheet, and edits are **last-write-wins**: an
 entry saved from two devices at once keeps whichever write landed second, with no
@@ -78,12 +82,13 @@ to the account that owns the sheet rather than to either person.
 
 ## Security model
 
-Replacing browser OAuth with a shared app key made the session never expire, which was
-the whole point. It also made the credential on each device *permanent* rather than
-hour-limited, widened the token's reach from one picked file to every spreadsheet the
-dedicated account can see, and removed remote revocation. In exchange it deleted every
-third-party script from the page. Roughly neutral, and acceptable only under the four
-conditions below.
+A shared app key instead of browser OAuth is what makes the session never expire, which is
+the whole point. The trade is real: the credential on each device is *permanent* rather
+than hour-limited, the token reaches every spreadsheet the dedicated account can see rather
+than one picked file, there is no remote revocation, and in return no third-party script
+loads on the page at all. Roughly neutral, and acceptable only because of what follows —
+three standing conditions, one accepted risk, and the properties of the build that make
+them survivable.
 
 **The dedicated account must own exactly one spreadsheet, forever.** The minted token
 carries `spreadsheets`, so confinement is not enforced by the scope — it is enforced by
@@ -109,7 +114,7 @@ hour, which cannot be helped without moving the reads and writes into the script
 nothing untrusted — in particular nothing loading third-party scripts — may be published
 from that GitHub Pages account.
 
-**The CSP is now strict enough that no third-party JavaScript runs at all.**
+**The CSP is strict enough that no third-party JavaScript runs at all.**
 `script-src 'self'`, `frame-src 'none'`, and `connect-src` naming only `'self'`, the
 Sheets API and the two Apps Script hosts. `script.googleusercontent.com` looks redundant next to
 `script.google.com` and is not: `/exec` answers with a 302 to it. One caveat worth knowing
@@ -130,16 +135,17 @@ account's Drive quota, which a few thousand rows of text does not trouble.
 
 ## Deploy
 
-Pushing to `main` runs `.github/workflows/deploy.yml`: `npm ci`, `npm test`, build,
-upload a Pages artifact, deploy. Two repo settings have to be right for any of it to land —
-the Pages source and the `VITE_SCRIPT_URL` variable — both in **SETUP.md** step 7, with the
-symptoms each wrong setting produces.
+Pushing to `main` runs `.github/workflows/deploy.yml`: `npm ci`, `npm run format:check`,
+`npm test`, build, upload a Pages artifact, deploy. Two repo settings have to be right for
+any of it to land — the Pages source and the `VITE_SCRIPT_URL` variable — both in
+**SETUP.md** step 7, with the symptoms each wrong setting produces.
 
-`vite.config.js` sets `base` to `/verbose-octo-pancake/`, because a project Pages site
-serves from `/<repo>/`. Rename the repo without updating it and the page is blank with
-console 404s for `/assets/index-*.js` missing that prefix. Build with `VITE_BASE=/` for a
-user site or a custom domain — `scripts/build-sw.js` reads the same variable, so the
-service worker's scope follows.
+`base.js` sets the base path to `/verbose-octo-pancake/`, because a project Pages site
+serves from `/<repo>/`. Both `vite.config.js` and `scripts/build-sw.js` read it from there,
+so the bundle's asset URLs and the service worker's precache list cannot disagree. Rename
+the repo without updating that one line and the page is blank with console 404s for
+`/assets/index-*.js` missing the prefix. Build with `VITE_BASE=/` for a user site or a
+custom domain.
 
 The app installs to an iOS Home Screen (**Share > Add to Home Screen**):
 `public/manifest.webmanifest` declares `display: standalone` and the PNG icons, and
@@ -196,7 +202,7 @@ says how to view them.
 | Path | |
 | --- | --- |
 | `index.html` | entry HTML, the CSP, the manifest and Home Screen tags |
-| `vite.config.js` | Pages base path, React plugin, vitest config |
+| `base.js`, `vite.config.js` | the Pages base path, in one place; React plugin and vitest config |
 | `apps-script/` | the token endpoint: `Code.gs` and its manifest, deployed by hand |
 | `public/` | `manifest.webmanifest` and the PNG app icons, copied verbatim into `dist/` |
 | `src/schema.js` | the sheet contract: columns, ranges, row ↔ entry mapping |
@@ -207,8 +213,10 @@ says how to view them.
 | `src/lib/connection.js` | the app key, the minted token, and the failure taxonomy |
 | `src/lib/snapshot.js` | the launch cache: last successful read, kept on the device |
 | `src/lib/serviceWorker.js` | registration, and when it is safe to activate an update |
-| `src/lib/{identity,dates,theme}.js` | which person this device is, and their default split; ISO date helpers; accent presets |
-| `src/state/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useToasts` |
+| `src/lib/ledgerState.js` | the optimistic list transitions, the status decisions, and duplicate-id reconciliation; pure |
+| `src/lib/split.js` | the payer's default share and the split control's transitions; pure |
+| `src/lib/{identity,dates,theme}.js` | which person this device is; ISO date helpers; accent presets |
+| `src/state/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts` |
 | `src/i18n/`, `src/components/`, `src/styles/` | engine and `en`/`ja` catalogs; one file per view with inline-SVG icons and chart; `tokens`/`base`/`primitives`/`app` in that order |
 | `test/`, `scripts/preview.jsx` | vitest specs; the static-HTML visual harness |
 | `scripts/build-sw.js` | walks `dist/` and emits the service worker; importable, so its two silent failure modes are tested |
