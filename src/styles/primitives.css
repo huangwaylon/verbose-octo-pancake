@@ -255,6 +255,24 @@
   padding-right: var(--space-2);
 }
 
+/* A date input carries an intrinsic min-width from the UA shadow DOM, and iOS does
+   not let it shrink below that — so on a 320px sheet the control runs off the right
+   edge no matter what `width` says. `min-width: 0` is what makes `width: 100%` bind;
+   dropping the platform appearance stops iOS sizing it from the locale's date format
+   as well. The native picker is unaffected: on iOS the whole field opens it. */
+.input[type="date"] {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 0;
+}
+
+/* iOS centres the value inside the field and gives it no height of its own. */
+.input[type="date"]::-webkit-date-and-time-value {
+  margin: 0;
+  min-height: 1.5em;
+  text-align: left;
+}
+
 /* =========================================================================
    Segmented control
    ========================================================================= */
@@ -418,6 +436,11 @@
   display: flex;
   flex-direction: column;
   width: 100%;
+  /* `.sheet` is a ROW flex container, so this panel's automatic minimum size is its
+     min-content width — and `width: 100%` cannot override that. One child with a
+     large intrinsic minimum (a date input on iOS) would push the whole panel wider
+     than the screen, carrying every field in it off the right edge. */
+  min-width: 0;
   /* Shrinks by the keyboard inset too, or the panel grows past the top of the
      screen instead of the body scrolling. */
   max-height: min(calc(88dvh - var(--keyboard-inset, 0px)), 44rem);

@@ -125,10 +125,11 @@
   --fs-lg: 1.125rem; /* 18 */
   --fs-xl: 1.5rem; /* 24 */
   /* The hero balance, container-relative so the same component fits a 288px
-     phone and a 352px aside. The only step above --fs-xl, and only just: the
-     figure shares a line with the sentence naming who owes whom, so it needs to
-     beat the month total below it and nothing more. */
-  --fs-display: clamp(1.75rem, 9cqi, 2rem);
+     phone and a 352px aside. Its floor stays above --fs-xl on purpose: the month
+     total below it is set at --fs-xl, and a hero the same size as the figure it
+     outranks is no hero at all. Kept only just above, because the balance block
+     sits between the header and the ledger, where height is taken from the list. */
+  --fs-display: clamp(1.625rem, 8cqi, 1.875rem);
 
   /* Nothing below 1.5 can hold Japanese: CJK glyphs fill the em box, and a
      tighter line turns a wrapped sentence into a solid block. --lh-flat is the

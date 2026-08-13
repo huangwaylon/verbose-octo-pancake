@@ -37,11 +37,19 @@ export function ChevronRightIcon(props) {
   )
 }
 
+/**
+ * An eight-tooth cog, and the one icon here whose path is not hand-drawn.
+ *
+ * Every coordinate comes from `12 + r·cos θ` at 45° steps, so the teeth are evenly
+ * spaced and the shape is symmetric by construction — a hand-transcribed gear path
+ * lands one tooth slightly off, which at 20px reads as an unfinished glyph. Do not
+ * "tidy" the numbers: the symmetry is in the arithmetic that produced them.
+ */
 export function SettingsIcon(props) {
   return (
     <svg {...base} {...props}>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.7 1.7 0 00.3 1.9l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-2.9 1.2v.2a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.6 1.7 1.7 0 00-1.9.4l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00-1.2-2.9H3a2 2 0 110-4h.2A1.7 1.7 0 004.6 8a1.7 1.7 0 00-.4-1.9l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 002.9-1.2V2a2 2 0 114 0v.2a1.7 1.7 0 002.9 1.1 1.7 1.7 0 001.9-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 001.2 2.9h.2a2 2 0 110 4h-.2a1.7 1.7 0 00-1.6 1.1z" />
+      <circle cx="12" cy="12" r="2.9" />
+      <path d="M10.54 5.67L9.93 3.04A9.2 9.2 0 0 1 14.07 3.04L13.46 5.67A6.5 6.5 0 0 1 15.44 6.49L16.88 4.2A9.2 9.2 0 0 1 19.8 7.12L17.51 8.56A6.5 6.5 0 0 1 18.33 10.54L20.96 9.93A9.2 9.2 0 0 1 20.96 14.07L18.33 13.46A6.5 6.5 0 0 1 17.51 15.44L19.8 16.88A9.2 9.2 0 0 1 16.88 19.8L15.44 17.51A6.5 6.5 0 0 1 13.46 18.33L14.07 20.96A9.2 9.2 0 0 1 9.93 20.96L10.54 18.33A6.5 6.5 0 0 1 8.56 17.51L7.12 19.8A9.2 9.2 0 0 1 4.2 16.88L6.49 15.44A6.5 6.5 0 0 1 5.67 13.46L3.04 14.07A9.2 9.2 0 0 1 3.04 9.93L5.67 10.54A6.5 6.5 0 0 1 6.49 8.56L4.2 7.12A9.2 9.2 0 0 1 7.12 4.2L8.56 6.49A6.5 6.5 0 0 1 10.54 5.67Z" />
     </svg>
   )
 }

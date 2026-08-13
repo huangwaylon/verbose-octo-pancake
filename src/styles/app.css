@@ -139,7 +139,9 @@
   container-type: inline-size;
   display: flex;
   flex-direction: column;
-  padding-block: var(--space-2) var(--space-4);
+  /* Kept tight: this block states one fact and sits between the header and the
+     ledger, so height here is height taken from the list. */
+  padding-block: var(--space-1) var(--space-3);
 }
 
 /* The rule closing the hero off from what follows. Suppressed when nothing
@@ -158,13 +160,12 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-1) var(--space-4);
-  margin-top: var(--space-1);
 }
 
 .balance__direction {
   margin: 0;
   color: var(--ink-2);
-  font-size: var(--fs-body);
+  font-size: var(--fs-label);
   font-weight: 500;
   line-height: var(--lh-tight);
 }
@@ -211,9 +212,9 @@
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin: var(--space-1) 0 0;
+  margin: 0;
   color: var(--ink);
-  font-size: var(--fs-lg);
+  font-size: var(--fs-body);
   font-weight: 600;
   line-height: var(--lh-tight);
 }

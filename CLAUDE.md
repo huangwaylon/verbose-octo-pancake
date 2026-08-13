@@ -313,6 +313,10 @@ existing sheet working".
 - **No new npm dependencies** without a clear reason. The bundle is React plus
   application code; icons are inline SVG in `src/components/icons.jsx`. A new
   dependency also means a CSP decision.
+- **`SettingsIcon`'s path is generated, not drawn.** Every coordinate is `12 + r·cos θ`
+  at 45° steps, so the cog's teeth are even by construction; a hand-transcribed gear
+  lands one tooth off and reads as an unfinished glyph at 20px. Do not tidy those
+  numbers — regenerate them.
 - **If you add a Google host, update the CSP** in `index.html`. It is a deliberate
   allowlist, not boilerplate.
 - **Never put a real secret in a `VITE_` variable.** Vite inlines them into the
@@ -406,6 +410,13 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
   or they wait 300ms for a double-tap that would only zoom. `.entry__main` carries the
   touch rules on `button.entry__main` alone: the deleted list renders the same class as
   inert text, where a press state promises a tap that does nothing.
+- **No control may set the width of the sheet it sits in.** `.sheet` is a row flex
+  container, so `.sheet__panel`'s automatic minimum size is its min-content width and
+  `width: 100%` cannot override it — one child with a large intrinsic minimum carries
+  every field in the sheet off the right of the screen. `min-width: 0` on the panel is
+  the guard. The child that does this is `input[type="date"]`: iOS sizes it from the
+  locale's date format via the UA shadow DOM, so it also needs its own `min-width: 0`
+  and `appearance: none`.
 - **Nothing may scroll sideways at 320px.** `.sheet__body` sets `overflow-x: hidden`
   explicitly, because with `overflow-y` set the spec computes a `visible` overflow-x to
   `auto` — one over-wide child would make the panel a horizontal scroller. Anything

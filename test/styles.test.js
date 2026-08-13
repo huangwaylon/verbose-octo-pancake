@@ -178,6 +178,17 @@ describe('the rules an installed iOS web app depends on', () => {
     expect(declares(FILES.app, '.entry__main', 'user-select')).toBe(false)
   })
 
+  it('never lets a control set the width of the sheet it sits in', () => {
+    // `.sheet` is a row flex container, so the panel's automatic minimum size is its
+    // min-content width; a date input's intrinsic minimum on iOS is enough to push
+    // the whole panel — and every field in it — off the right of the screen.
+    expect(declares(FILES.primitives, '.sheet__panel', 'min-width')).toBe(true)
+    expect(declares(FILES.primitives, '.input[type="date"]', 'min-width')).toBe(true)
+    // Dropping the platform appearance is what stops iOS sizing the field from the
+    // locale's date format rather than from its container.
+    expect(declares(FILES.primitives, '.input[type="date"]', 'appearance')).toBe(true)
+  })
+
   it('never lets a sheet scroll sideways, whatever the config tab holds', () => {
     // With overflow-y set, a `visible` overflow-x computes to `auto`, so one
     // over-wide child turns the panel into a horizontal scroller at 320px.
