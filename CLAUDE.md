@@ -97,6 +97,13 @@ toward the balance but never toward spend totals or category breakdowns. If you
 find yourself adding an `if (type === 'settlement')` branch to arithmetic,
 reconsider.
 
+**Nothing in the UI creates a settlement.** Settling happens by wire transfer
+outside the app, so there is no "settle up" action and `BalanceCard` is a
+statement with no button — it must stay that way unless asked. The schema, the
+balance arithmetic, `EntryRow`, and the settlement branch of `EntryFormSheet`
+still handle the type, because sheets carry settlement rows written before the
+button was removed and editing one must keep working.
+
 **Dates are ISO strings, compared as strings.** Never `new Date('2026-08-05')` —
 that parses as UTC midnight and shifts to the previous day in western timezones.
 Use the helpers in `src/lib/dates.js`, which build dates from explicit parts.

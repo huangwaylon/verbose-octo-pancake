@@ -45,8 +45,6 @@ export default {
   'balance.youOwe': 'You owe {name}',
   'balance.owesYou': '{name} owes you',
   'balance.settled': 'All settled up',
-  'balance.settledCaption': 'Nothing owed either way.',
-  'balance.settle': 'Settle up',
 
   // --- month summary --------------------------------------------------------
   'summary.title': 'This month',

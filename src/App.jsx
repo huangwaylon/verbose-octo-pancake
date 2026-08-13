@@ -121,22 +121,6 @@ export default function App() {
     })
   }, [me])
 
-  const openSettle = useCallback(() => {
-    setDraft({
-      mode: 'add',
-      entry: {
-        type: ENTRY_TYPE.SETTLEMENT,
-        date: todayIso(),
-        // Pre-fill the person who owes, paying off exactly what is outstanding.
-        payer: balance.debtor ?? me ?? PERSON.P1,
-        amountCents: balance.amountCents,
-        category: '',
-        description: '',
-        payerShare: 0,
-      },
-    })
-  }, [balance, me])
-
   const openEdit = useCallback((entry) => setDraft({ mode: 'edit', entry }), [])
   const closeDraft = useCallback(() => setDraft(null), [])
 
@@ -240,7 +224,6 @@ export default function App() {
             config={ledger.config}
             me={me}
             currency={currency}
-            onSettle={openSettle}
           />
           <SummaryCard
             monthSpend={monthSpend}

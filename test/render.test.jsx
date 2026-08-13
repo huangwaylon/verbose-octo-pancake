@@ -141,41 +141,42 @@ describe('balance card renders', () => {
   it('names the debtor from the viewer’s perspective', () => {
     const balance = computeBalance(entries)
     const asP1 = renderToStaticMarkup(
-      <BalanceCard
-        balance={balance}
-        config={config}
-        me={PERSON.P1}
-        currency="USD"
-        onSettle={noop}
-      />,
+      <BalanceCard balance={balance} config={config} me={PERSON.P1} currency="USD" />,
     )
     const asP2 = renderToStaticMarkup(
-      <BalanceCard
-        balance={balance}
-        config={config}
-        me={PERSON.P2}
-        currency="USD"
-        onSettle={noop}
-      />,
+      <BalanceCard balance={balance} config={config} me={PERSON.P2} currency="USD" />,
     )
     // Same numbers, opposite wording — one of them must read "You owe".
     expect(asP1.includes('You owe') || asP2.includes('You owe')).toBe(true)
     expect(asP1).not.toEqual(asP2)
-    expect(asP1).toContain('Settle up')
   })
 
-  it('says settled and hides the settle button when nothing is owed', () => {
+  // Settling happens by wire transfer outside the app, so the balance is a
+  // statement and carries no action. A button here would promise a flow that
+  // does not exist.
+  it('offers no settle action', () => {
+    const markup = renderToStaticMarkup(
+      <BalanceCard
+        balance={computeBalance(entries)}
+        config={config}
+        me={PERSON.P1}
+        currency="USD"
+      />,
+    )
+    expect(markup).not.toContain('<button')
+  })
+
+  it('says settled when nothing is owed', () => {
     const markup = renderToStaticMarkup(
       <BalanceCard
         balance={{ netCents: 0, debtor: null, creditor: null, amountCents: 0 }}
         config={config}
         me={PERSON.P1}
         currency="USD"
-        onSettle={noop}
       />,
     )
     expect(markup).toContain('All settled up')
-    expect(markup).not.toContain('Settle up')
+    expect(markup).not.toContain('You owe')
   })
 })
 

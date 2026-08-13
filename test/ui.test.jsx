@@ -379,13 +379,7 @@ describe('Japanese rendering', () => {
     const balance = computeBalance(entries)
     return [
       renderToStaticMarkup(
-        <BalanceCard
-          balance={balance}
-          config={config}
-          me={PERSON.P1}
-          currency="JPY"
-          onSettle={noop}
-        />,
+        <BalanceCard balance={balance} config={config} me={PERSON.P1} currency="JPY" />,
       ),
       renderToStaticMarkup(
         <SummaryCard

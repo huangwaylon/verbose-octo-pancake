@@ -137,7 +137,7 @@
   container-type: inline-size;
   display: flex;
   flex-direction: column;
-  padding-block: var(--space-2) var(--space-6);
+  padding-block: var(--space-2) var(--space-4);
 }
 
 /* The rule closing the hero off from what follows. Suppressed when nothing
@@ -147,8 +147,20 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* Sentence and figure share one baseline-aligned line, the figure pushed to the
+   trailing edge. It wraps rather than compressing the number, because two long
+   names in a 288px aside will not fit beside a six-digit yen amount. */
+.balance__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+  margin-top: var(--space-1);
+}
+
 .balance__direction {
-  margin: var(--space-1) 0 0;
+  margin: 0;
   color: var(--ink-2);
   font-size: var(--fs-body);
   font-weight: 500;
@@ -157,12 +169,13 @@
 
 /* --fs-display is container-relative, not viewport-relative: the same component
    renders at 288px on a phone and inside a 352px aside on a 1440px monitor,
-   where a vw-keyed clamp would overflow. */
+   where a vw-keyed clamp would overflow. It sits on the sentence's line now, so
+   it is sized to be the largest figure on the page and no larger. */
 .balance__amount {
   display: flex;
   align-items: baseline;
   gap: 0.06em;
-  margin: var(--space-3) 0 0;
+  margin: 0;
   color: var(--ink);
   font-size: var(--fs-display);
   font-weight: 600;
@@ -176,7 +189,7 @@
 
 @supports not (container-type: inline-size) {
   .balance__amount {
-    font-size: clamp(2.5rem, 12vw, 4rem);
+    font-size: clamp(1.75rem, 8vw, 2rem);
   }
 }
 
@@ -184,7 +197,7 @@
 .balance__symbol,
 .balance__fraction {
   color: var(--ink-3);
-  font-size: 0.5em;
+  font-size: 0.6em;
   font-weight: 500;
   letter-spacing: 0;
 }
@@ -193,7 +206,7 @@
    baseline, where it looks dropped. */
 .balance__symbol {
   align-self: flex-start;
-  padding-top: 0.14em;
+  padding-top: 0.1em;
 }
 
 /* Settled is typographic, never green. A green success state in a two-person
@@ -202,9 +215,9 @@
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
-  margin: var(--space-3) 0 0;
+  margin: var(--space-1) 0 0;
   color: var(--ink);
-  font-size: var(--fs-xl);
+  font-size: var(--fs-lg);
   font-weight: 600;
   line-height: var(--lh-tight);
 }
@@ -215,17 +228,6 @@
   height: 0.375rem;
   background-color: var(--accent);
   border-radius: var(--radius-full);
-}
-
-.balance__caption {
-  margin: var(--space-2) 0 0;
-  color: var(--ink-3);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-prose);
-}
-
-.balance__action {
-  margin-top: var(--space-5);
 }
 
 /* =========================================================================

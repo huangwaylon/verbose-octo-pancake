@@ -1,6 +1,5 @@
 import { formatCents, formatCentsParts } from '../lib/money.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
-import { SwapIcon } from './icons.jsx'
 
 /**
  * The composite hero figure: currency symbol and any minor units set smaller and
@@ -53,10 +52,12 @@ function HeroAmount({ cents, currency, locale }) {
  * The running, all-time balance — deliberately not scoped to the selected month,
  * since what one person owes the other does not reset in January.
  *
- * Reading order is eyebrow, direction, figure, action, so the sentence leads in
- * and the number is the last thing the eye lands on.
+ * One line: the eyebrow, then the sentence with the figure set against the
+ * trailing edge. There is no action — settling happens by wire transfer outside
+ * the app, and those transfers come back into the ledger as ordinary entries —
+ * so the block states a fact and has no reason to occupy a screenful.
  */
-export function BalanceCard({ balance, config, me, currency, onSettle }) {
+export function BalanceCard({ balance, config, me, currency }) {
   const { t, locale } = useT()
   const { name, label } = usePeopleLabels(config, me)
   const settled = balance.netCents === 0
@@ -66,28 +67,19 @@ export function BalanceCard({ balance, config, me, currency, onSettle }) {
       <p className="eyebrow">{t('balance.title')}</p>
 
       {settled ? (
-        <>
-          <p className="balance__settled">
-            <span className="balance__dot" aria-hidden="true" />
-            {t('balance.settled')}
-          </p>
-          <p className="balance__caption">{t('balance.settledCaption')}</p>
-        </>
+        <p className="balance__settled">
+          <span className="balance__dot" aria-hidden="true" />
+          {t('balance.settled')}
+        </p>
       ) : (
-        <>
+        <div className="balance__row">
           <p className="balance__direction">
             {balance.debtor === me
               ? t('balance.youOwe', { name: name(balance.creditor) })
               : t('balance.owesYou', { name: label(balance.debtor) })}
           </p>
           <HeroAmount cents={balance.amountCents} currency={currency} locale={locale} />
-          <div className="balance__action">
-            <button type="button" className="btn btn--primary btn--block" onClick={onSettle}>
-              <SwapIcon />
-              {t('balance.settle')}
-            </button>
-          </div>
-        </>
+        </div>
       )}
     </section>
   )

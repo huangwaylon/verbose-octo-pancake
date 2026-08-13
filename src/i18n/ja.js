@@ -40,8 +40,6 @@ export default {
   'balance.youOwe': '{name}に支払い',
   'balance.owesYou': '{name}から受け取り',
   'balance.settled': '精算ずみ',
-  'balance.settledCaption': '貸し借りはありません。',
-  'balance.settle': '精算する',
 
   // --- month summary --------------------------------------------------------
   'summary.title': '今月',

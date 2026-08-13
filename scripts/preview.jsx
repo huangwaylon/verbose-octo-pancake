@@ -99,13 +99,7 @@ function body(confirming) {
       <Header config={config} me={PERSON.P1} status="ready" onRefresh={noop} onOpenSettings={noop} />
       <main className="layout">
         <aside className="layout__aside">
-          <BalanceCard
-            balance={balance}
-            config={config}
-            me={PERSON.P1}
-            currency="JPY"
-            onSettle={noop}
-          />
+          <BalanceCard balance={balance} config={config} me={PERSON.P1} currency="JPY" />
           <SummaryCard
             monthSpend={totalSpend(entries)}
             byCategory={spendByCategory(entries)}

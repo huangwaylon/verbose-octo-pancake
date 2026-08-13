@@ -31,7 +31,10 @@ other person's tab and tombstones the original row.
 
 A settlement is just an entry with `payer_share` of `0` — the payer is owed all of it —
 so the balance is one sum over every row and the arithmetic has no settlement branch;
-settlements never count toward spend totals or category breakdowns. Amounts are integer
+settlements never count toward spend totals or category breakdowns. Nothing in the
+interface writes one: we settle by wire transfer, which lands on a card statement and
+comes back in as ordinary spend, so the balance converges without a settle-up flow. Rows
+already carrying the type still read, display and edit correctly. Amounts are integer
 minor units (whole yen for JPY, cents for USD, fils for KWD) and every conversion takes
 the currency explicitly, with no default, because `1250` at the wrong scale is a silent
 100x error. Every write is `valueInputOption: RAW`, so a note of `=SUM(A:A)` stays
