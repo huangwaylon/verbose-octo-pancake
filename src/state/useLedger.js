@@ -1,8 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { mergeConfig } from '../config.js'
-import { PEOPLE, expensesTab, makeEntry, validateEntryCodes } from '../schema.js'
+import { makeEntry, validateEntryCodes } from '../schema.js'
 import { i18nError, t } from '../i18n/index.js'
 import * as sheets from '../lib/sheets.js'
+import {
+  acknowledge,
+  entryById,
+  hasTombstones,
+  mergeLoaded,
+  missingExpenseGid,
+  reverted,
+  settled,
+  shouldRefresh,
+  statusOnLoadFailure,
+  statusOnLoadStart,
+  tombstoneCount,
+  withPending,
+  withPendingDeletedAt,
+  withPendingEdit,
+  without,
+} from '../lib/ledgerState.js'
 import { readSnapshot, writeSnapshot } from '../lib/snapshot.js'
 
 /** Floor between focus-triggered refreshes. Window switching is constant. */
@@ -24,6 +41,10 @@ function looksUninitialized(cause) {
  * sheet afterwards, because each write is a ~400ms round trip on phone data. A
  * failed write reverts the optimistic change and rethrows so the caller can
  * surface it.
+ *
+ * What is left here is the part that needs React and a network: state, effects,
+ * and the order of the calls. Which list follows from which — and every status
+ * decision — is in `lib/ledgerState.js`, where it can be tested without a DOM.
  *
  * Status is one of `idle | loading | stale | refreshing | ready | error`.
  * `stale` means "showing cached data": it is where a seeded launch starts, and
@@ -64,14 +85,7 @@ export function useLedger(spreadsheetId) {
   const applyLoad = useCallback(
     (id, data) => {
       const loaded = data.entries ?? []
-      setEntries((current) => {
-        // Keep optimistic rows the server has not acknowledged yet. A refresh
-        // that started before an append would otherwise drop the new row, and
-        // persisting that truncated list makes the loss survive a relaunch.
-        const seen = new Set(loaded.map((entry) => entry.id))
-        const inFlight = current.filter((entry) => entry.pending && !seen.has(entry.id))
-        return inFlight.length ? [...loaded, ...inFlight] : loaded
-      })
+      setEntries((current) => mergeLoaded(current, loaded))
       // Config before amounts, always: the balance and the month totals format
       // at `config.currency`, so entries seeded against a stale currency render
       // at the wrong scale. Same ordering rule as `loadAll`.
@@ -79,6 +93,8 @@ export function useLedger(spreadsheetId) {
       setError(null)
       setStatus('ready')
       everLoaded.current = true
+      // The loaded list, never the merged one: a pending row persisted here comes
+      // back next launch looking saved.
       persist(id, loaded, data.sheetConfig)
     },
     [persist],
@@ -86,13 +102,11 @@ export function useLedger(spreadsheetId) {
 
   const load = useCallback(
     async (id) => {
-      setStatus((current) => (current === 'idle' ? 'loading' : 'refreshing'))
+      setStatus(statusOnLoadStart)
 
-      /** Cached data beats an error screen — the sheet has not changed just
-          because we cannot reach it. This is the offline launch. */
       const fail = (cause) => {
         setError(cause.message || t('error.readSheet'))
-        setStatus(everLoaded.current ? 'stale' : 'error')
+        setStatus(statusOnLoadFailure(everLoaded.current))
       }
 
       try {
@@ -153,7 +167,7 @@ export function useLedger(spreadsheetId) {
     const maybeRefresh = () => {
       if (document.visibilityState !== 'visible') return
       const now = Date.now()
-      if (now - lastRefresh.current < REFRESH_THROTTLE_MS) return
+      if (!shouldRefresh(now, lastRefresh.current, REFRESH_THROTTLE_MS)) return
       lastRefresh.current = now
       refresh()
     }
@@ -166,19 +180,25 @@ export function useLedger(spreadsheetId) {
     }
   }, [spreadsheetId, refresh])
 
+  /** Both write paths validate the same way: codes, never English sentences. */
+  const validated = (input) => {
+    const entry = makeEntry(input)
+    const problems = validateEntryCodes(entry)
+    if (problems.length) throw i18nError(`error.${problems[0]}`)
+    return entry
+  }
+
   const addEntry = useCallback(
     async (input) => {
-      const entry = makeEntry(input)
-      const problems = validateEntryCodes(entry)
-      if (problems.length) throw i18nError(`error.${problems[0]}`)
+      const entry = validated(input)
 
-      setEntries((current) => [...current, { ...entry, pending: true }])
+      setEntries((current) => withPending(current, entry))
       try {
         await sheets.appendEntry(spreadsheetId, entry)
-        setEntries((current) => current.map((item) => (item.id === entry.id ? entry : item)))
+        setEntries((current) => acknowledge(current, entry))
         return entry
       } catch (cause) {
-        setEntries((current) => current.filter((item) => item.id !== entry.id))
+        setEntries((current) => without(current, entry.id))
         throw cause
       }
     },
@@ -187,18 +207,13 @@ export function useLedger(spreadsheetId) {
 
   const editEntry = useCallback(
     async (input) => {
-      const entry = makeEntry(input)
-      const problems = validateEntryCodes(entry)
-      if (problems.length) throw i18nError(`error.${problems[0]}`)
+      const entry = validated(input)
 
       let previous
-      setEntries((current) =>
-        current.map((item) => {
-          if (item.id !== entry.id) return item
-          previous = item
-          return { ...entry, pending: true }
-        }),
-      )
+      setEntries((current) => {
+        previous = entryById(current, entry.id)
+        return withPendingEdit(current, entry)
+      })
 
       /**
        * Refuse rather than guess which tab the row is in.
@@ -215,12 +230,10 @@ export function useLedger(spreadsheetId) {
 
       try {
         await sheets.updateEntry(spreadsheetId, entry, previous.payer)
-        setEntries((current) =>
-          current.map((item) => (item.id === entry.id ? { ...item, pending: false } : item)),
-        )
+        setEntries((current) => settled(current, entry.id))
         return entry
       } catch (cause) {
-        setEntries((current) => current.map((item) => (item.id === entry.id ? previous : item)))
+        setEntries((current) => reverted(current, entry.id, previous))
         throw cause
       }
     },
@@ -230,22 +243,15 @@ export function useLedger(spreadsheetId) {
   const setDeleted = useCallback(
     async (id, payer, deletedAt) => {
       let previous
-      setEntries((current) =>
-        current.map((item) => {
-          if (item.id !== id) return item
-          previous = item
-          return { ...item, deletedAt, pending: true }
-        }),
-      )
+      setEntries((current) => {
+        previous = entryById(current, id)
+        return withPendingDeletedAt(current, id, deletedAt)
+      })
       try {
         await sheets.setDeletedAt(spreadsheetId, payer, id, deletedAt)
-        setEntries((current) =>
-          current.map((item) => (item.id === id ? { ...item, pending: false } : item)),
-        )
+        setEntries((current) => settled(current, id))
       } catch (cause) {
-        if (previous) {
-          setEntries((current) => current.map((item) => (item.id === id ? previous : item)))
-        }
+        setEntries((current) => reverted(current, id, previous))
         throw cause
       }
     },
@@ -260,18 +266,17 @@ export function useLedger(spreadsheetId) {
 
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
   const compact = useCallback(async () => {
-    if (!entries.some((item) => item.deletedAt)) return { removed: 0 }
+    if (!hasTombstones(entries)) return { removed: 0 }
 
-    // `values.batchGet` cannot report sheet gids, so a session that only ever
-    // read the sheet has none cached and has to ask for them here.
     let gids = sheetIds
-    const missingGid = () => PEOPLE.some((person) => gids[expensesTab(person)] == null)
-    if (missingGid()) {
+    if (missingExpenseGid(gids)) {
       const { sheetIds: refreshed } = await sheets.ensureStructure(spreadsheetId)
       setSheetIds(refreshed ?? {})
       gids = refreshed ?? {}
     }
-    if (missingGid()) throw i18nError('error.missingTabs')
+    // Not redundant with the skip inside `sheets.compact`: this is what makes a
+    // missing gid loud instead of a silently half-compacted sheet.
+    if (missingExpenseGid(gids)) throw i18nError('error.missingTabs')
 
     const result = await sheets.compact(spreadsheetId, gids)
     await refresh()
@@ -283,9 +288,7 @@ export function useLedger(spreadsheetId) {
     config,
     status,
     error,
-    // Sheet-wide, unlike the month-scoped deleted list in the UI: this is what
-    // `compact` would remove, and it removes every tombstone in both tabs.
-    tombstoneCount: entries.filter((item) => item.deletedAt).length,
+    tombstoneCount: tombstoneCount(entries),
     refresh,
     addEntry,
     editEntry,

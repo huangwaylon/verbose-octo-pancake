@@ -24,13 +24,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # Node 24 ships npm 11. Note that the npm version was never the cause of
       # the "Exit handler never called!" install failures — see the lockfile
       # registry gotcha in CLAUDE.md — but there is no reason to go back to 22.
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -49,7 +49,7 @@ jobs:
 
       - name: Upload npm logs
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npm-debug-log
           path: /tmp/npm-logs
@@ -64,7 +64,7 @@ jobs:
         run: npm test
 
       - name: Configure Pages
-        uses: actions/configure-pages@v5
+        uses: actions/configure-pages@v6
 
       - name: Build
         # An Actions *variable*, not a secret, deliberately. Vite inlines it into
@@ -77,7 +77,7 @@ jobs:
         run: npm run build
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
@@ -90,4 +90,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

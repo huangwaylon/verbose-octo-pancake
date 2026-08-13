@@ -16,6 +16,7 @@ import { SummaryCard } from '../src/components/SummaryCard.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
 import { Header } from '../src/components/Header.jsx'
 import { MonthNav } from '../src/components/MonthNav.jsx'
+import { SettingsSheet } from '../src/components/SettingsSheet.jsx'
 import {
   ErrorGate,
   IdentityGate,
@@ -300,5 +301,69 @@ describe('chrome renders', () => {
     // The half that matters: at the current month, forward must be disabled.
     const now = renderToStaticMarkup(<MonthNav monthKey={currentMonthKey()} onChange={noop} />)
     expect(now.match(/disabled/g) ?? []).toHaveLength(1)
+  })
+})
+
+describe('settings renders', () => {
+  const render = (props) =>
+    renderToStaticMarkup(
+      <SettingsSheet
+        config={config}
+        me={PERSON.P1}
+        spreadsheetId="sheet-abc"
+        tombstoneCount={0}
+        onSetMe={noop}
+        onCompact={noop}
+        onForget={noop}
+        onClose={noop}
+        {...props}
+      />,
+    )
+
+  it('renders the whole sheet on a real config without throwing', () => {
+    const markup = render()
+    expect(markup).toContain('Settings')
+    expect(markup).toContain('Alex')
+    expect(markup).toContain('Sam')
+    // The config tab's values, shown so nobody has to open the spreadsheet to
+    // check what the app thinks they are.
+    expect(markup).toContain('Groceries')
+    expect(markup).toContain('JPY')
+  })
+
+  it('links to the spreadsheet it is actually connected to', () => {
+    expect(render()).toContain('https://docs.google.com/spreadsheets/d/sheet-abc')
+  })
+
+  it('disables the destructive action when there is nothing to remove', () => {
+    // The only irreversible thing in the app. A live button that does nothing is
+    // worse than a disabled one that says so.
+    const markup = render({ tombstoneCount: 0 })
+    expect(markup).toContain('Nothing to remove')
+    expect(markup).toMatch(/<button[^>]*disabled/)
+  })
+
+  it('says how many rows compacting would remove, pluralised', () => {
+    expect(render({ tombstoneCount: 1 })).toContain('Permanently remove 1 row')
+    expect(render({ tombstoneCount: 4 })).toContain('Permanently remove 4 rows')
+  })
+
+  it('shows each person’s own default split rather than one figure', () => {
+    const markup = render({ config: { ...config, defaultSplitP1: 0.8, defaultSplitP2: 0.2 } })
+    expect(markup).toContain('80%')
+    expect(markup).toContain('20%')
+  })
+
+  it('names the accent presets for a screen reader, not by swatch colour alone', () => {
+    const markup = render()
+    expect(markup).toContain('role="radiogroup"')
+    for (const preset of ['Indigo', 'Pine', 'Teal', 'Plum', 'Sepia']) {
+      expect(markup).toContain(preset)
+    }
+  })
+
+  it('points at the config tab when there are no note presets', () => {
+    const markup = render({ config: { ...config, notePresets: [] } })
+    expect(markup).toContain('note_presets')
   })
 })

@@ -160,6 +160,13 @@ never mirror one from the other. A new entry carries `payerShare: null` meaning
 control changes; an entry being edited carries its stored share and must keep it,
 because a saved row records a decision someone already made.
 
+**A hook holds effects; the decisions live in `lib/`.** There is no DOM in the
+test environment and no renderer for hooks, so anything inside a `use*` file is
+unreachable from a test. `useLedger` therefore owns state, effects and call order
+only — every "given this list, what is the list next" and every status decision is
+in `lib/ledgerState.js`, which `test/ledgerState.test.js` covers directly. Put new
+logic there, not in the hook, or it cannot be tested at all.
+
 **Refreshes on focus are throttled.** Two people share one sheet with no push
 channel, so `useLedger` re-reads on `focus` and `visibilitychange`. Window
 switching is constant and every refresh spends per-user quota, hence the 30s
@@ -372,9 +379,13 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
 ## Testing
 
 Specs live in `test/**/*.test.{js,jsx}`, with shared harnesses under
-`test/support/`. Fourteen files: `money`, `currency`, `balance`, `schema`, `dates`,
-`config`, `connection`, `snapshot`, `sw-build`, `i18n`, `render`, `ui`, `styles`
-and `lockfile`.
+`test/support/`. Sixteen files: `money`, `currency`, `balance`, `schema`, `dates`,
+`config`, `sheets`, `ledgerState`, `connection`, `snapshot`, `sw-build`, `i18n`,
+`render`, `ui`, `styles` and `lockfile`.
+
+`sheets.test.js` runs against a fake Sheets API in `test/support/sheets-api.js`
+that records every request, because this layer's failures are writes: the
+assertions are about what was *sent*, not what came back.
 
 `connection`, `snapshot`, `sw-build` and `styles` exist because their failures are
 invisible in a build and on screen — a misclassified endpoint reply, a snapshot
