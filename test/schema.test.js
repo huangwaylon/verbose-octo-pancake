@@ -318,7 +318,7 @@ describe('rowToEntry / entryToRow round trip', () => {
   it('keeps a formula-looking description as literal text', () => {
     const nasty = [
       '=SUM(A:A)',
-      "=SUM(A:A)",
+      "'=SUM(A:A)",
       '+1 pizza',
       '-5 refund',
       '@channel',
@@ -481,9 +481,11 @@ describe('validateEntryCodes', () => {
     ])
   })
 
-  it('returns codes, never English, because the UI translates them', () => {
-    // The codes are the stable contract between the validator and the catalogs.
-    const codes = new Set(Object.values(ENTRY_ERROR))
-    for (const code of validateEntryCodes({})) expect(codes.has(code)).toBe(true)
+  it('reports a code per problem, so nothing has to parse a sentence', () => {
+    // The codes are the stable contract between the validator and the catalogs;
+    // i18n.test.js is what proves each one has a translation.
+    expect(validateEntryCodes({}).length).toBeGreaterThan(1)
+    expect(validateEntryCodes({})).toContain(ENTRY_ERROR.MISSING_ID)
+    expect(validateEntryCodes({})).toContain(ENTRY_ERROR.MISSING_CURRENCY)
   })
 })

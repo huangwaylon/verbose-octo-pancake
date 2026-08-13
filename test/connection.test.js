@@ -12,19 +12,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * generation counter are module state by design.
  */
 
+import { installStorage, removeStorage } from './support/storage.js'
+
 const URL_STUB = 'https://script.google.com/macros/s/TEST/exec'
 const SHEET_ID = '1YtlEVCcCFxy929_7GewjZew3VF0sSgBiLspTFNZeeUw'
 
-/** vitest runs in `environment: 'node'`, so there is no localStorage to speak of. */
-function installStorage(seed = {}) {
-  const store = new Map(Object.entries(seed))
-  globalThis.localStorage = {
-    getItem: (key) => (store.has(key) ? store.get(key) : null),
-    setItem: (key, value) => store.set(key, String(value)),
-    removeItem: (key) => store.delete(key),
-  }
-  return store
-}
 
 /** Whatever ContentService would have sent: always HTTP 200, body is the signal. */
 const reply = (payload) => ({ text: async () => JSON.stringify(payload) })
@@ -43,7 +35,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
   vi.useRealTimers()
-  delete globalThis.localStorage
+  removeStorage()
 })
 
 describe('minting a token', () => {

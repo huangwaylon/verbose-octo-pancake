@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { DEFAULT_CONFIG } from '../src/config.js'
 import { ENTRY_TYPE, EVEN_SHARE, PERSON, makeEntry } from '../src/schema.js'
 import { computeBalance, groupByDate, spendByCategory, spendByPerson, totalSpend } from '../src/lib/balance.js'
+import { currentMonthKey } from '../src/lib/dates.js'
 import { BalanceCard } from '../src/components/BalanceCard.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
@@ -129,11 +130,12 @@ describe('toasts render', () => {
         ]}
       />,
     )
-    expect(markup).toContain('role="status" aria-live="polite"')
-    expect(markup).toContain('role="alert" aria-live="assertive"')
+    expect(markup).toMatch(/role="status"[^>]*aria-live="polite"|aria-live="polite"[^>]*role="status"/)
+    expect(markup).toMatch(/role="alert"[^>]*aria-live="assertive"|aria-live="assertive"[^>]*role="alert"/)
     // The urgency belongs to the individual toast, not the stack: one shared
     // region cannot be polite and assertive at once.
-    expect(markup).toMatch(/<div class="toast-stack">/)
+    expect(markup).toContain('class="toast-stack"')
+    expect(markup).not.toMatch(/class="toast-stack"[^>]*aria-live/)
   })
 })
 
@@ -146,9 +148,13 @@ describe('balance card renders', () => {
     const asP2 = renderToStaticMarkup(
       <BalanceCard balance={balance} config={config} me={PERSON.P2} currency="USD" />,
     )
-    // Same numbers, opposite wording — one of them must read "You owe".
-    expect(asP1.includes('You owe') || asP2.includes('You owe')).toBe(true)
-    expect(asP1).not.toEqual(asP2)
+    // Same numbers, opposite wording. p1 is the creditor in this fixture, so it
+    // is p2 who must be told they owe — asserted per side, not as a disjunction
+    // that a component saying "You owe" to both people would satisfy.
+    expect(balance.debtor).toBe(PERSON.P1)
+    expect(asP1).toContain('You owe')
+    expect(asP2).not.toContain('You owe')
+    expect(asP2).toContain('owes you')
   })
 
   // Settling happens by wire transfer outside the app, so the balance is a
@@ -285,5 +291,9 @@ describe('chrome renders', () => {
     const past = renderToStaticMarkup(<MonthNav monthKey="2020-01" onChange={noop} />)
     expect(past).toContain('January')
     expect(past.match(/disabled/g) ?? []).toHaveLength(0)
+
+    // The half that matters: at the current month, forward must be disabled.
+    const now = renderToStaticMarkup(<MonthNav monthKey={currentMonthKey()} onChange={noop} />)
+    expect(now.match(/disabled/g) ?? []).toHaveLength(1)
   })
 })

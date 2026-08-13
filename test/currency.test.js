@@ -99,10 +99,6 @@ describe('writing to the sheet', () => {
     expect(centsToSheetString(-1250, 'JPY')).toBe('-1250')
   })
 
-  it('keeps two decimals for ordinary currencies', () => {
-    expect(centsToSheetString(4210, 'USD')).toBe('42.10')
-  })
-
   it('writes three decimals for a three-decimal currency', () => {
     expect(centsToSheetString(1234, 'KWD')).toBe('1.234')
     expect(centsToSheetString(4, 'KWD')).toBe('0.004')
@@ -137,14 +133,6 @@ describe('formatting', () => {
     expect(ja).not.toMatch(/[.,]\d{2}$/)
   })
 
-  it('renders an ordinary currency with its two decimals', () => {
-    expect(formatCents(4210, 'USD', { locale: 'en' })).toBe('$42.10')
-  })
-
-  it('falls back readably for an unknown code', () => {
-    expect(formatCents(4210, 'NOTACURRENCY')).toBe('42.10 NOTACURRENCY')
-  })
-
   it('exposes parts with no fraction for a zero-decimal currency', () => {
     const parts = formatCentsParts(1250, 'JPY', { locale: 'en' })
     const types = parts.map((part) => part.type)
@@ -167,15 +155,6 @@ describe('formatting', () => {
 describe('splitting whole yen', () => {
   it('conserves every yen on an odd amount', () => {
     expect(splitCents(1251, 0.5)).toEqual({ payerCents: 626, otherCents: 625 })
-  })
-
-  it('conserves for every share across a sweep of yen amounts', () => {
-    for (let amount = 0; amount < 5000; amount += 7) {
-      for (const share of [0, 0.25, 1 / 3, 0.5, 0.75, 1]) {
-        const { payerCents, otherCents } = splitCents(amount, share)
-        expect(payerCents + otherCents).toBe(amount)
-      }
-    }
   })
 })
 

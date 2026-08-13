@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_CONFIG, mergeConfig } from '../src/config.js'
+import { installStorage, removeStorage } from './support/storage.js'
 
 /**
  * The launch cache. It is only a cache — the sheet is the source of truth — so
@@ -8,16 +9,6 @@ import { DEFAULT_CONFIG, mergeConfig } from '../src/config.js'
  */
 
 const SHEET = 'sheet-a'
-
-function installStorage(seed = {}) {
-  const store = new Map(Object.entries(seed))
-  globalThis.localStorage = {
-    getItem: (key) => (store.has(key) ? store.get(key) : null),
-    setItem: (key, value) => store.set(key, String(value)),
-    removeItem: (key) => store.delete(key),
-  }
-  return store
-}
 
 async function load(seed) {
   const store = installStorage(seed)
@@ -42,9 +33,7 @@ const entry = (over = {}) => ({
   ...over,
 })
 
-afterEach(() => {
-  delete globalThis.localStorage
-})
+afterEach(removeStorage)
 
 describe('round trip', () => {
   it('preserves the amount and its currency exactly', async () => {

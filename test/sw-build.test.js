@@ -65,7 +65,6 @@ describe('the build id', () => {
     writeFileSync(join(dir, 'index.html'), '<!doctype html><title>Shared Finance</title>')
     const after = buildFromDist(dir, BASE).source
 
-    expect(precachePaths(dir)).toEqual(precachePaths(dir))
     expect(after).not.toBe(before)
   })
 
@@ -81,7 +80,11 @@ describe('the generated worker', () => {
   it('bails out of cross-origin requests before responding to anything', () => {
     // Scope governs which clients are controlled, not which requests are seen, so
     // the token endpoint and the Sheets API both reach this handler.
-    expect(source).toContain('if (new URL(event.request.url).origin !== self.location.origin) return')
+    const bailOut = source.search(/origin !== self\.location\.origin\)\s*return/)
+    const fetchHandler = source.indexOf("addEventListener('fetch'")
+    const firstRespondWith = source.indexOf('respondWith', fetchHandler)
+    expect(bailOut).toBeGreaterThan(fetchHandler)
+    expect(bailOut).toBeLessThan(firstRespondWith)
   })
 
   it('serves a navigation from the index key rather than the request', () => {

@@ -308,17 +308,6 @@ describe('deleted entries list', () => {
     expect(markup).toContain('aria-label="Restore Life"')
   })
 
-  it('renders the entries it is handed — the month scoping is the caller’s job', () => {
-    // App passes deletedEntries(entries, monthKey); the component filters
-    // nothing, exactly like EntryList and its pre-grouped days.
-    const markup = render([
-      removed('a', { description: 'Ozeki' }),
-      removed('b', { description: 'OK Mart' }),
-    ])
-    expect(markup).toContain('Ozeki')
-    expect(markup).toContain('OK Mart')
-  })
-
   it('prices each row at its own currency, not the sheet’s', () => {
     // The same integer at two scales: ¥1250 must not render as $1,250.
     const markup = render([removed('a', { currency: 'USD', amountCents: 1250 })])

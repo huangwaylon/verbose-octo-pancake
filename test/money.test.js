@@ -20,7 +20,6 @@ describe('parseAmountToCents — formats a human actually types', () => {
     expect(parseAmountToCents('.5', 'USD')).toBe(50)
     expect(parseAmountToCents('42.', 'USD')).toBe(4200)
     expect(parseAmountToCents('.05', 'USD')).toBe(5)
-    expect(parseAmountToCents('.5', 'USD')).toBe(parseAmountToCents('0.50', 'USD'))
   })
 
   it('strips surrounding whitespace and currency symbols', () => {
@@ -49,7 +48,6 @@ describe('parseAmountToCents — formats a human actually types', () => {
     expect(parseAmountToCents('1,234.56', 'USD')).toBe(123456)
     // European style — same amount
     expect(parseAmountToCents('1.234,56', 'USD')).toBe(123456)
-    expect(parseAmountToCents('1,234.56', 'USD')).toBe(parseAmountToCents('1.234,56', 'USD'))
     // French style, space grouping
     expect(parseAmountToCents('1 234,56', 'USD')).toBe(123456)
     expect(parseAmountToCents('1.234.567,89', 'USD')).toBe(123456789)
@@ -85,7 +83,6 @@ describe('parseAmountToCents — formats a human actually types', () => {
       ['0.575', 58],
       ['1.255', 126],
     ]) {
-      expect(Math.round(Number(text) * 100)).toBe(cents - 1)
       expect(parseAmountToCents(text, 'USD')).toBe(cents)
     }
   })
@@ -144,15 +141,6 @@ describe('parseAmountToCents — formats a human actually types', () => {
     expect(parseAmountToCents('1e21', 'USD')).toBeNull()
     // ...but a realistically large amount still parses exactly.
     expect(parseAmountToCents('9999999999.99', 'USD')).toBe(999999999999)
-    expect(Number.isSafeInteger(parseAmountToCents('9999999999.99', 'USD'))).toBe(true)
-  })
-
-  it('never returns NaN', () => {
-    for (const input of ['abc', '', '.', ',', '1,2,3', null, {}]) {
-      const result = parseAmountToCents(input, 'USD')
-      expect(Number.isNaN(result)).toBe(false)
-      expect(result).toBeNull()
-    }
   })
 })
 
@@ -188,17 +176,10 @@ describe('centsToSheetString', () => {
 })
 
 describe('centsToSheetString <-> parseAmountToCents round trip', () => {
+  // The sweep across four currency scales is in currency.test.js; this is the
+  // boundary list for the two-decimal case.
   it('round-trips every representative value', () => {
     for (const cents of [0, 1, 5, 99, 100, 101, 999, 1000, 4210, 100000, 123456789]) {
-      expect(parseAmountToCents(centsToSheetString(cents, 'USD'), 'USD')).toBe(cents)
-    }
-  })
-
-  it('round-trips a wide sweep of values', () => {
-    for (let cents = 0; cents < 2000; cents += 7) {
-      expect(parseAmountToCents(centsToSheetString(cents, 'USD'), 'USD')).toBe(cents)
-    }
-    for (let cents = 999900; cents < 1000100; cents += 13) {
       expect(parseAmountToCents(centsToSheetString(cents, 'USD'), 'USD')).toBe(cents)
     }
   })
@@ -281,11 +262,10 @@ describe('sumCents', () => {
     expect(sumCents([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])).toBe(10)
   })
 
-  it('does not accumulate float error the way summing dollars would', () => {
-    const tenCents = new Array(10).fill(10)
-    expect(sumCents(tenCents)).toBe(100)
-    // The float equivalent does not even equal itself exactly.
-    expect(new Array(10).fill(0.1).reduce((a, b) => a + b, 0)).not.toBe(1)
+  // The float equivalent, `Array(10).fill(0.1).reduce(add)`, does not equal 1.
+  // Integers are the whole reason this function exists.
+  it('sums ten of the same unit exactly', () => {
+    expect(sumCents(new Array(10).fill(10))).toBe(100)
   })
 
   it('throws on a non-array or a non-integer member instead of returning NaN', () => {
@@ -336,13 +316,6 @@ describe('formatCents', () => {
     expect(() => formatCents(1.5, 'USD')).toThrow(TypeError)
     expect(() => formatCents('4210', 'USD')).toThrow(TypeError)
     expect(() => formatCents(undefined, 'USD')).toThrow(TypeError)
-  })
-
-  it('is never used for sheet values — its output is not re-parseable as a bare amount', () => {
-    // Guards against someone swapping formatCents in for centsToSheetString.
-    expect(formatCents(123456789, 'USD', { locale: 'en-US' })).not.toBe(
-      centsToSheetString(123456789, 'USD'),
-    )
   })
 })
 

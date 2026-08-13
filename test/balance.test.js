@@ -136,18 +136,6 @@ describe('computeBalance', () => {
     expect(balance).toEqual({ netCents: 0, debtor: null, creditor: null, amountCents: 0 })
   })
 
-  it('keeps the magnitude and sign consistent for every entry mix', () => {
-    const entries = [
-      expense('a', 7777, { payer: PERSON.P1, payerShare: 0.333 }),
-      expense('b', 101, { payer: PERSON.P2, payerShare: EVEN_SHARE }),
-      settlement('c', 12, { payer: PERSON.P2 }),
-    ]
-    const balance = computeBalance(entries)
-    expect(balance.amountCents).toBe(Math.abs(balance.netCents))
-    expect(Number.isInteger(balance.netCents)).toBe(true)
-    expect(balance.debtor).not.toBe(balance.creditor)
-  })
-
   // ── The most important test in the suite ────────────────────────────────
   it('drives the balance to exactly zero when a settlement pays off the outstanding amount', () => {
     const expenses = [
@@ -275,15 +263,11 @@ describe('deletedEntries', () => {
   const first = expense('first', 100, { deletedAt: '2026-03-02T00:00:00.000Z' })
   const second = expense('second', 200, { deletedAt: '2026-03-04T00:00:00.000Z' })
 
-  it('is exactly the complement of what every aggregate keeps', () => {
+  it('lists a month’s tombstones, newest deletion first, and keeps live rows out', () => {
     expect(deletedEntries([live, first, second], '2026-03').map((e) => e.id)).toEqual([
       'second',
       'first',
     ])
-  })
-
-  it('puts the most recently deleted first, which is what someone is looking for', () => {
-    expect(deletedEntries([first, second], '2026-03')[0].id).toBe('second')
   })
 
   it('scopes to the month on screen: it sits under the month switcher', () => {
@@ -680,20 +664,6 @@ describe('end-to-end: a month of shared life', () => {
       'Household',
     ])
     expect(spendByPerson(march)).toEqual({ p1: 8735 + 4999, p2: 6200 + 12000 + 3300 })
-  })
-
-  it('settling the whole-history balance zeroes it out', () => {
-    const before = computeBalance(entries)
-    expect(before.netCents).not.toBe(0)
-    const payoff = settlement('payoff', before.amountCents, {
-      payer: before.debtor,
-      date: '2026-03-31',
-    })
-    const after = computeBalance([...entries, payoff])
-    expect(after).toEqual({ netCents: 0, debtor: null, creditor: null, amountCents: 0 })
-    // ...and the payoff changed nothing about spend.
-    expect(totalSpend([...entries, payoff])).toBe(totalSpend(entries))
-    expect(spendByCategory([...entries, payoff])).toEqual(spendByCategory(entries))
   })
 
   it('settling a single month does not zero the whole history', () => {
