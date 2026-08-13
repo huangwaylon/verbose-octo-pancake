@@ -538,9 +538,9 @@ describe('monthKeysPresent', () => {
   it('skips blank dates and deleted entries and returns [] for nothing', () => {
     expect(monthKeysPresent([])).toEqual([])
     expect(monthKeysPresent([expense('a', 100, { date: '' })])).toEqual([])
-    expect(
-      monthKeysPresent([expense('a', 100, { date: '2026-05-01', deletedAt: 'x' })]),
-    ).toEqual([])
+    expect(monthKeysPresent([expense('a', 100, { date: '2026-05-01', deletedAt: 'x' })])).toEqual(
+      [],
+    )
   })
 
   it('every returned key selects at least one entry', () => {

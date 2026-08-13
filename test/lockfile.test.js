@@ -44,9 +44,7 @@ describe('package-lock.json', () => {
   })
 
   it('records a resolved URL for every package', () => {
-    const missing = entries
-      .filter(([, meta]) => !meta.link && !meta.resolved)
-      .map(([name]) => name)
+    const missing = entries.filter(([, meta]) => !meta.link && !meta.resolved).map(([name]) => name)
 
     expect(
       missing,

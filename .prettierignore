@@ -1,0 +1,15 @@
+# The gate is JavaScript only, on purpose.
+#
+# The four stylesheets are hand-tuned — grouped selectors, aligned comments carrying
+# measured contrast ratios, deliberate blank-line rhythm between sections — and the
+# three docs are hand-wrapped prose where a reflow would rewrite every paragraph and
+# bury the next real edit. Neither is where formatting drift has ever hurt; a lost
+# run inside JSX is.
+*.css
+*.md
+*.json
+*.html
+*.gs
+dist/
+node_modules/
+scripts/preview-*.html

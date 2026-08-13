@@ -208,6 +208,5 @@ export default {
   'error.missingCategory': 'Pick a category.',
   'error.missingCurrency': 'This sheet has no currency set in its config tab.',
   'warning.staleData': 'Showing saved data — could not reach the sheet.',
-  'warning.mixedCurrencies':
-    'Some entries use a different currency, so totals may be wrong.',
+  'warning.mixedCurrencies': 'Some entries use a different currency, so totals may be wrong.',
 }

@@ -9,7 +9,9 @@
     "build": "vite build && node scripts/build-sw.js",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "format": "prettier --write \"**/*.{js,jsx}\"",
+    "format:check": "prettier --check \"**/*.{js,jsx}\""
   },
   "dependencies": {
     "react": "^19.1.0",
@@ -17,6 +19,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.0.0",
+    "prettier": "^3.9.6",
     "vite": "^7.0.0",
     "vitest": "^3.2.0"
   }

@@ -3,7 +3,13 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { DEFAULT_CONFIG } from '../src/config.js'
 import { ENTRY_TYPE, EVEN_SHARE, PERSON, makeEntry } from '../src/schema.js'
-import { computeBalance, groupByDate, spendByCategory, spendByPerson, totalSpend } from '../src/lib/balance.js'
+import {
+  computeBalance,
+  groupByDate,
+  spendByCategory,
+  spendByPerson,
+  totalSpend,
+} from '../src/lib/balance.js'
 import { currentMonthKey } from '../src/lib/dates.js'
 import { BalanceCard } from '../src/components/BalanceCard.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
@@ -130,8 +136,12 @@ describe('toasts render', () => {
         ]}
       />,
     )
-    expect(markup).toMatch(/role="status"[^>]*aria-live="polite"|aria-live="polite"[^>]*role="status"/)
-    expect(markup).toMatch(/role="alert"[^>]*aria-live="assertive"|aria-live="assertive"[^>]*role="alert"/)
+    expect(markup).toMatch(
+      /role="status"[^>]*aria-live="polite"|aria-live="polite"[^>]*role="status"/,
+    )
+    expect(markup).toMatch(
+      /role="alert"[^>]*aria-live="assertive"|aria-live="assertive"[^>]*role="alert"/,
+    )
     // The urgency belongs to the individual toast, not the stack: one shared
     // region cannot be polite and assertive at once.
     expect(markup).toContain('class="toast-stack"')
@@ -276,12 +286,7 @@ describe('entry list renders', () => {
 describe('chrome renders', () => {
   it('renders the header with both names', () => {
     const markup = renderToStaticMarkup(
-      <Header
-        config={config}
-        me={PERSON.P1}
-        onRefresh={noop}
-        onOpenSettings={noop}
-      />,
+      <Header config={config} me={PERSON.P1} onRefresh={noop} onOpenSettings={noop} />,
     )
     expect(markup).toContain('You')
     expect(markup).toContain('Sam')

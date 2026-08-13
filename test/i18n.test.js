@@ -232,15 +232,9 @@ describe('engine', () => {
   })
 
   it('selects English plurals by count', () => {
-    expect(translate('en', 'settings.removeRows', { count: 1 })).toBe(
-      'Permanently remove 1 row',
-    )
-    expect(translate('en', 'settings.removeRows', { count: 2 })).toBe(
-      'Permanently remove 2 rows',
-    )
-    expect(translate('en', 'settings.removeRows', { count: 0 })).toBe(
-      'Permanently remove 0 rows',
-    )
+    expect(translate('en', 'settings.removeRows', { count: 1 })).toBe('Permanently remove 1 row')
+    expect(translate('en', 'settings.removeRows', { count: 2 })).toBe('Permanently remove 2 rows')
+    expect(translate('en', 'settings.removeRows', { count: 0 })).toBe('Permanently remove 0 rows')
   })
 
   it('uses the single Japanese cardinal form for every count', () => {

@@ -204,13 +204,27 @@ describe('schema rows carry their own currency', () => {
 
   it('writes each row back at its own scale', () => {
     const jpy = makeEntry(
-      { id: 'a', date: '2026-08-05', payer: 'p1', amountCents: 1250, currency: 'JPY', category: 'x' },
+      {
+        id: 'a',
+        date: '2026-08-05',
+        payer: 'p1',
+        amountCents: 1250,
+        currency: 'JPY',
+        category: 'x',
+      },
       '2026-08-05T00:00:00.000Z',
     )
     expect(entryToRow(jpy)[3]).toBe('1250')
 
     const usd = makeEntry(
-      { id: 'b', date: '2026-08-05', payer: 'p1', amountCents: 4210, currency: 'USD', category: 'x' },
+      {
+        id: 'b',
+        date: '2026-08-05',
+        payer: 'p1',
+        amountCents: 4210,
+        currency: 'USD',
+        category: 'x',
+      },
       '2026-08-05T00:00:00.000Z',
     )
     expect(entryToRow(usd)[3]).toBe('42.10')

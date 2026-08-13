@@ -147,8 +147,7 @@ export default {
 
   // --- gates ----------------------------------------------------------------
   'gate.unconfiguredTitle': '設定が未完了です',
-  'gate.unconfiguredBody':
-    'このビルドには{scriptUrl}がありません。ビルド時に設定する公開値です。',
+  'gate.unconfiguredBody': 'このビルドには{scriptUrl}がありません。ビルド時に設定する公開値です。',
   'gate.unconfiguredFollow':
     '{setup}に従ってトークン用のエンドポイントを配置し、その URL をローカル開発では{env}に、GitHub Pages ではリポジトリ変数に設定してください。',
   'gate.keyLabel': 'アプリキー',
@@ -171,7 +170,8 @@ export default {
   'error.readSheet': 'シートを読み込めませんでした。',
   'error.entryGone': 'この項目はもうシートにありません。更新して最新の状態を確認してください。',
   'error.missingTabs': 'シートに支出タブが見つかりませんでした。',
-  'error.badKey': 'このアプリキーは受け付けられませんでした。確認するか、今のキーを聞いてください。',
+  'error.badKey':
+    'このアプリキーは受け付けられませんでした。確認するか、今のキーを聞いてください。',
   'error.keyRequired': 'アプリキーを入力してください。',
   'error.offline': 'シートにつながりませんでした。通信を確認してもう一度お試しください。',
   'error.scriptUnavailable':

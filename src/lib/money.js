@@ -31,9 +31,24 @@ const MAX_INT_DIGITS = 13
  * forever, and `Intl.NumberFormat().resolvedOptions()` would tie the stored
  * format to the browser's ICU version.
  */
+// prettier-ignore — eight codes a line is a table, not a list of sixteen things.
 const ZERO_DECIMAL = new Set([
-  'BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW',
-  'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
+  'BIF',
+  'CLP',
+  'DJF',
+  'GNF',
+  'ISK',
+  'JPY',
+  'KMF',
+  'KRW',
+  'PYG',
+  'RWF',
+  'UGX',
+  'VND',
+  'VUV',
+  'XAF',
+  'XOF',
+  'XPF',
 ])
 const THREE_DECIMAL = new Set(['BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND'])
 

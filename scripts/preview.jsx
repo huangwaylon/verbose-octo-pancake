@@ -133,12 +133,7 @@ function body(confirming) {
         <PlusIcon width={24} height={24} />
       </button>
       {confirming && (
-        <ConfirmDeleteSheet
-          entry={confirming}
-          currency="JPY"
-          onConfirm={noop}
-          onClose={noop}
-        />
+        <ConfirmDeleteSheet entry={confirming} currency="JPY" onConfirm={noop} onClose={noop} />
       )}
     </div>,
   )
@@ -169,17 +164,15 @@ for (const [locale, accents] of [
 ]) {
   setLocale(locale)
   for (const accent of accents) {
-    const name = accent === ACCENTS[0] ? `preview-${locale}.html` : `preview-${locale}-${accent}.html`
+    const name =
+      accent === ACCENTS[0] ? `preview-${locale}.html` : `preview-${locale}-${accent}.html`
     writeFileSync(new URL(`./${name}`, import.meta.url), page(body(), locale, accent))
     written.push(`scripts/${name}`)
   }
   // Its own page in both languages: the dialog covers the surface it sits on,
   // and its copy is the longest sentence in either catalog.
   const name = `preview-${locale}-confirm.html`
-  writeFileSync(
-    new URL(`./${name}`, import.meta.url),
-    page(body(entries[0]), locale, ACCENTS[0]),
-  )
+  writeFileSync(new URL(`./${name}`, import.meta.url), page(body(entries[0]), locale, ACCENTS[0]))
   written.push(`scripts/${name}`)
 }
 console.log(`wrote ${written.join(', ')}`)

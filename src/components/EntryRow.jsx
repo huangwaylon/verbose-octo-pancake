@@ -64,9 +64,7 @@ export function EntryRow({ entry, label, currency, onEdit, onDelete }) {
         type="button"
         className="btn btn--icon entry__delete"
         onClick={() => onDelete(entry)}
-        aria-label={
-          isSettlement ? t('entry.deleteSettlement') : t('entry.delete', { description })
-        }
+        aria-label={isSettlement ? t('entry.deleteSettlement') : t('entry.delete', { description })}
       >
         <TrashIcon width={18} height={18} />
       </button>

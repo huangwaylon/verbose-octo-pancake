@@ -50,10 +50,7 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
               amount2: money(paid2),
             })}
           >
-            <span
-              className="summary__meter-fill"
-              style={{ flexGrow: paid1, flexBasis: 0 }}
-            />
+            <span className="summary__meter-fill" style={{ flexGrow: paid1, flexBasis: 0 }} />
             <span
               className="summary__meter-fill summary__meter-fill--other"
               style={{ flexGrow: paid2, flexBasis: 0 }}
@@ -69,7 +66,9 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
                 }`}
                 aria-hidden="true"
               />
-              <span className="summary__person-name">{t('common.paid', { name: label(person) })}</span>
+              <span className="summary__person-name">
+                {t('common.paid', { name: label(person) })}
+              </span>
               <span className="summary__person-amount tnum">
                 {money(byPerson[person] ?? 0, { trimZeroCents: true })}
               </span>

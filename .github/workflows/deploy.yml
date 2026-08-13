@@ -55,6 +55,11 @@ jobs:
           path: /tmp/npm-logs
           if-no-files-found: ignore
 
+      # JavaScript only, and the same command a developer runs. A lost format run
+      # once left 18 spaces inside JSX, which is a real text node in the output.
+      - name: Check formatting
+        run: npm run format:check
+
       - name: Run tests
         run: npm test
 

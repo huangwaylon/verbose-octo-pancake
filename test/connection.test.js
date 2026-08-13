@@ -17,10 +17,11 @@ import { installStorage, removeStorage } from './support/storage.js'
 const URL_STUB = 'https://script.google.com/macros/s/TEST/exec'
 const SHEET_ID = '1YtlEVCcCFxy929_7GewjZew3VF0sSgBiLspTFNZeeUw'
 
-
 /** Whatever ContentService would have sent: always HTTP 200, body is the signal. */
 const reply = (payload) => ({ text: async () => JSON.stringify(payload) })
-const htmlReply = () => ({ text: async () => '<!DOCTYPE html><html>Service invoked too many times' })
+const htmlReply = () => ({
+  text: async () => '<!DOCTYPE html><html>Service invoked too many times',
+})
 
 const ok = () => reply({ token: 'ya29.token', spreadsheetId: SHEET_ID })
 
@@ -148,7 +149,10 @@ describe('telling a bad key from a bad connection', () => {
   })
 
   it('rejects a reply with no usable sheet id rather than persisting "null"', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply({ token: 'ya29.x', spreadsheetId: null })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(reply({ token: 'ya29.x', spreadsheetId: null })),
+    )
 
     const c = await load({ 'sf.appKey': 'k' })
     await expect(c.getAccessToken()).rejects.toMatchObject({
@@ -223,7 +227,10 @@ describe('the persisted token', () => {
       'sf.appKey': 'k',
       // Four minutes left, inside the five-minute margin: a request starting now
       // could still arrive after expiry.
-      'sf.token': JSON.stringify({ accessToken: 'nearly-dead', expiresAt: Date.now() + 4 * 60_000 }),
+      'sf.token': JSON.stringify({
+        accessToken: 'nearly-dead',
+        expiresAt: Date.now() + 4 * 60_000,
+      }),
     })
     expect(await c.getAccessToken()).toBe('ya29.token')
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -254,7 +261,10 @@ describe('connect and forget', () => {
   it('keeps a previously working key when a new one is rejected', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockResolvedValueOnce(ok()).mockResolvedValue(reply({ error: 'unauthorized' })),
+      vi
+        .fn()
+        .mockResolvedValueOnce(ok())
+        .mockResolvedValue(reply({ error: 'unauthorized' })),
     )
 
     const c = await load({ 'sf.appKey': 'good' })

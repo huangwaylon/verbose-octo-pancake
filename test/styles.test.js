@@ -65,15 +65,18 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
     expect(declares(FILES.app, selector, 'color')).toBe(true)
   })
 
-  it.each(['.segmented__option input', '.swatch input'])('%s stays hidden but focusable', (selector) => {
-    const css = FILES.primitives
-    expect(declares(css, selector, 'position')).toBe(true)
-    expect(declares(css, selector, 'opacity')).toBe(true)
-    // `display: none` or `visibility: hidden` would take the radio out of the
-    // focus order, and the label's focus ring with it.
-    expect(declares(css, selector, 'display')).toBe(false)
-    expect(declares(css, selector, 'visibility')).toBe(false)
-  })
+  it.each(['.segmented__option input', '.swatch input'])(
+    '%s stays hidden but focusable',
+    (selector) => {
+      const css = FILES.primitives
+      expect(declares(css, selector, 'position')).toBe(true)
+      expect(declares(css, selector, 'opacity')).toBe(true)
+      // `display: none` or `visibility: hidden` would take the radio out of the
+      // focus order, and the label's focus ring with it.
+      expect(declares(css, selector, 'display')).toBe(false)
+      expect(declares(css, selector, 'visibility')).toBe(false)
+    },
+  )
 })
 
 describe('rules the docs promise', () => {

@@ -99,7 +99,9 @@ function detectLocale() {
   const preferences =
     (typeof navigator !== 'undefined' && (navigator.languages || [navigator.language])) || []
   for (const tag of preferences) {
-    const base = String(tag ?? '').toLowerCase().split('-')[0]
+    const base = String(tag ?? '')
+      .toLowerCase()
+      .split('-')[0]
     if (SUPPORTED.includes(base)) return base
   }
   return DEFAULT_LOCALE
@@ -235,9 +237,7 @@ export function useEntryTitle() {
 export function useMoney(currency) {
   const { locale } = useT()
   return useMemo(
-    () =>
-      (cents, opts) =>
-        formatCents(cents, currency, { locale, ...opts }),
+    () => (cents, opts) => formatCents(cents, currency, { locale, ...opts }),
     [locale, currency],
   )
 }

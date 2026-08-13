@@ -127,10 +127,12 @@ export function spendByCategory(entries) {
     const key = entry.category || UNCATEGORIZED
     totals.set(key, (totals.get(key) ?? 0) + entry.amountCents)
   }
-  return [...totals.entries()]
-    .map(([category, totalCents]) => ({ category, totalCents }))
-    // Ties broken by name so the order is stable across reloads.
-    .sort((a, b) => b.totalCents - a.totalCents || a.category.localeCompare(b.category))
+  return (
+    [...totals.entries()]
+      .map(([category, totalCents]) => ({ category, totalCents }))
+      // Ties broken by name so the order is stable across reloads.
+      .sort((a, b) => b.totalCents - a.totalCents || a.category.localeCompare(b.category))
+  )
 }
 
 /**

@@ -67,10 +67,7 @@ function notify() {
 }
 
 function persistToken() {
-  writeStored(
-    STORAGE_KEYS.token,
-    accessToken ? JSON.stringify({ accessToken, expiresAt }) : null,
-  )
+  writeStored(STORAGE_KEYS.token, accessToken ? JSON.stringify({ accessToken, expiresAt }) : null)
 }
 
 function discardToken() {

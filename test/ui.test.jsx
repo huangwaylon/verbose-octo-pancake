@@ -6,7 +6,13 @@ import { DEFAULT_CONFIG } from '../src/config.js'
 import { DEFAULT_LOCALE } from '../src/i18n/catalogs.js'
 import { setLocale } from '../src/i18n/index.js'
 import { ENTRY_TYPE, EVEN_SHARE, PERSON, makeEntry } from '../src/schema.js'
-import { computeBalance, groupByDate, spendByCategory, spendByPerson, totalSpend } from '../src/lib/balance.js'
+import {
+  computeBalance,
+  groupByDate,
+  spendByCategory,
+  spendByPerson,
+  totalSpend,
+} from '../src/lib/balance.js'
 import { DonutChart, MAX_SLICES, foldTail } from '../src/components/DonutChart.jsx'
 import { BalanceCard } from '../src/components/BalanceCard.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
@@ -141,7 +147,18 @@ describe('DonutChart', () => {
 })
 
 describe('entry form: presets and default split', () => {
-  const draft = (entry) => ({ mode: 'add', entry: { type: ENTRY_TYPE.EXPENSE, date: '2026-08-05', payer: PERSON.P1, amountCents: 0, category: '', description: '', ...entry } })
+  const draft = (entry) => ({
+    mode: 'add',
+    entry: {
+      type: ENTRY_TYPE.EXPENSE,
+      date: '2026-08-05',
+      payer: PERSON.P1,
+      amountCents: 0,
+      category: '',
+      description: '',
+      ...entry,
+    },
+  })
 
   const render = (cfg, entry) =>
     renderToStaticMarkup(
@@ -302,7 +319,10 @@ describe('deleted entries list', () => {
   })
 
   it('offers a restore control per entry, each naming its own entry', () => {
-    const markup = render([removed('a', { description: 'Ozeki' }), removed('b', { description: 'Life' })])
+    const markup = render([
+      removed('a', { description: 'Ozeki' }),
+      removed('b', { description: 'Life' }),
+    ])
     expect(markup.match(/Restore/g).length).toBeGreaterThanOrEqual(2)
     expect(markup).toContain('aria-label="Restore Ozeki"')
     expect(markup).toContain('aria-label="Restore Life"')

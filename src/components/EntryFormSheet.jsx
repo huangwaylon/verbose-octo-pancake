@@ -145,9 +145,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
           options={PEOPLE.map((person) => [person, label(person)])}
           onChange={setPayer}
           hint={
-            isSettlement
-              ? t('form.settlementHint', { payer: payerLabel, other: otherLabel })
-              : null
+            isSettlement ? t('form.settlementHint', { payer: payerLabel, other: otherLabel }) : null
           }
         />
 
@@ -184,11 +182,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
               </select>
             </div>
 
-            <NoteField
-              value={description}
-              presets={config.notePresets}
-              onChange={setDescription}
-            />
+            <NoteField value={description} presets={config.notePresets} onChange={setDescription} />
 
             <SplitField
               split={split}
