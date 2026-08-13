@@ -96,7 +96,7 @@ function body(confirming) {
 
   return renderToStaticMarkup(
     <div className="app">
-      <Header config={config} me={PERSON.P1} status="ready" onRefresh={noop} onOpenSettings={noop} />
+      <Header config={config} me={PERSON.P1} onRefresh={noop} onOpenSettings={noop} />
       <main className="layout">
         <aside className="layout__aside">
           <BalanceCard balance={balance} config={config} me={PERSON.P1} currency="JPY" />
@@ -116,7 +116,6 @@ function body(confirming) {
             config={config}
             me={PERSON.P1}
             currency="JPY"
-            status="ready"
             onEdit={noop}
             onDelete={noop}
             onAdd={noop}

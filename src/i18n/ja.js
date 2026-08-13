@@ -27,6 +27,9 @@ export default {
   'common.close': '閉じる',
   'common.retry': 'もう一度試す',
   'common.optional': '任意',
+  'common.paid': '{name}の支払い',
+  'common.whoPaid': '支払った人',
+  'common.notePresets': 'よく使うメモ',
   'common.peopleSeparator': '・',
 
   'header.refresh': 'シートから再読み込み',
@@ -43,12 +46,11 @@ export default {
 
   // --- month summary --------------------------------------------------------
   'summary.title': '今月',
-  'summary.paid': '{name}の支払い',
   'summary.byCategory': 'カテゴリー別',
-  'summary.whoPaid': '支払った人',
   'summary.uncategorized': '未分類',
   'summary.other': 'その他',
   'summary.chartLabel': 'カテゴリー別の支出',
+  'summary.meterLabel': '{name1}{amount1}、{name2}{amount2}',
   'summary.share': '{percent}%',
 
   // --- dates ----------------------------------------------------------------
@@ -57,14 +59,12 @@ export default {
   'date.none': '日付なし',
 
   // --- entry list -----------------------------------------------------------
-  'list.loading': '読み込み中',
   'list.emptyTitle': '今月の記録はまだありません',
   'list.emptyText': '買い物やふたりで食べた食事を追加しましょう。',
   'list.emptyAction': '支出を追加',
 
   'entry.expense': '支出',
   'entry.settled': '精算',
-  'entry.paid': '{name}の支払い',
   'entry.paidCategory': '{name}の支払い・{category}',
   'entry.settlementMeta': '{payer}が{other}に支払い',
   'entry.onlyPerson': '{name}のみ',
@@ -91,18 +91,13 @@ export default {
   // --- add / edit form ------------------------------------------------------
   'form.addTitle': '支出を追加',
   'form.editTitle': '支出を編集',
-  'form.settleTitle': '精算する',
   'form.amount': '金額',
-  'form.amountPlaceholder': '0',
   'form.amountError': '{example}のように金額を入力してください',
-  'form.whoPaid': '支払った人',
-  'form.paidBy': '支払った人',
   'form.settlementHint': '{payer}が{other}に返したことを記録します。',
   'form.date': '日付',
   'form.category': 'カテゴリー',
   'form.note': 'メモ',
   'form.notePlaceholder': 'いつもの買い物',
-  'form.notePresets': 'よく使うメモ',
   'form.split': '分担',
   'form.splitEven': '半分ずつ',
   'form.splitCustom': 'カスタム',
@@ -134,7 +129,6 @@ export default {
   'settings.defaultSplitValue': '{name}が支払ったとき、{name}の負担は{percent}%',
   'settings.defaultSplitHint':
     '新しい記録での、その人自身の負担です。configタブのdefault_split_p1とdefault_split_p2で設定します。',
-  'settings.notePresets': 'よく使うメモ',
   'settings.notePresetsEmpty': 'まだありません。configタブに{key}の行を追加してください。',
   'settings.configHint':
     'これらはシートの{tab}タブから読み込まれます。変更したらタブを編集して再読み込みしてください。',
@@ -162,7 +156,6 @@ export default {
   'gate.connect': 'つなぐ',
   'gate.keyFine':
     'この端末にのみ保存され、次回から聞かれることはありません。同じキーをふたりの端末に入れます。Google のログインはなく、期限切れもありません。',
-  'gate.keyRejected': 'このキーは受け付けられませんでした。確認するか、今のキーを聞いてください。',
   'gate.identityTitle': 'あなたはどちらですか？',
   'gate.identityBody':
     '名前ではなく「あなた」と表示するために使います。この端末にのみ保存されます。',
@@ -178,7 +171,7 @@ export default {
   'error.readSheet': 'シートを読み込めませんでした。',
   'error.entryGone': 'この項目はもうシートにありません。更新して最新の状態を確認してください。',
   'error.missingTabs': 'シートに支出タブが見つかりませんでした。',
-  'error.badKey': 'このアプリキーは受け付けられませんでした。',
+  'error.badKey': 'このアプリキーは受け付けられませんでした。確認するか、今のキーを聞いてください。',
   'error.keyRequired': 'アプリキーを入力してください。',
   'error.offline': 'シートにつながりませんでした。通信を確認してもう一度お試しください。',
   'error.scriptUnavailable':

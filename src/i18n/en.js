@@ -30,6 +30,11 @@ export default {
   'common.close': 'Close',
   'common.retry': 'Try again',
   'common.optional': 'optional',
+  // Shared by the list row's meta line and the summary's per-person figure:
+  // one sentence, so a translator writes it once.
+  'common.paid': '{name} paid',
+  'common.whoPaid': 'Who paid',
+  'common.notePresets': 'Frequent notes',
   // Joins the two names in the header. A separator, so it is a translation
   // decision: ' & ' in English, a nakaguro in Japanese.
   'common.peopleSeparator': ' & ',
@@ -48,12 +53,12 @@ export default {
 
   // --- month summary --------------------------------------------------------
   'summary.title': 'This month',
-  'summary.paid': '{name} paid',
   'summary.byCategory': 'By category',
-  'summary.whoPaid': 'Who paid',
   'summary.uncategorized': 'Uncategorized',
   'summary.other': 'Other',
   'summary.chartLabel': 'Spending by category',
+  // The meter is a role="img", so this sentence IS the chart for a screen reader.
+  'summary.meterLabel': '{name1} {amount1} / {name2} {amount2}',
   'summary.share': '{percent}%',
 
   // --- dates ----------------------------------------------------------------
@@ -65,14 +70,12 @@ export default {
   'date.none': 'No date',
 
   // --- entry list -----------------------------------------------------------
-  'list.loading': 'Loading expenses',
   'list.emptyTitle': 'Nothing logged this month',
   'list.emptyText': 'Add a grocery run or a meal you split.',
   'list.emptyAction': 'Add an expense',
 
   'entry.expense': 'Expense',
   'entry.settled': 'Settled up',
-  'entry.paid': '{name} paid',
   'entry.paidCategory': '{name} paid · {category}',
   'entry.settlementMeta': '{payer} paid {other}',
   'entry.onlyPerson': '{name} only',
@@ -104,18 +107,13 @@ export default {
   // --- add / edit form ------------------------------------------------------
   'form.addTitle': 'Add expense',
   'form.editTitle': 'Edit expense',
-  'form.settleTitle': 'Settle up',
   'form.amount': 'Amount',
-  'form.amountPlaceholder': '0',
   'form.amountError': 'Enter an amount, like {example}',
-  'form.whoPaid': 'Who paid',
-  'form.paidBy': 'Paid by',
   'form.settlementHint': 'Records that {payer} paid {other} back.',
   'form.date': 'Date',
   'form.category': 'Category',
   'form.note': 'Note',
   'form.notePlaceholder': 'Weekly shop',
-  'form.notePresets': 'Frequent notes',
   'form.split': 'Split',
   'form.splitEven': 'Even',
   'form.splitCustom': 'Custom',
@@ -151,7 +149,6 @@ export default {
   'settings.defaultSplitValue': '{name} covers {percent}% of what they pay for',
   'settings.defaultSplitHint':
     'Each person’s own share on a new expense. Set default_split_p1 and default_split_p2 in the config tab.',
-  'settings.notePresets': 'Frequent notes',
   'settings.notePresetsEmpty': 'None yet — add a {key} row to the config tab.',
   'settings.configHint':
     'These come from the {tab} tab of your sheet. Edit them there and refresh.',
@@ -180,8 +177,7 @@ export default {
   'gate.keyPlaceholder': 'Paste your app key',
   'gate.connect': 'Connect',
   'gate.keyFine':
-    'Stored on this device only, and you will not be asked again. The same key goes on both phones, and nothing expires.',
-  'gate.keyRejected': 'That key was rejected. Check it, or ask for the current one.',
+    'Stored on this device only, and you will not be asked again. The same key goes on both phones. There is no Google sign-in, and nothing expires.',
   'gate.identityTitle': 'Which one are you?',
   'gate.identityBody': 'So the app can say “you” instead of a name. Stored on this device only.',
   'gate.identityFine': 'Set both names in the {tab} tab of your sheet if these look wrong.',
@@ -196,7 +192,9 @@ export default {
   'error.readSheet': 'Could not read the sheet.',
   'error.entryGone': 'That entry is no longer in the sheet. Refresh to see the latest data.',
   'error.missingTabs': 'Could not find the expenses tabs in the sheet.',
-  'error.badKey': 'That app key was rejected.',
+  // Both paths that report a bad key end here: the reply to a just-typed key,
+  // and the notice on a later launch that still holds a rejected one.
+  'error.badKey': 'That app key was rejected. Check it, or ask for the current one.',
   'error.keyRequired': 'Enter your app key.',
   'error.offline': 'Could not reach the sheet. Check your connection and try again.',
   'error.scriptUnavailable': 'The sheet service is busy or unavailable. Try again in a moment.',

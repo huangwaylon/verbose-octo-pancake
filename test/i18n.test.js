@@ -24,11 +24,10 @@ const OTHER_LOCALES = SUPPORTED.filter((tag) => tag !== DEFAULT_LOCALE)
 
 /** Keys whose translation is legitimately identical to the English. */
 const SAME_IN_BOTH = new Set([
-  // A percent sign and a bare "0" are the same string in both languages. They
-  // stay in the catalog rather than being inlined so the *placement* of the
-  // symbol remains a translation decision.
+  // A percent sign is the same string in both languages. It stays in the catalog
+  // rather than being inlined so the *placement* of the symbol remains a
+  // translation decision.
   'summary.share',
-  'form.amountPlaceholder',
 ])
 
 function placeholdersIn(value) {
@@ -58,6 +57,9 @@ describe('catalog parity', () => {
     expect(mismatched).toEqual([])
   })
 
+  // Sets, not occurrence counts: Japanese sentence order legitimately repeats a
+  // name English uses once (`settings.defaultSplitValue`). What must never differ
+  // is *which* placeholders exist.
   it.each(OTHER_LOCALES)('%s interpolates exactly the same placeholders', (tag) => {
     const drifted = []
     for (const key of Object.keys(CATALOGS[DEFAULT_LOCALE])) {

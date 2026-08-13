@@ -1,13 +1,14 @@
 import { ENTRY_TYPE, EVEN_SHARE, otherPerson } from '../schema.js'
-import { useEntryTitle, usePeopleLabels, useMoney, useT } from '../i18n/index.js'
+import { useEntryTitle, useT } from '../i18n/index.js'
+import { EntryAmount } from './EntryAmount.jsx'
 import { SwapIcon, TrashIcon } from './icons.jsx'
 
-export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
+/**
+ * One row in the month's list. `label` arrives from the list rather than being
+ * derived here, so a long month resolves the two names once instead of per row.
+ */
+export function EntryRow({ entry, label, currency, onEdit, onDelete }) {
   const { t } = useT()
-  // The entry's own currency wins: a sheet holding rows from before a currency
-  // change is only rendered correctly per row.
-  const money = useMoney(entry.currency || currency)
-  const { label } = usePeopleLabels(config, me)
   const description = useEntryTitle()(entry)
 
   const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
@@ -25,18 +26,17 @@ export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
     })
   }
 
-  const separator = t('entry.metaSeparator')
   const note = splitNote()
   const meta = isSettlement
     ? t('entry.settlementMeta', { payer: payerLabel, other: otherLabel })
     : [
         entry.description && entry.category
           ? t('entry.paidCategory', { name: payerLabel, category: entry.category })
-          : t('entry.paid', { name: payerLabel }),
+          : t('common.paid', { name: payerLabel }),
         note,
       ]
         .filter(Boolean)
-        .join(separator)
+        .join(t('entry.metaSeparator'))
 
   return (
     <li
@@ -58,18 +58,14 @@ export function EntryRow({ entry, config, me, currency, onEdit, onDelete }) {
         <span className="entry__meta">{meta}</span>
       </button>
 
-      <span className="entry__amount tnum">
-        {money(entry.amountCents, { trimZeroCents: true })}
-      </span>
+      <EntryAmount entry={entry} currency={currency} />
 
       <button
         type="button"
         className="btn btn--icon entry__delete"
         onClick={() => onDelete(entry)}
         aria-label={
-          isSettlement
-            ? t('entry.deleteSettlement')
-            : t('entry.delete', { description })
+          isSettlement ? t('entry.deleteSettlement') : t('entry.delete', { description })
         }
       >
         <TrashIcon width={18} height={18} />

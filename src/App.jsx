@@ -1,18 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useConnection } from './state/useConnection.js'
 import { useLedger } from './state/useLedger.js'
+import { useLedgerView, useInitialMonth } from './state/useLedgerView.js'
 import { useToasts } from './state/useToasts.js'
-import { ENTRY_TYPE, PERSON, isActive } from './schema.js'
-import {
-  computeBalance,
-  deletedEntries,
-  filterByMonth,
-  groupByDate,
-  monthKeysPresent,
-  spendByCategory,
-  spendByPerson,
-  totalSpend,
-} from './lib/balance.js'
+import { ENTRY_TYPE, PERSON } from './schema.js'
 import { currentMonthKey, todayIso } from './lib/dates.js'
 import { useT } from './i18n/index.js'
 import { readStoredIdentity, storeIdentity } from './lib/identity.js'
@@ -49,47 +40,14 @@ export default function App() {
   const [pendingDelete, setPendingDelete] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
 
-  // Nothing can tell us who is signed in any more — the token belongs to the
-  // account that owns the sheet, not to either person — so identity is purely
-  // this device's own choice.
+  // Nothing can tell us who is signed in — the token belongs to the account that
+  // owns the sheet, not to either person — so identity is this device's own choice.
   const me = identityChoice
-  const currency = ledger.config.currency
+  const config = ledger.config
+  const currency = config.currency
 
-  const active = useMemo(() => ledger.entries.filter(isActive), [ledger.entries])
-  // Month-scoped, like the list it sits under. The sheet-wide count that
-  // `compact` acts on is `ledger.tombstoneCount`, which is a different number.
-  const deleted = useMemo(
-    () => deletedEntries(ledger.entries, monthKey),
-    [ledger.entries, monthKey],
-  )
-  const balance = useMemo(() => computeBalance(active), [active])
-  const monthEntries = useMemo(() => filterByMonth(active, monthKey), [active, monthKey])
-  const groups = useMemo(() => groupByDate(monthEntries), [monthEntries])
-  const monthSpend = useMemo(() => totalSpend(monthEntries), [monthEntries])
-  const byCategory = useMemo(() => spendByCategory(monthEntries), [monthEntries])
-  const byPerson = useMemo(() => spendByPerson(monthEntries), [monthEntries])
-
-  // Aggregates sum integers across currencies with different scales, which is
-  // arithmetically meaningless, and there are no FX rates anywhere in this app.
-  // Say so rather than presenting a confident wrong total.
-  const mixedCurrencies = useMemo(
-    () => active.some((entry) => entry.currency && entry.currency !== ledger.config.currency),
-    [active, ledger.config.currency],
-  )
-
-  // Land on the newest month that actually has data, so a sheet whose last
-  // entry was a while ago does not open on an empty screen. Runs on the cached
-  // paint too ('stale'), which is the point: waiting for 'ready' would move the
-  // month out from under someone who had already started using MonthNav.
-  const jumped = useRef(false)
-  useEffect(() => {
-    if (jumped.current) return
-    if (ledger.status !== 'ready' && ledger.status !== 'stale') return
-    if (!active.length) return
-    jumped.current = true
-    const months = monthKeysPresent(active)
-    if (months.length && !months.includes(currentMonthKey())) setMonthKey(months[0])
-  }, [ledger.status, active])
+  const view = useLedgerView(ledger.entries, currency, monthKey)
+  useInitialMonth(ledger.status, view.active, setMonthKey)
 
   const setMe = useCallback((person) => {
     storeIdentity(person)
@@ -102,14 +60,13 @@ export default function App() {
     setSafeToReload(() => !draft && !ledger.entries.some((entry) => entry.pending))
   }, [draft, ledger.entries])
 
-  const openAdd = useCallback(() => {
-    const payer = me ?? PERSON.P1
+  const openAdd = () =>
     setDraft({
       mode: 'add',
       entry: {
         type: ENTRY_TYPE.EXPENSE,
         date: todayIso(),
-        payer,
+        payer: me ?? PERSON.P1,
         amountCents: 0,
         category: '',
         description: '',
@@ -119,45 +76,38 @@ export default function App() {
         payerShare: null,
       },
     })
-  }, [me])
 
-  const openEdit = useCallback((entry) => setDraft({ mode: 'edit', entry }), [])
-  const closeDraft = useCallback(() => setDraft(null), [])
+  const submitDraft = (input) =>
+    draft.mode === 'edit' ? ledger.editEntry(input) : ledger.addEntry(input)
 
-  const submitDraft = useCallback(
-    (input) => (draft.mode === 'edit' ? ledger.editEntry(input) : ledger.addEntry(input)),
-    [draft, ledger],
-  )
+  /**
+   * The two write paths that report to a toast. `useLedger` has already reverted
+   * the optimistic change by the time either catch runs, so there is nothing to
+   * undo here — only something to say.
+   */
+  const removeEntry = async (entry) => {
+    setPendingDelete(null)
+    try {
+      await ledger.removeEntry(entry.id, entry.payer)
+      toasts.push({ message: t('toast.deleted') })
+    } catch (cause) {
+      toasts.error(cause.message || t('toast.deleteFailed'))
+    }
+  }
 
-  const removeEntry = useCallback(
-    async (entry) => {
-      setPendingDelete(null)
-      try {
-        await ledger.removeEntry(entry.id, entry.payer)
-        toasts.push({ message: t('toast.deleted') })
-      } catch (cause) {
-        toasts.error(cause.message || t('toast.deleteFailed'))
-      }
-    },
-    [ledger, toasts, t],
-  )
+  const restoreEntry = async (entry) => {
+    try {
+      await ledger.restoreEntry(entry.id, entry.payer)
+      toasts.push({ message: t('toast.restored') })
+    } catch (cause) {
+      toasts.error(cause.message || t('toast.restoreFailed'))
+    }
+  }
 
-  const restoreEntry = useCallback(
-    async (entry) => {
-      try {
-        await ledger.restoreEntry(entry.id, entry.payer)
-        toasts.push({ message: t('toast.restored') })
-      } catch (cause) {
-        toasts.error(cause.message || t('toast.restoreFailed'))
-      }
-    },
-    [ledger, toasts, t],
-  )
-
-  const switchSheet = useCallback(() => {
+  const forgetKey = () => {
     setShowSettings(false)
     connection.forget()
-  }, [connection])
+  }
 
   const connectionError = connection.error
     ? connection.error.i18nKey
@@ -191,45 +141,45 @@ export default function App() {
     return <LoadingGate label={t('gate.loadingSheet')} />
   }
   if (!me) {
-    return <IdentityGate config={ledger.config} onPick={setMe} />
+    return <IdentityGate config={config} onPick={setMe} />
   }
+
+  /**
+   * A refresh failed but the cache is still good, or the sheet mixes currencies:
+   * either way the screen stays up and says so, rather than being replaced by an
+   * error — which is what an offline launch did before there was a cache.
+   *
+   * Translated here rather than mapped from keys below, so the literals stay
+   * visible to the catalog scan in `test/i18n.test.js`.
+   */
+  const notices = [
+    ledger.status === 'stale' && ledger.error && t('warning.staleData'),
+    view.mixedCurrencies && t('warning.mixedCurrencies'),
+  ].filter(Boolean)
 
   return (
     <div className="app">
       <Header
-        config={ledger.config}
+        config={config}
         me={me}
-        status={ledger.status}
+        busy={ledger.status === 'refreshing'}
         onRefresh={ledger.refresh}
         onOpenSettings={() => setShowSettings(true)}
       />
 
       <main className="layout">
         <aside className="layout__aside">
-          {/* A refresh failed but the cache is still good — say so rather than
-              replacing the whole screen with an error, which is what an offline
-              launch used to do. */}
-          {ledger.status === 'stale' && ledger.error && (
-            <p className="notice" role="status">
-              {t('warning.staleData')}
+          {notices.map((text) => (
+            <p className="notice" role="status" key={text}>
+              {text}
             </p>
-          )}
-          {mixedCurrencies && (
-            <p className="notice" role="status">
-              {t('warning.mixedCurrencies')}
-            </p>
-          )}
-          <BalanceCard
-            balance={balance}
-            config={ledger.config}
-            me={me}
-            currency={currency}
-          />
+          ))}
+          <BalanceCard balance={view.balance} config={config} me={me} currency={currency} />
           <SummaryCard
-            monthSpend={monthSpend}
-            byCategory={byCategory}
-            byPerson={byPerson}
-            config={ledger.config}
+            monthSpend={view.monthSpend}
+            byCategory={view.byCategory}
+            byPerson={view.byPerson}
+            config={config}
             me={me}
             currency={currency}
           />
@@ -238,18 +188,17 @@ export default function App() {
         <section className="layout__main">
           <MonthNav monthKey={monthKey} onChange={setMonthKey} />
           <EntryList
-            groups={groups}
-            config={ledger.config}
+            groups={view.groups}
+            config={config}
             me={me}
             currency={currency}
-            status={ledger.status}
-            onEdit={openEdit}
+            onEdit={(entry) => setDraft({ mode: 'edit', entry })}
             onDelete={setPendingDelete}
             onAdd={openAdd}
           />
           <DeletedList
-            entries={deleted}
-            config={ledger.config}
+            entries={view.deleted}
+            config={config}
             me={me}
             currency={currency}
             onRestore={restoreEntry}
@@ -264,12 +213,12 @@ export default function App() {
       {draft && (
         <EntryFormSheet
           draft={draft}
-          config={ledger.config}
+          config={config}
           me={me}
           currency={currency}
           onSubmit={submitDraft}
           onDelete={setPendingDelete}
-          onClose={closeDraft}
+          onClose={() => setDraft(null)}
         />
       )}
 
@@ -286,13 +235,13 @@ export default function App() {
 
       {showSettings && (
         <SettingsSheet
-          config={ledger.config}
+          config={config}
           me={me}
           spreadsheetId={connection.spreadsheetId}
           tombstoneCount={ledger.tombstoneCount}
           onSetMe={setMe}
           onCompact={ledger.compact}
-          onForget={switchSheet}
+          onForget={forgetKey}
           onClose={() => setShowSettings(false)}
         />
       )}

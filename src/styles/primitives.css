@@ -446,7 +446,7 @@
 }
 
 /* =========================================================================
-   Feedback: toasts, spinner, skeleton, empty state
+   Feedback: toasts, spinner, empty state
    ========================================================================= */
 
 .toast-stack {
@@ -492,11 +492,6 @@
   height: 1.75rem;
   border-width: 3px;
   color: var(--ink-3);
-}
-
-.skeleton {
-  background-color: var(--sunken);
-  border-radius: var(--radius-sm);
 }
 
 .empty {

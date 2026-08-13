@@ -1,24 +1,24 @@
 import { dayLabel } from '../lib/dates.js'
 import { EntryRow } from './EntryRow.jsx'
-import { useDayLabels, useMoney, useT } from '../i18n/index.js'
+import { useDayLabels, useMoney, usePeopleLabels, useT } from '../i18n/index.js'
 import { WalletIcon } from './icons.jsx'
 
-export function EntryList({ groups, config, me, currency, status, onEdit, onDelete, onAdd }) {
+/**
+ * The month's entries, grouped into day sections.
+ *
+ * There is no loading state here. `App` shows a gate for `idle` and `loading` and
+ * paints the cached ledger for everything else, so this component only ever
+ * renders real rows or a genuine empty month.
+ *
+ * The day labels and the two people's names are resolved once here rather than
+ * per row: a long month otherwise rebuilds the same three strings for every
+ * entry.
+ */
+export function EntryList({ groups, config, me, currency, onEdit, onDelete, onAdd }) {
   const { t, locale } = useT()
   const money = useMoney(currency)
-  // Built once per locale rather than once per row.
   const labels = useDayLabels()
-
-  if (status === 'loading') {
-    return (
-      <div className="stack" aria-busy="true">
-        <span className="visually-hidden">{t('list.loading')}</span>
-        {[0, 1, 2, 3].map((index) => (
-          <div className="skeleton skeleton--entry" key={index} />
-        ))}
-      </div>
-    )
-  }
+  const { label } = usePeopleLabels(config, me)
 
   if (!groups.length) {
     return (
@@ -52,8 +52,7 @@ export function EntryList({ groups, config, me, currency, status, onEdit, onDele
               <EntryRow
                 key={entry.id}
                 entry={entry}
-                config={config}
-                me={me}
+                label={label}
                 currency={currency}
                 onEdit={onEdit}
                 onDelete={onDelete}

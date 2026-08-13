@@ -397,7 +397,6 @@ describe('Japanese rendering', () => {
           config={config}
           me={PERSON.P1}
           currency="JPY"
-          status="ready"
           onEdit={noop}
           onDelete={noop}
           onAdd={noop}

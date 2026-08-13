@@ -1,24 +1,20 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { centsToSheetString, minorDigits, parseAmountToCents, splitCents } from '../lib/money.js'
-import { ENTRY_TYPE, EVEN_SHARE, PEOPLE, PERSON, otherPerson } from '../schema.js'
-import { defaultSplitFor } from '../lib/identity.js'
+import { ENTRY_TYPE, PEOPLE, PERSON, otherPerson } from '../schema.js'
 import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
+import { NoteField } from './NoteField.jsx'
+import { Segmented } from './Segmented.jsx'
+import { SplitField, useEntrySplit } from './SplitField.jsx'
 import { TrashIcon } from './icons.jsx'
 
 /**
- * A share as the two split controls see it. An even share drives the segmented
- * control to "Even" and hides the slider; anything else opens Custom showing
- * that number, which is what makes a configured 80% land ready to submit.
- */
-function toSplit(share) {
-  return { mode: share === EVEN_SHARE ? 'even' : 'custom', percent: Math.round(share * 100) }
-}
-
-/**
- * Add or edit a single entry. Doubles as the "settle up" form: a settlement is
- * the same record with the split pinned to 0, so it needs no category or split
- * controls rather than a separate form.
+ * Add or edit a single entry.
+ *
+ * Nothing in the app creates a settlement any more, but a settlement row already
+ * in the sheet still opens here: its split is pinned to 0, so the category, note
+ * and split controls are the ones that drop away rather than there being a second
+ * form.
  */
 export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete, onClose }) {
   const { t } = useT()
@@ -38,46 +34,28 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
   const [date, setDate] = useState(entry.date)
   const [category, setCategory] = useState(entry.category || config.categories[0] || '')
   const [description, setDescription] = useState(entry.description ?? '')
-  /**
-   * `null` means "follow the payer's configured default", which is what a new
-   * entry starts as. Switching the payer control then re-derives the split,
-   * because the default is a property of the person, not of the form: with
-   * 80/20, p1 owes 80% of what they paid and p2 owes 20% of what *they* paid.
-   *
-   * An entry being edited carries an explicit share instead, so it opens on the
-   * number actually stored and changing its payer leaves that number alone —
-   * a saved row records a decision someone already made.
-   */
-  const storedShare = Number.isFinite(entry.payerShare) ? entry.payerShare : null
-  const [override, setOverride] = useState(storedShare == null ? null : toSplit(storedShare))
-  const configuredShare = defaultSplitFor(config, payer)
-  const { mode: splitMode, percent: sharePercent } = override ?? toSplit(configuredShare)
-  // Dragging the slider or hitting a preset pins the entry to that number,
-  // which also stops it snapping back when the payer control is switched.
-  const setSharePercent = (percent) => setOverride({ mode: 'custom', percent })
   const [error, setError] = useState(null)
   const [busy, setBusy] = useState(false)
 
+  const split = useEntrySplit(entry, config, payer)
   const cents = parseAmountToCents(amount, entryCurrency)
-  const payerShare = isSettlement ? 0 : splitMode === 'even' ? EVEN_SHARE : sharePercent / 100
-  const notePresets = Array.isArray(config.notePresets) ? config.notePresets : []
+  const payerShare = isSettlement ? 0 : split.payerShare
 
   const { label } = usePeopleLabels(config, me)
   const payerLabel = label(payer)
   const otherLabel = label(otherPerson(payer))
 
-  const breakdown = useMemo(() => {
-    if (cents == null || isSettlement) return null
-    const { payerCents, otherCents } = splitCents(cents, payerShare)
-    return t('form.breakdown', {
+  // Two integer operations and a lookup, so it is recomputed rather than memoised;
+  // every value it reads changes while the sheet is open anyway.
+  const shares = cents == null || isSettlement ? null : splitCents(cents, payerShare)
+  const breakdown =
+    shares &&
+    t('form.breakdown', {
       payer: payerLabel,
-      payerAmount: money(payerCents),
+      payerAmount: money(shares.payerCents),
       other: otherLabel,
-      otherAmount: money(otherCents),
+      otherAmount: money(shares.otherCents),
     })
-    // `money` and `t` are memoised per locale/currency, so this recomputes only
-    // when the numbers or the labels actually change.
-  }, [cents, payerShare, payerLabel, otherLabel, isSettlement, money, t])
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -90,7 +68,6 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
     try {
       await onSubmit({
         ...entry,
-        type: entry.type,
         date,
         payer,
         amountCents: cents,
@@ -106,15 +83,9 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
     }
   }
 
-  const title = isSettlement
-    ? t('form.settleTitle')
-    : mode === 'edit'
-      ? t('form.editTitle')
-      : t('form.addTitle')
-
   return (
     <BottomSheet
-      title={title}
+      title={mode === 'edit' ? t('form.editTitle') : t('form.addTitle')}
       onClose={onClose}
       footer={
         <>
@@ -137,7 +108,13 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
             {t('common.cancel')}
           </button>
           <button type="submit" form="entry-form" className="btn btn--primary" disabled={busy}>
-            {busy ? <span className="spinner" /> : mode === 'edit' ? t('common.save') : t('common.add')}
+            {busy ? (
+              <span className="spinner" />
+            ) : mode === 'edit' ? (
+              t('common.save')
+            ) : (
+              t('common.add')
+            )}
           </button>
         </>
       }
@@ -154,37 +131,25 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
             /* A zero-decimal currency should get a plain numeric pad. */
             inputMode={digits ? 'decimal' : 'numeric'}
             autoComplete="off"
-            placeholder={digits ? '0.00' : t('form.amountPlaceholder')}
+            placeholder={digits ? '0.00' : '0'}
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             aria-invalid={error && cents == null ? 'true' : undefined}
           />
         </div>
 
-        <div className="field">
-          <span className="field__label">
-            {isSettlement ? t('form.paidBy') : t('form.whoPaid')}
-          </span>
-          <div className="segmented">
-            {PEOPLE.map((person) => (
-              <label className="segmented__option" key={person}>
-                <input
-                  type="radio"
-                  name="payer"
-                  value={person}
-                  checked={payer === person}
-                  onChange={() => setPayer(person)}
-                />
-                {label(person)}
-              </label>
-            ))}
-          </div>
-          {isSettlement && (
-            <p className="field__hint">
-              {t('form.settlementHint', { payer: payerLabel, other: otherLabel })}
-            </p>
-          )}
-        </div>
+        <Segmented
+          name="payer"
+          label={t('common.whoPaid')}
+          value={payer}
+          options={PEOPLE.map((person) => [person, label(person)])}
+          onChange={setPayer}
+          hint={
+            isSettlement
+              ? t('form.settlementHint', { payer: payerLabel, other: otherLabel })
+              : null
+          }
+        />
 
         <div className="field">
           <label className="field__label" htmlFor="entry-date">
@@ -219,143 +184,18 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
               </select>
             </div>
 
-            <div className="field">
-              <label className="field__label" htmlFor="entry-note">
-                {t('form.note')} <span className="field__hint">{t('common.optional')}</span>
-              </label>
-              <input
-                id="entry-note"
-                className="input"
-                type="text"
-                autoComplete="off"
-                /* Shop names are exactly what iOS mangles: "Ozeki" capitalised
-                   and autocorrected into an English word it recognises. */
-                autoCapitalize="none"
-                autoCorrect="off"
-                spellCheck="false"
-                enterKeyHint="done"
-                placeholder={t('form.notePlaceholder')}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                /* A datalist rather than a <select>: it gives a native dropdown
-                   of the frequent shops while leaving the field free text, so a
-                   one-off note needs no escape hatch. Browsers without datalist
-                   support degrade to a plain input, losing nothing. */
-                list={notePresets.length ? 'note-presets' : undefined}
-              />
-              {notePresets.length > 0 && (
-                <datalist id="note-presets">
-                  {notePresets.map((preset) => (
-                    <option key={preset} value={preset} />
-                  ))}
-                </datalist>
-              )}
-              {/* Tappable chips as well as the datalist: on a phone a datalist
-                  offers no visual affordance at all, and the whole point of the
-                  presets is to be faster than typing "OK Mart" again. */}
-              {notePresets.length > 0 && (
-                <div className="row" role="group" aria-label={t('form.notePresets')}>
-                  {notePresets.map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      className={`btn btn--sm ${
-                        description === preset ? 'btn--primary' : 'btn--ghost'
-                      }`}
-                      onClick={() => setDescription(description === preset ? '' : preset)}
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            <NoteField
+              value={description}
+              presets={config.notePresets}
+              onChange={setDescription}
+            />
 
-            <div className="field">
-              <span className="field__label">{t('form.split')}</span>
-              <div className="segmented">
-                {[
-                  ['even', t('form.splitEven')],
-                  ['custom', t('form.splitCustom')],
-                ].map(([value, optionLabel]) => (
-                  <label className="segmented__option" key={value}>
-                    <input
-                      type="radio"
-                      name="split"
-                      value={value}
-                      checked={splitMode === value}
-                      onChange={() => {
-                        // Custom re-opens on the payer's configured default
-                        // rather than a hardcoded 50, so a couple on 80/20 who
-                        // tap Even and back does not have to drag the slider
-                        // to where the sheet already says it should be.
-                        setOverride(
-                          value === 'even'
-                            ? { mode: 'even', percent: 50 }
-                            : { mode: 'custom', percent: Math.round(configuredShare * 100) },
-                        )
-                      }}
-                    />
-                    {optionLabel}
-                  </label>
-                ))}
-              </div>
-
-              {splitMode === 'custom' && (
-                <div className="split-control">
-                  <div className="split-control__presets">
-                    <button
-                      type="button"
-                      className="btn btn--sm btn--ghost"
-                      onClick={() => setSharePercent(100)}
-                    >
-                      {t('form.splitAll', { name: payerLabel })}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--sm btn--ghost"
-                      onClick={() => setSharePercent(50)}
-                    >
-                      {t('form.splitHalf')}
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn--sm btn--ghost"
-                      onClick={() => setSharePercent(0)}
-                    >
-                      {t('form.splitAll', { name: otherLabel })}
-                    </button>
-                  </div>                  <label className="split-control__slider">
-                    <span className="field__hint">
-                      {t('form.splitShare', { name: payerLabel })}
-                    </span>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="5"
-                      value={sharePercent}
-                      /* A range announces a bare "70"; say whose share it is. */
-                      aria-valuetext={t('form.splitValue', {
-                        name: payerLabel,
-                        percent: sharePercent,
-                      })}
-                      onChange={(event) => setSharePercent(Number(event.target.value))}
-                    />
-                    <output>{t('summary.share', { percent: sharePercent })}</output>
-                  </label>
-                </div>
-              )}
-
-              {/* The numbers change on every slider step, so they have to be
-                  spoken; the region exists from the first keystroke in the
-                  amount field, well before the split is ever adjusted. */}
-              {breakdown && (
-                <p className="field__hint" role="status">
-                  {breakdown}
-                </p>
-              )}
-            </div>
+            <SplitField
+              split={split}
+              payerLabel={payerLabel}
+              otherLabel={otherLabel}
+              breakdown={breakdown}
+            />
           </>
         )}
 

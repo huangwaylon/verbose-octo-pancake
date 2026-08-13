@@ -87,7 +87,7 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
       </form>
       {/* A stored key the endpoint has rejected, with no fresher failure to show:
           the key was kept deliberately, so say why this screen came back. */}
-      {suspect && !error && <p className="field__error">{t('gate.keyRejected')}</p>}
+      {suspect && !error && <p className="field__error">{t('error.badKey')}</p>}
       {error && <p className="field__error">{error}</p>}
       <p className="gate__fine">{t('gate.keyFine')}</p>
     </Panel>

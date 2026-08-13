@@ -1,9 +1,13 @@
 import { dayLabel } from '../lib/dates.js'
-import { useDayLabels, useEntryTitle, useMoney, usePeopleLabels, useT } from '../i18n/index.js'
+import { useDayLabels, useEntryTitle, usePeopleLabels, useT } from '../i18n/index.js'
+import { EntryAmount } from './EntryAmount.jsx'
 import { ChevronRightIcon } from './icons.jsx'
 
 /**
- * Every tombstoned entry, all months, most recently deleted first.
+ * The tombstones from the month on screen, most recently deleted first. Scoped to
+ * that month because it sits under the month switcher, where a tombstone from
+ * another month would read as belonging to this one; the sheet-wide count lives
+ * in settings, next to `compact`, which is what acts on it.
  *
  * A `<details>` rather than React state: the open/closed flag is the element's
  * own, so it starts closed by construction, needs no reset when the list changes
@@ -43,19 +47,18 @@ export function DeletedList({ entries, config, me, currency, onRestore }) {
 /** Its own component so each row can format at its own currency's scale. */
 function DeletedRow({ entry, currency, payerLabel, dateLabel, onRestore }) {
   const { t } = useT()
-  const money = useMoney(entry.currency || currency)
   const description = useEntryTitle()(entry)
 
   return (
     <li className={`entry${entry.pending ? ' entry--pending' : ''}`}>
       <span className="entry__main">
         <span className="entry__desc">{description}</span>
-        <span className="entry__meta">{t('deleted.meta', { date: dateLabel, name: payerLabel })}</span>
+        <span className="entry__meta">
+          {t('deleted.meta', { date: dateLabel, name: payerLabel })}
+        </span>
       </span>
 
-      <span className="entry__amount tnum">
-        {money(entry.amountCents, { trimZeroCents: true })}
-      </span>
+      <EntryAmount entry={entry} currency={currency} />
 
       {/* Text, not an icon: there is no conventional glyph for "undelete", and
           several identical unlabelled buttons in a row say nothing about which

@@ -6,6 +6,7 @@ import { usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
 import { LOCALE_LABELS, SUPPORTED } from '../i18n/catalogs.js'
 import { ACCENTS, setAccent, useAccent } from '../lib/theme.js'
+import { Segmented } from './Segmented.jsx'
 
 export function SettingsSheet({
   config,
@@ -49,45 +50,25 @@ export function SettingsSheet({
       }
     >
       <div className="stack">
-        <div className="field">
-          <span className="field__label">{t('settings.youAre')}</span>
-          <div className="segmented">
-            {PEOPLE.map((person) => (
-              <label className="segmented__option" key={person}>
-                <input
-                  type="radio"
-                  name="identity"
-                  value={person}
-                  checked={me === person}
-                  onChange={() => onSetMe(person)}
-                />
-                {name(person)}
-              </label>
-            ))}
-          </div>
-          <p className="field__hint">{t('settings.youAreHint')}</p>
-        </div>
+        <Segmented
+          name="identity"
+          label={t('settings.youAre')}
+          value={me}
+          options={PEOPLE.map((person) => [person, name(person)])}
+          onChange={onSetMe}
+          hint={t('settings.youAreHint')}
+        />
 
-        <div className="field">
-          <span className="field__label">{t('settings.language')}</span>
-          <div className="segmented">
-            {SUPPORTED.map((tag) => (
-              <label className="segmented__option" key={tag}>
-                <input
-                  type="radio"
-                  name="locale"
-                  value={tag}
-                  checked={locale === tag}
-                  onChange={() => setLocale(tag)}
-                />
-                {/* Each language named in itself, which is why these two are the
-                    documented exceptions to the "ja must differ from en" test. */}
-                {LOCALE_LABELS[tag]}
-              </label>
-            ))}
-          </div>
-          <p className="field__hint">{t('settings.languageHint')}</p>
-        </div>
+        {/* Each language named in itself, which is why these two are the
+            documented exceptions to the "ja must differ from en" test. */}
+        <Segmented
+          name="locale"
+          label={t('settings.language')}
+          value={locale}
+          options={SUPPORTED.map((tag) => [tag, LOCALE_LABELS[tag]])}
+          onChange={setLocale}
+          hint={t('settings.languageHint')}
+        />
 
         <div className="field">
           <span className="field__label">{t('settings.accent')}</span>
@@ -157,7 +138,7 @@ export function SettingsSheet({
         </div>
 
         <div className="field">
-          <span className="field__label">{t('settings.notePresets')}</span>
+          <span className="field__label">{t('common.notePresets')}</span>
           {config.notePresets?.length ? (
             <div className="row">
               {config.notePresets.map((note) => (

@@ -1,4 +1,5 @@
 import { PEOPLE, PERSON } from '../schema.js'
+import { UNCATEGORIZED } from '../lib/balance.js'
 import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { DonutChart } from './DonutChart.jsx'
 
@@ -25,7 +26,7 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
 
   const items = byCategory.map((row) => ({
     key: row.category,
-    label: row.category === 'Uncategorized' ? t('summary.uncategorized') : row.category,
+    label: row.category === UNCATEGORIZED ? t('summary.uncategorized') : row.category,
     valueCents: row.totalCents,
   }))
 
@@ -37,12 +38,17 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
       </div>
 
       <div className="summary__section">
-        <p className="eyebrow">{t('summary.whoPaid')}</p>
+        <p className="eyebrow">{t('common.whoPaid')}</p>
         {paidTotal > 0 && (
           <div
             className="summary__meter"
             role="img"
-            aria-label={`${label(PERSON.P1)} ${money(paid1)} / ${label(PERSON.P2)} ${money(paid2)}`}
+            aria-label={t('summary.meterLabel', {
+              name1: label(PERSON.P1),
+              amount1: money(paid1),
+              name2: label(PERSON.P2),
+              amount2: money(paid2),
+            })}
           >
             <span
               className="summary__meter-fill"
@@ -63,7 +69,7 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
                 }`}
                 aria-hidden="true"
               />
-              <span className="summary__person-name">{t('summary.paid', { name: label(person) })}</span>
+              <span className="summary__person-name">{t('common.paid', { name: label(person) })}</span>
               <span className="summary__person-amount tnum">
                 {money(byPerson[person] ?? 0, { trimZeroCents: true })}
               </span>

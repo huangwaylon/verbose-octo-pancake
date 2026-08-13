@@ -2,10 +2,14 @@ import { PEOPLE } from '../schema.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
 import { RefreshIcon, SettingsIcon } from './icons.jsx'
 
-export function Header({ config, me, status, onRefresh, onOpenSettings }) {
+/**
+ * `busy` rather than the ledger's status: the only state this cares about is
+ * "a refresh is in flight", and by the time the header renders at all the gates
+ * have already handled `idle` and `loading`.
+ */
+export function Header({ config, me, busy, onRefresh, onOpenSettings }) {
   const { t } = useT()
   const { label } = usePeopleLabels(config, me)
-  const busy = status === 'loading' || status === 'refreshing'
 
   return (
     <header className="app__header">

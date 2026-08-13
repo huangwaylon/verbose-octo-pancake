@@ -223,7 +223,6 @@ describe('entry list renders', () => {
         config={config}
         me={PERSON.P1}
         currency="USD"
-        status="ready"
         onEdit={noop}
         onDelete={noop}
         onAdd={noop}
@@ -243,7 +242,6 @@ describe('entry list renders', () => {
         config={config}
         me={PERSON.P1}
         currency="USD"
-        status="ready"
         onEdit={noop}
         onDelete={noop}
         onAdd={noop}
@@ -259,7 +257,6 @@ describe('entry list renders', () => {
         config={config}
         me={PERSON.P1}
         currency="USD"
-        status="ready"
         onEdit={noop}
         onDelete={noop}
         onAdd={noop}
@@ -267,23 +264,6 @@ describe('entry list renders', () => {
     )
     expect(markup).toContain('Nothing logged this month')
     expect(markup).toContain('Add an expense')
-  })
-
-  it('shows placeholders while loading instead of a false empty state', () => {
-    const markup = renderToStaticMarkup(
-      <EntryList
-        groups={[]}
-        config={config}
-        me={PERSON.P1}
-        currency="USD"
-        status="loading"
-        onEdit={noop}
-        onDelete={noop}
-        onAdd={noop}
-      />,
-    )
-    expect(markup).toContain('skeleton')
-    expect(markup).not.toContain('Nothing logged')
   })
 })
 
@@ -293,7 +273,6 @@ describe('chrome renders', () => {
       <Header
         config={config}
         me={PERSON.P1}
-        status="ready"
         onRefresh={noop}
         onOpenSettings={noop}
       />,
