@@ -17,6 +17,11 @@ export const PERSON = {
 /** Iteration order for the two people. Both tabs, both settings rows, both radios. */
 export const PEOPLE = [PERSON.P1, PERSON.P2]
 
+/** Whether a value is one of the two people, for callers that must refuse instead. */
+export function isPerson(value) {
+  return value === PERSON.P1 || value === PERSON.P2
+}
+
 export function otherPerson(person) {
   return person === PERSON.P1 ? PERSON.P2 : PERSON.P1
 }
@@ -27,9 +32,16 @@ export const CONFIG_TAB = 'config'
  * One expenses tab per person rather than a shared tab with a `payer` column.
  * Which tab a row lives in is itself the payer, so there is nothing to keep in
  * sync and no way for a row to disagree with its own tab.
+ *
+ * Throws on anything that is not one of the two people. It used to answer
+ * `expenses_p1` for an unrecognised value, which turned "we do not know which tab
+ * this row is in" into a write against the wrong person's tab — the quietest
+ * possible way to corrupt a ledger.
  */
 export function expensesTab(person) {
-  return person === PERSON.P2 ? 'expenses_p2' : 'expenses_p1'
+  if (person === PERSON.P1) return 'expenses_p1'
+  if (person === PERSON.P2) return 'expenses_p2'
+  throw new TypeError(`expensesTab needs a person, got ${String(person)}`)
 }
 
 export const EXPENSE_COLUMNS = [

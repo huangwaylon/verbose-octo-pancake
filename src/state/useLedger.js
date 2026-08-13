@@ -199,19 +199,28 @@ export function useLedger(spreadsheetId) {
           return { ...entry, pending: true }
         }),
       )
+
+      /**
+       * Refuse rather than guess which tab the row is in.
+       *
+       * `previous.payer` is the row's CURRENT tab, which is what `updateEntry`
+       * needs before it can move the row. If the entry is not in local state —
+       * the other person deleted it and a focus refresh dropped it while this
+       * form was open — then passing `undefined` made `previousPayer !==
+       * entry.payer` true, so the write took the payer-changed branch: it
+       * appended a second row and then looked for the original in whichever tab
+       * `expensesTab` defaulted to. A duplicate expense, silently.
+       */
+      if (!previous) throw i18nError('error.entryGone')
+
       try {
-        // previous.payer, not entry.payer: it says which tab the row is
-        // CURRENTLY in, which is what updateEntry needs to find it before it can
-        // move the row if the payer changed.
-        await sheets.updateEntry(spreadsheetId, entry, previous?.payer)
+        await sheets.updateEntry(spreadsheetId, entry, previous.payer)
         setEntries((current) =>
           current.map((item) => (item.id === entry.id ? { ...item, pending: false } : item)),
         )
         return entry
       } catch (cause) {
-        if (previous) {
-          setEntries((current) => current.map((item) => (item.id === entry.id ? previous : item)))
-        }
+        setEntries((current) => current.map((item) => (item.id === entry.id ? previous : item)))
         throw cause
       }
     },

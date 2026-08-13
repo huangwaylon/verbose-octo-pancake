@@ -25,6 +25,7 @@ import {
   expensesDataRange,
   expensesHeaderRange,
   expensesTab,
+  isPerson,
   rowRange,
   rowToEntry,
 } from '../schema.js'
@@ -142,10 +143,9 @@ function batchGetValues(spreadsheetId, ranges) {
 }
 
 function getValues(spreadsheetId, range) {
-  return request(
-    `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`,
-    { params: { majorDimension: 'ROWS' } },
-  )
+  return request(`/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(range)}`, {
+    params: { majorDimension: 'ROWS' },
+  })
 }
 
 function updateValues(spreadsheetId, range, values) {
@@ -280,6 +280,16 @@ async function resolveRow(spreadsheetId, person, id) {
  * two leaves the entry visible under its old payer instead of silently gone.
  */
 export async function updateEntry(spreadsheetId, entry, previousPayer) {
+  /**
+   * Checked before anything is written, not on the way to the second call.
+   * `previousPayer` says which tab the row is in now; without a real one, the
+   * branch below appends a copy to the new tab and then cannot find the original
+   * to tombstone — so the sheet ends up with two live rows for one entry.
+   */
+  if (!isPerson(previousPayer)) {
+    throw new TypeError(`updateEntry needs the row's current payer, got ${String(previousPayer)}`)
+  }
+
   if (previousPayer !== entry.payer) {
     await appendEntry(spreadsheetId, entry)
     const oldRowNumber = await resolveRow(spreadsheetId, previousPayer, entry.id)

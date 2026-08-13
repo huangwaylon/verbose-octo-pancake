@@ -40,6 +40,11 @@ the currency explicitly, with no default, because `1250` at the wrong scale is a
 100x error. Every write is `valueInputOption: RAW`, so a note of `=SUM(A:A)` stays
 literal text and dates are never reformatted.
 
+Both people are full Editors of one sheet, and edits are **last-write-wins**: an
+entry saved from two devices at once keeps whichever write landed second, with no
+conflict prompt. Deliberate for two people who can just ask each other, and the
+reason every write re-resolves its row by id first.
+
 Deletes are soft — `deleted_at` is stamped and the row filtered out client-side — because
 the Sheets API addresses rows by index, so a hard delete would shift every row below it
 out from under the other person's cached positions. Deleting therefore asks for

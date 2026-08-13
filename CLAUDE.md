@@ -13,6 +13,7 @@ see `SETUP.md`. Do not restate either here.
 | `npm run build` | Production bundle into `dist/`, then `scripts/build-sw.js` emits `dist/sw.js`. |
 | `npm run preview` | Serve the built bundle. Needed to exercise the service worker. |
 | `npm run test:watch` | vitest in watch mode. |
+| `npm run format` | Prettier, write. `format:check` is the CI gate. |
 
 ## Invariants
 
@@ -47,6 +48,23 @@ two leaves the entry visible rather than gone.
 **Every write uses `valueInputOption: RAW`.** Never `USER_ENTERED`. A note of
 `=SUM(A:A)` must be stored as literal text, and dates must not be reformatted to
 the sheet's locale.
+
+**Concurrent edits are last-write-wins, and that is the accepted design.**
+`updateEntry` overwrites the whole row, so if both people edit the same entry the
+second write silently replaces the first — there is no `updated_at` comparison and
+no conflict UI, and each device keeps its own optimistic copy until the next
+refresh. Two people who talk to each other do not need locking, and every
+alternative (compare-and-set, a revision column, merge prompts) costs a round trip
+on every save. Do not add conflict detection without being asked; do not describe
+the app as if it had any.
+
+**`updateEntry` must be told the row's CURRENT payer**, which is the tab the row
+lives in now — `useLedger` passes `previous.payer` from local state, never
+`entry.payer`. Both layers refuse rather than guess: `editEntry` throws
+`error.entryGone` when the entry is no longer in state, and `updateEntry` throws on
+a `previousPayer` that is not a person. Guessing appended a duplicate row and then
+tombstoned in the wrong tab, which is how the sheet ended up with two live rows for
+one entry. `expensesTab` throws for the same reason.
 
 **An entry never carries its row position.** Row positions shift whenever anyone
 edits the sheet in the Sheets UI, so `updateEntry` and `setDeletedAt` re-resolve
@@ -222,6 +240,12 @@ back-compatibility branch for a shape this app never shipped.
 
 - **Plain modern JavaScript, ESM.** No TypeScript. `.jsx` only for files
   containing JSX.
+- **Prettier owns formatting, for `.js`/`.jsx` only.** `npm run format:check` runs
+  in CI before the tests. The four stylesheets and the three docs are deliberately
+  ignored: their layout is hand-tuned (grouped selectors, aligned contrast ratios,
+  hand-wrapped prose) and a reflow would rewrite every paragraph. Where a literal
+  is a table rather than a list — the ISO 4217 sets in `money.js` — use
+  `// prettier-ignore` rather than widening the ignore file.
 - **No new npm dependencies** without a clear reason. The bundle is React plus
   application code; icons are inline SVG in `src/components/icons.jsx`. A new
   dependency also means a CSP decision.

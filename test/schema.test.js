@@ -7,6 +7,7 @@ import {
   PERSON,
   EVEN_SHARE,
   otherPerson,
+  isPerson,
   expensesTab,
   expensesDataRange,
   rowRange,
@@ -170,16 +171,8 @@ describe('rowToEntry', () => {
   })
 
   it('clamps an out-of-range payer_share into [0,1]', () => {
-    const high = rowToEntry(
-      rawRow({ id: 'x', amount: '1.00', payer_share: '5' }),
-      PERSON.P1,
-      SHEET,
-    )
-    const low = rowToEntry(
-      rawRow({ id: 'x', amount: '1.00', payer_share: '-3' }),
-      PERSON.P1,
-      SHEET,
-    )
+    const high = rowToEntry(rawRow({ id: 'x', amount: '1.00', payer_share: '5' }), PERSON.P1, SHEET)
+    const low = rowToEntry(rawRow({ id: 'x', amount: '1.00', payer_share: '-3' }), PERSON.P1, SHEET)
     expect(high.payerShare).toBe(1)
     expect(low.payerShare).toBe(0)
   })
@@ -213,11 +206,7 @@ describe('rowToEntry', () => {
 
   it('normalises an empty deleted_at cell to null so isActive works', () => {
     const live = rowToEntry(rawRow({ id: 'x', amount: '1.00' }), PERSON.P1, SHEET)
-    const dead = rowToEntry(
-      rawRow({ id: 'y', amount: '1.00', deleted_at: NOW }),
-      PERSON.P1,
-      SHEET,
-    )
+    const dead = rowToEntry(rawRow({ id: 'y', amount: '1.00', deleted_at: NOW }), PERSON.P1, SHEET)
     expect(live.deletedAt).toBeNull()
     expect(isActive(live)).toBe(true)
     expect(dead.deletedAt).toBe(NOW)
@@ -487,5 +476,24 @@ describe('validateEntryCodes', () => {
     expect(validateEntryCodes({}).length).toBeGreaterThan(1)
     expect(validateEntryCodes({})).toContain(ENTRY_ERROR.MISSING_ID)
     expect(validateEntryCodes({})).toContain(ENTRY_ERROR.MISSING_CURRENCY)
+  })
+})
+
+describe('a tab name is never guessed', () => {
+  // It used to answer `expenses_p1` for anything unrecognised, which turned "we do
+  // not know which tab this row is in" into a write against the wrong person's
+  // ledger. Every caller either iterates PEOPLE or holds a row's real payer.
+  it('throws for anything that is not one of the two people', () => {
+    expect(expensesTab(PERSON.P1)).toBe('expenses_p1')
+    expect(expensesTab(PERSON.P2)).toBe('expenses_p2')
+    for (const bad of [undefined, null, '', 'p3', 'P1', 0, {}]) {
+      expect(() => expensesTab(bad)).toThrow(TypeError)
+    }
+  })
+
+  it('isPerson is what callers check before they get that far', () => {
+    expect(isPerson(PERSON.P1)).toBe(true)
+    expect(isPerson(PERSON.P2)).toBe(true)
+    for (const bad of [undefined, null, '', 'p3', 0]) expect(isPerson(bad)).toBe(false)
   })
 })
