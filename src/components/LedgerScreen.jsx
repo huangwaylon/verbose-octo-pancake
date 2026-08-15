@@ -1,6 +1,5 @@
 import { Header } from './Header.jsx'
 import { MonthNav } from './MonthNav.jsx'
-import { BalanceCard } from './BalanceCard.jsx'
 import { SummaryCard } from './SummaryCard.jsx'
 import { EntryList } from './EntryList.jsx'
 import { DeletedList } from './DeletedList.jsx'
@@ -8,7 +7,7 @@ import { PlusIcon } from './icons.jsx'
 import { useT } from '../i18n/index.js'
 
 /**
- * The whole signed-in surface: header, the two columns, and the FAB.
+ * The whole signed-in surface: the header, the add action, and the two columns.
  *
  * Separate from `App` because two things render it — the app, and
  * `scripts/preview.jsx`, which is the only check that any of it LOOKS right. Written
@@ -39,8 +38,10 @@ export function LedgerScreen({
   return (
     <>
       <Header
+        balance={view.balance}
         config={config}
         me={me}
+        currency={currency}
         busy={refreshing}
         onRefresh={onRefresh}
         onOpenSettings={onOpenSettings}
@@ -48,12 +49,20 @@ export function LedgerScreen({
 
       <main className="layout">
         <aside className="layout__aside">
+          {/* The one way into the entry form, and the first thing under the
+              balance. Above the notices rather than below them: a primary action
+              whose vertical position moves with the connection is a mis-tap. */}
+          <button type="button" className="btn btn--primary btn--block add-action" onClick={onAdd}>
+            <PlusIcon />
+            {t('common.addExpense')}
+          </button>
+
           {notices.map((text) => (
             <p className="notice" role="status" key={text}>
               {text}
             </p>
           ))}
-          <BalanceCard balance={view.balance} config={config} me={me} currency={currency} />
+
           <SummaryCard
             monthSpend={view.monthSpend}
             byCategory={view.byCategory}
@@ -73,7 +82,6 @@ export function LedgerScreen({
             currency={currency}
             onEdit={onEdit}
             onDelete={onDelete}
-            onAdd={onAdd}
           />
           <DeletedList
             entries={view.deleted}
@@ -84,10 +92,6 @@ export function LedgerScreen({
           />
         </section>
       </main>
-
-      <button type="button" className="fab" onClick={onAdd} aria-label={t('list.emptyAction')}>
-        <PlusIcon width={24} height={24} />
-      </button>
     </>
   )
 }

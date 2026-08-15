@@ -161,7 +161,7 @@ CLAUDE.md's Platform section: the keyboard covers a fixed footer without shrinki
 viewport `dvh` reads, `:hover` latches after a tap, a flick from the top reloads the app
 out from under a half-typed entry, and safe-area insets are the app's problem because
 there is no browser chrome to absorb them. Layout is decided at 320px; `npx vite-node
-scripts/preview.jsx` writes fourteen pages for checking it, two of them deliberately
+scripts/preview.jsx` writes fifteen pages for checking it, two of them deliberately
 pathological.
 
 ### Launch speed
@@ -206,8 +206,9 @@ only exists in a build, so exercising it means `npm run build && npm run preview
 the machine.
 
 A green suite says nothing about whether the page looks right; `npx vite-node
-scripts/preview.jsx` writes fourteen static pages with the real stylesheets, and
-CLAUDE.md says how to view them.
+scripts/preview.jsx` writes fifteen static pages with the real stylesheets, and
+`scripts/frames.html` renders a page at several widths at once with the measurements
+printed underneath. CLAUDE.md has the invocation.
 
 ## Layout
 
@@ -233,5 +234,6 @@ CLAUDE.md says how to view them.
 | `src/state/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts` |
 | `src/i18n/`, `src/components/`, `src/styles/` | engine and `en`/`ja` catalogs; one file per view with inline-SVG icons and chart; `tokens`/`base`/`primitives`/`app` in that order |
 | `test/`, `scripts/preview.jsx` | vitest specs; the static-HTML visual harness |
+| `scripts/frames.html` | views a preview page at several widths, measuring each rather than eyeballing it |
 | `scripts/build-sw.js` | walks `dist/` and emits the service worker; importable, so its two silent failure modes are tested |
 | `.github/workflows/deploy.yml` | test, build, deploy to Pages |

@@ -14,7 +14,7 @@ import {
   totalSpend,
 } from '../src/lib/balance.js'
 import { DonutChart, MAX_SLICES, foldTail } from '../src/components/DonutChart.jsx'
-import { BalanceCard } from '../src/components/BalanceCard.jsx'
+import { Header } from '../src/components/Header.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
 import { EntryFormSheet } from '../src/components/EntryFormSheet.jsx'
@@ -388,7 +388,14 @@ describe('Japanese rendering', () => {
     const balance = computeBalance(entries)
     return [
       renderToStaticMarkup(
-        <BalanceCard balance={balance} config={config} me={PERSON.P1} currency="JPY" />,
+        <Header
+          balance={balance}
+          config={config}
+          me={PERSON.P1}
+          currency="JPY"
+          onRefresh={noop}
+          onOpenSettings={noop}
+        />,
       ),
       renderToStaticMarkup(
         <SummaryCard
@@ -408,7 +415,6 @@ describe('Japanese rendering', () => {
           currency="JPY"
           onEdit={noop}
           onDelete={noop}
-          onAdd={noop}
         />,
       ),
       renderToStaticMarkup(
@@ -432,7 +438,9 @@ describe('Japanese rendering', () => {
     const japanese = renderAll()
 
     expect(japanese).not.toBe(english)
-    expect(japanese).toContain('貸し借り')
+    // The balance's direction, the month eyebrow and the chart's — one string from
+    // each of the three components, so dropping any of them fails here.
+    expect(japanese).toContain('から受け取り')
     expect(japanese).toContain('今月')
     expect(japanese).toContain('カテゴリー別')
   })

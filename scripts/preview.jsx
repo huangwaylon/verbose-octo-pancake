@@ -94,30 +94,33 @@ const noop = () => {}
 /**
  * The same shape `useLedgerView` hands the screen. Built here rather than by calling
  * the hook, which needs a renderer — the figures still come from `balance.js`, so
- * they are the app's own arithmetic and not a fixture pretending to be it.
+ * they are the app's own arithmetic and not a fixture pretending to be it. One
+ * builder, so a new page cannot forget a field.
  */
-const view = {
-  balance: computeBalance(entries),
-  monthSpend: totalSpend(entries),
-  byCategory: spendByCategory(entries),
-  byPerson: spendByPerson(entries),
-  groups: groupByDate(entries),
-  deleted,
-}
+const viewOf = (list, tombstones = []) => ({
+  balance: computeBalance(list),
+  monthSpend: totalSpend(list),
+  byCategory: spendByCategory(list),
+  byPerson: spendByPerson(list),
+  groups: groupByDate(list),
+  deleted: tombstones,
+})
+
+const baseView = viewOf(entries, deleted)
 
 /**
  * `overlay` puts one of the sheets over the surface, which is how each of them
  * ships. The surface itself is the real `LedgerScreen`, so this cannot drift from
  * what `App` renders.
  */
-function body(overlay, { stress = false } = {}) {
+function body(overlay, { view = baseView, config: pageConfig = config } = {}) {
   return renderToStaticMarkup(
     <div className="app">
       <LedgerScreen
-        config={stress ? stressConfig : config}
+        config={pageConfig}
         me={PERSON.P1}
         currency="JPY"
-        view={stress ? stressView : view}
+        view={view}
         monthKey="2026-08"
         notices={[t('warning.mixedCurrencies')]}
         refreshing={false}
@@ -135,11 +138,36 @@ function body(overlay, { stress = false } = {}) {
 }
 
 /**
+ * Settled changes the header's whole shape: one line where there are normally two,
+ * and no figure at all. Reached by settling exactly the outstanding balance, so the
+ * zero is the app's own arithmetic rather than a hand-written fixture.
+ */
+const settledEntries = [
+  ...entries,
+  makeEntry(
+    {
+      id: 'z',
+      type: ENTRY_TYPE.SETTLEMENT,
+      date: '2026-08-06',
+      payer: baseView.balance.debtor,
+      amountCents: baseView.balance.amountCents,
+      currency: 'JPY',
+      category: '',
+      payerShare: 0,
+    },
+    '2026-08-06T10:00:00.000Z',
+  ),
+]
+
+const settledView = viewOf(settledEntries, deleted)
+
+/**
  * Everything a config tab and a note field can legitimately hold that a 320px phone
  * has no room for: names with no break opportunity, a category longer than the
- * control it sits in, an amount in the millions, and a note that wraps three times.
- * The layout has to absorb all of it without a horizontal scrollbar or a clipped
- * glyph, which is the one thing no assertion in the suite can check.
+ * control it sits in, an amount big enough that the header has to truncate the hero
+ * figure, and a note that wraps three times. The layout has to absorb all of it
+ * without a horizontal scrollbar or a clipped glyph, which is the one thing no
+ * assertion in the suite can check.
  */
 const stressConfig = {
   ...config,
@@ -156,7 +184,7 @@ const stressEntries = [
       type: ENTRY_TYPE.EXPENSE,
       date: '2026-08-05',
       payer: PERSON.P1,
-      amountCents: 12345678,
+      amountCents: 123456789,
       currency: 'JPY',
       category: 'Groceries and household supplies',
       description: 'Weekly shop plus the birthday things we said we would split evenly',
@@ -179,14 +207,7 @@ const stressEntries = [
   ),
 ]
 
-const stressView = {
-  balance: computeBalance(stressEntries),
-  monthSpend: totalSpend(stressEntries),
-  byCategory: spendByCategory(stressEntries),
-  byPerson: spendByPerson(stressEntries),
-  groups: groupByDate(stressEntries),
-  deleted: [],
-}
+const stressView = viewOf(stressEntries)
 
 /** The three overlays, each the densest thing on a phone screen in its own way. */
 const OVERLAYS = {
@@ -273,12 +294,14 @@ for (const [locale, accents] of [
 // The widths nothing else exercises, in English only: what is being read here is the
 // geometry, not the copy.
 setLocale('en')
-for (const [variant, overlay] of [
-  ['stress', null],
-  ['stress-settings', STRESS_SETTINGS],
+const stress = { view: stressView, config: stressConfig }
+for (const [variant, overlay, options] of [
+  ['stress', null, stress],
+  ['stress-settings', STRESS_SETTINGS, stress],
+  ['settled', null, { view: settledView }],
 ]) {
   const name = `preview-en-${variant}.html`
-  const markup = page(body(overlay, { stress: true }), 'en', ACCENTS[0])
+  const markup = page(body(overlay, options), 'en', ACCENTS[0])
   writeFileSync(new URL(`./${name}`, import.meta.url), markup)
   written.push(`scripts/${name}`)
 }

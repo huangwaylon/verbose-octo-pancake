@@ -524,14 +524,16 @@
    Feedback: toasts, spinner, empty state
    ========================================================================= */
 
-/* Stacked ABOVE the FAB, not over it: --z-toast beats --z-fab, so an overlapping
-   toast would hide the add button and swallow its taps for the toast's whole life.
-   Nothing in a toast is interactive, so the stack itself takes no pointer events —
-   only a rare wide toast can reach past the FAB, and it must not block it either. */
+/* Nothing in a toast is interactive, so the stack takes no pointer events: it
+   overlays the last rows of the ledger and their delete controls, and a toast that
+   swallowed a tap for its whole life would be worse than one that briefly covers
+   something. The offset clears the home indicator, nothing more — the layout no
+   longer reserves a band down here, since a transient overlap is acceptable and
+   permanent dead space is not. */
 .toast-stack {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--space-5) + var(--fab-size) + var(--space-3) + var(--safe-bottom));
+  bottom: calc(var(--space-5) + var(--safe-bottom));
   z-index: var(--z-toast);
   pointer-events: none;
   display: flex;

@@ -11,7 +11,7 @@ import {
   totalSpend,
 } from '../src/lib/balance.js'
 import { currentMonthKey } from '../src/lib/dates.js'
-import { BalanceCard } from '../src/components/BalanceCard.jsx'
+import { LedgerScreen } from '../src/components/LedgerScreen.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
 import { Header } from '../src/components/Header.jsx'
@@ -150,50 +150,82 @@ describe('toasts render', () => {
   })
 })
 
-describe('balance card renders', () => {
-  it('names the debtor from the viewer’s perspective', () => {
-    const balance = computeBalance(entries)
-    const asP1 = renderToStaticMarkup(
-      <BalanceCard balance={balance} config={config} me={PERSON.P1} currency="USD" />,
-    )
-    const asP2 = renderToStaticMarkup(
-      <BalanceCard balance={balance} config={config} me={PERSON.P2} currency="USD" />,
-    )
-    // Same numbers, opposite wording. p1 is the creditor in this fixture, so it
-    // is p2 who must be told they owe — asserted per side, not as a disjunction
-    // that a component saying "You owe" to both people would satisfy.
-    expect(balance.debtor).toBe(PERSON.P1)
-    expect(asP1).toContain('You owe')
-    expect(asP2).not.toContain('You owe')
-    expect(asP2).toContain('owes you')
-  })
-
-  // Settling happens by wire transfer outside the app, so the balance is a
-  // statement and carries no action. A button here would promise a flow that
-  // does not exist.
-  it('offers no settle action', () => {
-    const markup = renderToStaticMarkup(
-      <BalanceCard
+describe('the header carries the balance', () => {
+  const render = (props) =>
+    renderToStaticMarkup(
+      <Header
         balance={computeBalance(entries)}
         config={config}
         me={PERSON.P1}
         currency="USD"
+        onRefresh={noop}
+        onOpenSettings={noop}
+        {...props}
       />,
     )
-    expect(markup).not.toContain('<button')
+
+  it('names the debtor from the viewer’s perspective', () => {
+    const balance = computeBalance(entries)
+    // Same numbers, opposite wording. p1 is the debtor in this fixture, so it is
+    // p1 who must be told they owe — asserted per side, not as a disjunction that
+    // a component saying "You owe" to both people would satisfy.
+    expect(balance.debtor).toBe(PERSON.P1)
+    expect(render({ me: PERSON.P1 })).toContain('You owe')
+    expect(render({ me: PERSON.P2 })).not.toContain('You owe')
+    expect(render({ me: PERSON.P2 })).toContain('owes you')
   })
 
-  it('says settled when nothing is owed', () => {
-    const markup = renderToStaticMarkup(
-      <BalanceCard
-        balance={{ netCents: 0, debtor: null, creditor: null, amountCents: 0 }}
-        config={config}
-        me={PERSON.P1}
-        currency="USD"
-      />,
-    )
+  it('speaks the whole fact once: named on the heading, hidden on the line below', () => {
+    // The visible composition is digits in spans; a heading that reads "$0.70" says
+    // nothing in a screen reader's heading list, and read span by span it announces
+    // as "dollar zero point seven zero". The visible copy of the sentence is then
+    // hidden, or it is announced twice over. The span assertions are what stop the
+    // whole composition collapsing to a flat string, which every other check here
+    // would survive.
+    const markup = render()
+    expect(markup).toContain('<h1 class="balance__amount" aria-label="You owe Sam $0.70">')
+    expect(markup).toContain('<p class="balance__direction" aria-hidden="true">You owe Sam</p>')
+    expect(markup).toContain('<span class="balance__symbol">$</span>')
+    expect(markup).toContain('<span class="balance__fraction">.</span>')
+  })
+
+  it('names the heading even for a currency it cannot compose', () => {
+    // An unusable code from the config tab makes `formatCentsParts` answer null.
+    // Asserted on the heading's own content, not just its name: the fallback painting
+    // nothing leaves a valid `aria-label` above an empty hero.
+    const markup = render({ currency: '' })
+    expect(markup).toMatch(/aria-label="You owe Sam [^"]+"/)
+    expect(markup).toContain('">0.70</h1>')
+  })
+
+  it('says settled when nothing is owed, with no figure at all', () => {
+    const markup = render({
+      balance: { netCents: 0, debtor: null, creditor: null, amountCents: 0 },
+    })
     expect(markup).toContain('All settled up')
-    expect(markup).not.toContain('You owe')
+    // Not `not.toContain('You owe')`: with a null debtor the non-settled branch reads
+    // "Alex owes you $0.00", so only the absent currency catches losing the branch.
+    expect(markup).not.toContain('$')
+  })
+
+  // Settling happens by wire transfer outside the app, so the balance carries no
+  // action. Named after what it asserts — a count — rather than after the invariant:
+  // a settle button replacing one of the two would pass.
+  it('carries only the two chrome controls', () => {
+    expect(render().match(/<button/g)).toHaveLength(2)
+  })
+
+  it('swaps the refresh control for a spinner while a read is in flight', () => {
+    expect(render({ busy: true })).toContain('spinner')
+    expect(render({ busy: true })).toMatch(/<button[^>]*disabled/)
+    expect(render({ busy: false })).not.toContain('spinner')
+  })
+
+  // The figure moves on every write, but each of those writes already announces
+  // itself through a toast; a second live region here queues behind it.
+  it('is not a live region', () => {
+    expect(render()).not.toContain('aria-live')
+    expect(render()).not.toContain('role="status"')
   })
 })
 
@@ -245,7 +277,6 @@ describe('entry list renders', () => {
         currency="USD"
         onEdit={noop}
         onDelete={noop}
-        onAdd={noop}
       />,
     )
     expect(markup).toContain('Trader Joe&#x27;s') // React escapes the apostrophe
@@ -264,13 +295,15 @@ describe('entry list renders', () => {
         currency="USD"
         onEdit={noop}
         onDelete={noop}
-        onAdd={noop}
       />,
     )
     expect(markup).toContain('You only')
   })
 
-  it('offers a way forward when the month is empty', () => {
+  it('explains an empty month without a second add button', () => {
+    // The block button above the list is the one add affordance: two identically
+    // named accent buttons on one screen read as two different actions, and in a
+    // screen reader's control list they are indistinguishable.
     const markup = renderToStaticMarkup(
       <EntryList
         groups={[]}
@@ -279,23 +312,68 @@ describe('entry list renders', () => {
         currency="USD"
         onEdit={noop}
         onDelete={noop}
-        onAdd={noop}
       />,
     )
     expect(markup).toContain('Nothing logged this month')
-    expect(markup).toContain('Add an expense')
+    expect(markup).toContain('Add a grocery run')
+    expect(markup).not.toContain('<button')
+  })
+})
+
+/**
+ * The assembled surface. Nothing else in the suite renders it — only
+ * `scripts/preview.jsx` does — so this is the one place the tree the app actually
+ * ships can be checked for a control that was meant to be gone or duplicated.
+ */
+describe('the signed-in surface renders', () => {
+  const view = {
+    balance: computeBalance(entries),
+    monthSpend: totalSpend(entries),
+    byCategory: spendByCategory(entries),
+    byPerson: spendByPerson(entries),
+    groups: groupByDate(entries),
+    deleted: [],
+  }
+
+  const markup = renderToStaticMarkup(
+    <LedgerScreen
+      config={config}
+      me={PERSON.P1}
+      currency="USD"
+      view={view}
+      monthKey="2026-08"
+      notices={['Showing saved data.']}
+      refreshing={false}
+      onRefresh={noop}
+      onOpenSettings={noop}
+      onMonthChange={noop}
+      onEdit={noop}
+      onDelete={noop}
+      onRestore={noop}
+      onAdd={noop}
+    />,
+  )
+
+  it('offers exactly one way into the entry form', () => {
+    // The FAB and the empty card's button are both gone; this is the count that says
+    // so, and it is what fails if either comes back — the FAB carried this same
+    // string as its accessible name.
+    expect(markup.match(/Add an expense/g)).toHaveLength(1)
+    expect(markup).toContain('class="btn btn--primary btn--block add-action"')
+  })
+
+  it('puts the add action above the notices, so it never moves with the connection', () => {
+    expect(markup.indexOf('add-action')).toBeLessThan(markup.indexOf('class="notice"'))
+  })
+
+  it('has one h1, and it is the balance rather than the app name', () => {
+    expect(markup.match(/<h1/g)).toHaveLength(1)
+    expect(markup).toContain('balance__amount')
+    expect(markup).not.toContain('Shared Finances')
   })
 })
 
 describe('chrome renders', () => {
-  it('renders the header with both names', () => {
-    const markup = renderToStaticMarkup(
-      <Header config={config} me={PERSON.P1} onRefresh={noop} onOpenSettings={noop} />,
-    )
-    expect(markup).toContain('You')
-    expect(markup).toContain('Sam')
-  })
-
   it('disables forward navigation past the current month', () => {
     const past = renderToStaticMarkup(<MonthNav monthKey="2020-01" onChange={noop} />)
     expect(past).toContain('January')

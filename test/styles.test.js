@@ -9,7 +9,9 @@ import { readFileSync } from 'node:fs'
  * while every other test in the suite still passes.
  *
  * So this file pins the declarations of the shared rules only, and asserts that a
- * heading never picks up layout properties from the block below it.
+ * heading never picks up layout properties from the block below it. Only a selector
+ * that actually shares a declaration block belongs in the tables below — a
+ * standalone rule cannot be mis-merged, so an entry for one tests nothing.
  */
 
 /** Comments stripped first: they contain commas and braces of their own. */
@@ -39,8 +41,6 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
   const headings = [
     ['primitives', '.sheet__title'],
     ['primitives', '.empty__title'],
-    ['app', '.brand__title'],
-    ['app', '.month-nav__label'],
   ]
 
   it.each(headings)('%s %s is still a heading', (file, selector) => {
@@ -153,12 +153,42 @@ describe('the rules an installed iOS web app depends on', () => {
     expect(blocksFor(FILES.primitives, '.sheet__panel').join()).toContain('--keyboard-inset')
   })
 
-  it('keeps the toast stack off the FAB, and unable to swallow its taps', () => {
-    // --z-toast beats --z-fab, so an overlapping toast hides the add button and eats
-    // every tap on it for the toast's whole life.
+  it('keeps a toast from swallowing the taps of what it covers', () => {
+    // The toast stack outranks everything except a sheet, and it now overlays the
+    // last rows of the ledger and their delete controls rather than a FAB. Being
+    // transparent to pointer events is the whole guarantee; the offset only has to
+    // clear the home indicator.
     const stack = blocksFor(FILES.primitives, '.toast-stack').join()
-    expect(stack).toContain('--fab-size')
     expect(stack).toContain('pointer-events: none')
+    expect(stack).toContain('--safe-bottom')
+  })
+
+  it('sizes the band with the token the sticky aside offsets by', () => {
+    // The aside reads --header-height from outside the header, so the band's height
+    // has to be pinned by min-height rather than left to its content to decide.
+    // Asserted as the token, not merely as the property: `min-height: 0` declares it
+    // and pins nothing.
+    expect(blocksFor(FILES.app, '.app__header').join()).toContain(
+      'min-height: var(--header-height)',
+    )
+    expect(blocksFor(FILES.app, '.layout__aside').join()).toContain('--header-height')
+  })
+
+  it('truncates the hero figure but never the sentence that gives it direction', () => {
+    // The figure must stay a BLOCK box: text-overflow only paints on a block
+    // overflowing with inline content, so as a flex row it clips mid-digit with no
+    // ellipsis — a wrong number rather than a visibly incomplete one. And it does
+    // nothing at all without `nowrap`, since a figure that wraps never overflows.
+    expect(declares(FILES.app, '.balance__amount', 'text-overflow')).toBe(true)
+    expect(declares(FILES.app, '.balance__amount', 'white-space')).toBe(true)
+    expect(declares(FILES.app, '.balance__amount', 'display')).toBe(false)
+    // The exact opposite for the line below it: 「{name}に支払い」 is verb-final, so a
+    // tail ellipsis leaves a name with nothing said about which way money runs.
+    // `white-space` is the half that does the harm; ellipsis alone cannot truncate.
+    expect(declares(FILES.app, '.balance__direction', 'white-space')).toBe(false)
+    // Without this the figure pushes the refresh and settings buttons off the
+    // trailing edge of the header instead of being truncated at all.
+    expect(declares(FILES.app, '.balance', 'min-width')).toBe(true)
   })
 
   it('spends no tap on a double-tap wait for a control that is not a button', () => {

@@ -1,0 +1,103 @@
+<!doctype html>
+<!-- Screenshot harness. Each page gets its own iframe, so container and media
+     queries resolve against a real viewport rather than a resized window — a
+     resized headless window quietly reports a width you did not ask for.
+
+     The readout under each frame is the assertion: sideways scroll is measured,
+     not eyeballed, and the header's height is checked against --header-height,
+     which the sticky aside offsets by from outside the header.
+
+       npx vite-node scripts/preview.jsx
+       python3 -m http.server 8899
+       .../Google Chrome --headless --screenshot=out.png --window-size=1400,1000 \
+         'http://127.0.0.1:8899/scripts/frames.html?page=preview-en&w=320,393,430'
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>frames</title>
+<style>
+  body { margin: 0; background: #2b2b2b; font: 11px/1.5 -apple-system, sans-serif; color: #fff; }
+  .row { display: flex; align-items: flex-start; gap: 10px; padding: 10px; }
+  figure { margin: 0; }
+  figcaption { padding: 3px 0; white-space: pre; }
+  .bad { color: #ff8f7a; font-weight: 700; }
+  .ok { color: #8fe3a8; }
+  iframe { border: 0; background: #fff; display: block; }
+</style>
+</head>
+<body>
+<div class="row" id="row"></div>
+<script>
+  const params = new URLSearchParams(location.search)
+  const page = params.get('page') || 'preview-en'
+  const widths = (params.get('w') || '320,393,430,768,1440').split(',').map(Number)
+  const height = Number(params.get('h') || 900)
+  const row = document.getElementById('row')
+
+  const bad = (text) => '<span class="bad">' + text + '</span>'
+  const ok = (text) => '<span class="ok">' + text + '</span>'
+
+  /**
+   * A custom property comes back from getComputedStyle UNRESOLVED — "4.625rem" — so
+   * parsing it and assuming rem would report nonsense the moment the token is written
+   * in px. Let layout resolve it instead.
+   */
+  function resolve(doc, property) {
+    const probe = doc.createElement('div')
+    probe.style.height = 'var(' + property + ')'
+    doc.body.append(probe)
+    const height = probe.getBoundingClientRect().height
+    probe.remove()
+    return height
+  }
+
+  for (const width of widths) {
+    const figure = document.createElement('figure')
+    const caption = document.createElement('figcaption')
+    caption.textContent = width + 'px …'
+    const frame = document.createElement('iframe')
+    frame.width = width
+    frame.height = height
+    frame.src = './' + page + '.html'
+    frame.addEventListener('load', () => {
+      const doc = frame.contentDocument
+      const root = doc.documentElement
+      const header = doc.querySelector('.app__header')
+      const add = doc.querySelector('.add-action')
+      const token = resolve(doc, '--header-height')
+      const tap = resolve(doc, '--tap-target')
+      const measure = (node) => Math.round(node.getBoundingClientRect().height)
+
+      const lines = [
+        width +
+          'px  ' +
+          (root.scrollWidth > root.clientWidth
+            ? bad('SIDEWAYS ' + root.scrollWidth + '>' + root.clientWidth)
+            : ok('no sideways')),
+      ]
+      // A missing node has to read as a failure, not as "no data": these selectors
+      // are what the measurements below are anchored to.
+      if (!header) lines.push(bad('MISSING .app__header'))
+      else {
+        const px = measure(header)
+        lines.push(
+          'header ' +
+            px +
+            'px ' +
+            (px > token + 1 ? bad('> token ' + token) : ok('within token ' + token)),
+        )
+      }
+      if (!add) lines.push(bad('MISSING .add-action'))
+      else {
+        const px = measure(add)
+        lines.push('add ' + px + 'px ' + (px < tap ? bad('< tap target ' + tap) : ok('tappable')))
+      }
+      caption.innerHTML = lines.join('\n')
+    })
+    figure.append(caption, frame)
+    row.append(figure)
+  }
+</script>
+</body>
+</html>

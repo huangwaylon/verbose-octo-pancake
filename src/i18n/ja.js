@@ -23,6 +23,7 @@ export default {
   'common.cancel': 'キャンセル',
   'common.save': '保存',
   'common.add': '追加',
+  'common.addExpense': '支出を追加',
   'common.delete': '削除',
   'common.close': '閉じる',
   'common.retry': 'もう一度試す',
@@ -30,7 +31,6 @@ export default {
   'common.paid': '{name}の支払い',
   'common.whoPaid': '支払った人',
   'common.notePresets': 'よく使うメモ',
-  'common.peopleSeparator': '・',
 
   'header.refresh': 'シートから再読み込み',
   'header.settings': '設定',
@@ -39,9 +39,10 @@ export default {
   'month.next': '次の月',
 
   // --- balance --------------------------------------------------------------
-  'balance.title': '貸し借り',
   'balance.youOwe': '{name}に支払い',
   'balance.owesYou': '{name}から受け取り',
+  'balance.youOweAmount': '{name}に{amount}の支払い',
+  'balance.owesYouAmount': '{name}から{amount}の受け取り',
   'balance.settled': '精算ずみ',
 
   // --- month summary --------------------------------------------------------
@@ -61,7 +62,6 @@ export default {
   // --- entry list -----------------------------------------------------------
   'list.emptyTitle': '今月の記録はまだありません',
   'list.emptyText': '買い物やふたりで食べた食事を追加しましょう。',
-  'list.emptyAction': '支出を追加',
 
   'entry.expense': '支出',
   'entry.settled': '精算',

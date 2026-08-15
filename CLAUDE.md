@@ -177,8 +177,8 @@ gets to restyle the other's phone.
 **Never add an `if (type === 'settlement')` branch to arithmetic** — `payer_share: 0`
 already says it — and never count one toward a spend total or a category breakdown.
 
-**Nothing in the UI creates a settlement**, so `BalanceCard` carries no action and must
-stay that way unless asked. Everything below the UI still handles the type.
+**Nothing in the UI creates a settlement**, so the balance in `Header` carries no action
+and must stay that way unless asked. Everything below the UI still handles the type.
 
 **The default split is per person, keyed on the payer.** `defaultSplitFor(config,
 person)` in `src/lib/split.js` is the only place that decides it. The two values are
@@ -323,8 +323,8 @@ existing sheet working".
   shipped bundle. Both existing variables are public by design.
 - **Comments explain *why*, not *what*.** Match the existing density — the
   non-obvious constraint gets a comment; the obvious line does not. State the standing
-  rule, not the incident that produced it: "the FAB overlaps the last row without this
-  padding", never "this shipped broken once".
+  rule, not the incident that produced it: "the sticky aside offsets by this token",
+  never "this shipped broken once".
 - **One helper, one home.** `readStored`/`writeStored` in `src/config.js` are the only
   `localStorage` touches; `cellText` and `columnIndex` live in `schema.js`; `PEOPLE` is
   the only `[p1, p2]` literal; `normalizeCurrency` is the only currency spelling and
@@ -338,10 +338,11 @@ existing sheet working".
   `Field`), `EntryAmount` (the per-row currency resolution), `NoteField` and
   `SplitField`. The two radio groups — `Segmented` and the accent swatches — each
   carry their own `role="radiogroup"`.
-- **`LedgerScreen` is the signed-in surface, and TWO things render it**: `App` and
-  `scripts/preview.jsx`. Written twice, a layout change silently leaves the only visual
-  check screenshotting a tree the app no longer has. `App` keeps the gates, the sheets
-  and the state; `useLedgerView` holds every derived figure.
+- **`LedgerScreen` is the signed-in surface, and THREE things render it**: `App`,
+  `scripts/preview.jsx`, and one static render in `test/render.test.jsx`. Written more
+  than once, a layout change silently leaves the only visual check screenshotting a tree
+  the app no longer has. `App` keeps the gates, the sheets and the state;
+  `useLedgerView` holds every derived figure.
 
 ### i18n
 
@@ -383,6 +384,18 @@ variant for strings with inline markup (`nodes.jsx`).
   value changes without a page change carries `role="status"` — the split breakdown,
   the notices, the compact result. A message only positioned near its field says
   nothing to a screen reader.
+- **The balance is the deliberate exception, and must not become a live region.** It
+  changes on every write, but every one of those writes already speaks through a toast,
+  and a second region queues behind it — delaying the sentence that names what actually
+  happened. It would also announce a figure on every cold launch, since the snapshot
+  paints before the server read replaces it. `Header` says this too; `test/render.test.jsx`
+  pins it.
+- **The hero figure is named by a sentence, not by its digits.** The `<h1>` holding it
+  carries an `aria-label` of the whole fact ("You owe Sam $42.50"), which is why no part
+  span is `aria-hidden`: `aria-label` outranks subtree content, so hiding the parts would
+  turn a terse heading into an empty one. The visible direction line below it *is*
+  `aria-hidden`, because the heading already says it. Never move the name onto the `<p>` —
+  `role="paragraph"` prohibits naming, so it would announce nothing at all.
 - **Identity is never communicated by colour alone.** The chart legend always carries
   name, value and share; the who-paid meter's second segment carries a hairline.
 
@@ -424,15 +437,17 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
   min-content) and `overflow-wrap: anywhere` (`break-word` does not reduce min-content
   width). The two `preview-en-stress*` pages are the check: names, categories, notes and
   amounts that no phone has room for.
-- **The toast stack sits ABOVE the FAB and takes no pointer events**, or it hides the
-  add button and swallows its taps for the toast's whole life.
+- **The toast stack takes no pointer events.** It outranks everything but a sheet and it
+  overlays the last rows of the ledger, so without that it would swallow a tap on a
+  delete control for the toast's whole life. Covering one briefly is accepted; the layout
+  deliberately reserves no band for it.
 - **A row is a row, not text.** `.entry__main` sets `user-select: none` and
   `-webkit-touch-callout: none`: it is the edit affordance, and a long press should not
   raise the selection magnifier.
 - **Safe areas are composed where they are needed, not globally.** `base.css` applies
-  the horizontal insets to `body`; the sticky header, the FAB, the sheet footer and the
-  toast stack each add `--safe-top`/`--safe-bottom` themselves, because each has to paint
-  *into* its inset while padding its own content.
+  the horizontal insets to `body`; the sticky header, the sheet footer and the toast stack
+  each add `--safe-top`/`--safe-bottom` themselves, because each has to paint *into* its
+  inset while padding its own content.
 
 ### Charts
 
@@ -475,13 +490,13 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
   em box. `--lh-flat: 1` is the single carve-out, same element, same reason. There is
   no `--lh-heading`: headings use `--lh-tight`, which *is* 1.5.
 - **Nothing below 13px**, `<code>` included. Weights are `400|500|600` only.
-- **Elevations appear in exactly four places** (sheet panel, toast, FAB, segmented
-  thumb) and never on hover. Cards are a white plane plus one hairline; the
-  temperature step from `--bg` to `--surface` is the elevation. `box-shadow` is used
-  for three other things that are not elevations and do not count against those four:
-  the focus ring, the swatch's selection ring, and the meter's segment hairline. It is
-  transitioned in exactly one place, the text control's focus ring;
-  `test/styles.test.js` pins that.
+- **Elevations appear in exactly three places** (sheet panel, toast, segmented thumb)
+  and never on hover. Cards are a white plane plus one hairline; the temperature step
+  from `--bg` to `--surface` is the elevation, and the add button is a flat plane of
+  accent rather than a raised one. `box-shadow` is used for three other things that are
+  not elevations and do not count against those three: the focus ring, the swatch's
+  selection ring, and the meter's segment hairline. It is transitioned in exactly one
+  place, the text control's focus ring; `test/styles.test.js` pins that.
 - **Contrast budgets live in `tokens.css`, next to the values, with their measured
   ratios.** Do not restate them here; do not "tidy" two tokens together because they
   look similar. The two that catch people are `--line-input` and `--ink-3`, and both
@@ -497,16 +512,16 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
   `62rem`; the sheet becomes a centred dialog at `48rem` too — there is no third
   breakpoint. Tap targets are `var(--tap-target)` (44px), or `var(--tap-target-sm)`
   (36px) for chips and the segmented thumb.
-- **Every layout keeps `--fab-size` of clearance below its content**, at every width,
-  or the FAB covers the last row's delete button.
+- **`--header-height` must never understate the header's real height.** The band holds
+  two lines now — a 32px figure and a caption — and `.layout__aside`'s sticky offset reads
+  the token from outside the header, so a token that is short slides the aside under the
+  band with nothing on screen looking wrong. `min-height` has to be the binding
+  constraint; `scripts/frames.html` measures it.
 - Keep specificity flat: single class selectors, no IDs, no `!important`.
 
 ## Testing
 
 Specs live in `test/**/*.test.{js,jsx}`, with shared harnesses under `test/support/`.
-Nineteen files: `money`, `currency`, `balance`, `schema`, `dates`, `config`, `split`,
-`sheets`, `ledgerState`, `connection`, `snapshot`, `preferences`, `viewport`,
-`sw-build`, `i18n`, `render`, `ui`, `styles` and `lockfile`.
 
 `sheets.test.js` runs against a fake Sheets API in `test/support/sheets-api.js` that
 records every request, because this layer's failures are writes: the assertions are
@@ -544,21 +559,28 @@ the outstanding balance must drive the net to zero, with odd-unit amounts so rou
 is genuinely exercised.
 
 **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the
-real `LedgerScreen` to static HTML with the real stylesheets — fourteen files: each
-accent in English, indigo in Japanese, the three overlays (delete dialog, entry form,
-settings) in both, and two stress pages whose config tab and notes hold everything a
-320px phone has no room for.
+real `LedgerScreen` to static HTML with the real stylesheets — fifteen pages: each accent
+in English, indigo in Japanese, the three overlays (delete dialog, entry form, settings)
+in both, the settled balance, and two stress pages whose config tab, notes and amounts
+hold everything a 320px phone has no room for.
+
+`scripts/frames.html` is how they are viewed: it loads one page into an `<iframe>` per
+width and prints the measurements underneath. **Iframes, not a resized window** — an
+iframe gets its own viewport so container and media queries resolve honestly, while
+headless Chrome quietly reports a different width than you asked for and every breakpoint
+reads wrong. The readout is the assertion, so sideways scroll and header height are
+measured rather than eyeballed.
 
 ```sh
 npx vite-node scripts/preview.jsx     # writes scripts/preview-*.html (gitignored)
+python3 -m http.server 8899           # iframes need an origin
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
+  --screenshot=/tmp/shot.png --window-size=1220,1000 \
+  'http://127.0.0.1:8899/scripts/frames.html?page=preview-en&w=320,393,430'
 ```
 
-Load them in `<iframe>`s at 320/390/430/768/1440 and screenshot. **Use iframes, not a
-resized window** — an iframe gets its own viewport so container and media queries
-resolve honestly, while headless Chrome quietly reports a different width than you
-asked for and every breakpoint reads wrong. Assert the absence of sideways scroll
-rather than eyeballing it: `documentElement.scrollWidth > clientWidth` inside each
-frame is the whole check.
+`page` is any generated file's name without `.html`; `w` is the iframe widths. The ones
+worth walking are 320 (the floor), 393 (iPhone 15), 430, 768 and 1440.
 
 ## Gotchas
 

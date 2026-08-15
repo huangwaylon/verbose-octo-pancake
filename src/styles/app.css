@@ -8,8 +8,11 @@
 }
 
 /* =========================================================================
-   Header
-   ========================================================================= */
+   Header — the balance band
+   =========================================================================
+   The band holds the app's one hero figure rather than a name and a tagline, so it
+   is two lines tall. Its height is pinned by --header-height, whose comment in
+   tokens.css carries the arithmetic and why min-height has to be what binds. */
 
 .app__header {
   position: sticky;
@@ -20,9 +23,15 @@
   justify-content: space-between;
   gap: var(--space-3);
   min-height: var(--header-height);
-  padding: var(--safe-top) var(--space-4) 0;
-  /* The one blur in the app, and it is functional: content scrolls under it. */
-  background-color: color-mix(in srgb, var(--bg) 80%, transparent);
+  /* Explicit block padding rather than relying on min-height to centre: the band
+     holds one line when settled and two otherwise, and the figure's optical
+     position should not move between those states. */
+  padding: calc(var(--space-2) + var(--safe-top)) var(--space-4) var(--space-2);
+  /* The one blur in the app, and it is functional: content scrolls under it. The
+     ground is held close to --bg because the figure's recessive spans are measured
+     against --bg, and what passes underneath includes white cards and the
+     settlement row's accent wash. */
+  background-color: color-mix(in srgb, var(--bg) 90%, transparent);
   backdrop-filter: blur(14px) saturate(1.4);
   border-bottom: 1px solid var(--line);
 }
@@ -33,34 +42,108 @@
   }
 }
 
-/* min-width: 0 is load-bearing: without it two long names push the header past
-   --header-height, and the sticky aside below offsets by that fixed number. */
-.brand {
-  min-width: 0;
+/* Full-bleed for the blur, but the content inside lines up with the ledger's
+   column: the figure is the page's most-read number and must not sit half a
+   screen from the settings button at 1440px. The same max() as .layout's own
+   centring, arrived at by padding rather than a wrapper — a wrapper would have to
+   sit inside the blurred box, which is the element that must stay edge to edge. */
+@media (min-width: 48rem) {
+  .app__header {
+    padding-inline: max(var(--space-6), calc(50vw - var(--column-max) / 2 + var(--space-6)));
+  }
 }
 
-/* Shared with .month-nav__label below: the same heading step in both places. */
-.brand__title,
-.month-nav__label {
-  font-size: var(--fs-lg);
-  font-weight: 600;
-  line-height: var(--lh-tight);
-}
-
-.brand__subtitle {
-  margin: 0;
-  overflow: hidden;
-  color: var(--ink-3);
-  font-size: var(--fs-caption);
-  line-height: var(--lh-tight);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+@media (min-width: 62rem) {
+  .app__header {
+    padding-inline: max(var(--space-7), calc(50vw - var(--shell-max) / 2 + var(--space-7)));
+  }
 }
 
 .header-actions {
   display: flex;
   align-items: center;
   gap: var(--space-1);
+}
+
+/* =========================================================================
+   Balance — the hero
+   =========================================================================
+   In the chrome rather than in a card: the strongest hierarchy move available, and
+   it costs nothing — the white cards below then read unambiguously as "the
+   details". Why the figure is not scoped to the month on screen is in
+   `Header.jsx`. */
+
+.balance {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  /* Load-bearing: the header is a row flex container, so without this a long
+     figure or a long name pushes the two icon buttons off the trailing edge
+     instead of being truncated. */
+  min-width: 0;
+}
+
+/* A block box with INLINE parts, not a flex row. text-overflow only paints on a
+   block overflowing with inline content, so as a flex container a seven-figure
+   balance clipped mid-digit with no ellipsis — and a half-digit is a wrong number
+   where an ellipsis is a visibly incomplete one. Wrapping is not the alternative:
+   a figure broken over two lines changes --header-height. */
+.balance__amount {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--fs-hero);
+  font-weight: 600;
+  /* The one place a line-height below 1.5 is allowed: digits only, no CJK. */
+  line-height: var(--lh-flat);
+  /* Likewise the one place letter-spacing is allowed, for the same reason. */
+  letter-spacing: -0.022em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Symbol and minor units recede; the integer part carries the weight. */
+.balance__symbol,
+.balance__fraction {
+  color: var(--ink-3);
+  font-size: 0.6em;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Wraps rather than truncating, which is the opposite of the figure above it and
+   deliberate: the direction is the only thing this line carries, and 「{name}に
+   支払い」 is verb-final, so a tail ellipsis would leave a name with nothing said
+   about which way the money runs. */
+.balance__direction {
+  color: var(--ink-2);
+  font-size: var(--fs-caption);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+}
+
+/* Settled is typographic, never green. A green success state in a two-person
+   ledger is a small indignity, and hue adds nothing that the words do not say.
+   Set at --fs-xl, not the hero step: it is a status rather than a figure, and
+   there is no figure beside it to be outranked by. */
+.balance__settled {
+  display: flex;
+  /* Centred, not baseline-aligned: a 6px dot sitting on the baseline of 24px text
+     reads as dropped. */
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--ink);
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+}
+
+.balance__dot {
+  flex: none;
+  width: 0.375rem;
+  height: 0.375rem;
+  background-color: var(--accent);
+  border-radius: var(--radius-full);
 }
 
 /* =========================================================================
@@ -71,19 +154,18 @@
    through. 62rem: two columns.
 
    The DOM order is aside-then-main, which is already the right reading order on
-   a phone (balance, summary, then the list), so no `order` is needed anywhere.
-
-   The bottom padding keeps the FAB's footprint clear of the last row at EVERY
-   width. Dropping it in the two-column block once put the button on top of the
-   bottom expense's amount and delete control. */
+   a phone (add, notices, summary, then the list), so no `order` is needed
+   anywhere. */
 
 .layout {
-  --layout-bottom: calc(var(--space-7) + var(--fab-size) + var(--safe-bottom));
-
   display: grid;
   gap: var(--space-6);
   width: 100%;
-  padding: var(--space-5) var(--space-4) var(--layout-bottom);
+  /* Nothing floats over the ledger any more, so the bottom inset only has to clear
+     the home indicator without ending the list flush against it. A toast can still
+     overlap the last row; `.toast-stack` in primitives.css says why that is accepted
+     rather than reserved for. */
+  padding: var(--space-5) var(--space-4) calc(var(--space-7) + var(--safe-bottom));
 }
 
 .layout__aside {
@@ -128,103 +210,22 @@
 }
 
 /* =========================================================================
-   Balance — the hero
+   Add action
    =========================================================================
-   Deliberately NOT a card. It is a bare block on the page ground, closed by a
-   single hairline. Taking the frame off the most important element on the page
-   is the strongest hierarchy move available and costs nothing; the white cards
-   below then read unambiguously as "the details". */
+   The app's one primary action and the only way into the entry form, in flow
+   rather than floating. In flow it can be the full width of the column, which is a
+   far larger target than a 56px disc and covers no part of the ledger. The cost is
+   that it scrolls out of view on a long month; a flick back to the top is the
+   recovery, which is safe only because `overscroll-behavior-y: none` in base.css
+   stops that flick reloading an installed app. */
 
-.balance {
-  container-type: inline-size;
-  display: flex;
-  flex-direction: column;
-  /* Kept tight: this block states one fact and sits between the header and the
-     ledger, so height here is height taken from the list. */
-  padding-block: var(--space-1) var(--space-3);
-}
-
-/* The rule closing the hero off from what follows. Suppressed when nothing
-   follows — the SummaryCard renders null for a month with no spend, and a
-   border-bottom with empty space under it reads as a broken layout. */
-.balance:not(:last-child) {
-  border-bottom: 1px solid var(--line);
-}
-
-/* Sentence and figure share one baseline-aligned line, the figure pushed to the
-   trailing edge. It wraps rather than compressing the number, because two long
-   names in a 288px aside will not fit beside a six-digit yen amount. */
-.balance__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-1) var(--space-4);
-}
-
-.balance__direction {
-  margin: 0;
-  color: var(--ink-2);
-  font-size: var(--fs-label);
-  font-weight: 500;
-  line-height: var(--lh-tight);
-}
-
-/* --fs-display is container-relative, not viewport-relative: the same component
-   renders at 288px on a phone and inside a 352px aside on a 1440px monitor,
-   where a vw-keyed clamp would overflow. It sits on the sentence's line now, so
-   it is sized to be the largest figure on the page and no larger. */
-.balance__amount {
-  display: flex;
-  align-items: baseline;
-  gap: 0.06em;
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--fs-display);
-  font-weight: 600;
-  /* The one place a line-height below 1.5 is allowed: digits only, no CJK. */
-  line-height: var(--lh-flat);
-  /* Likewise the one place letter-spacing is allowed, for the same reason. */
-  letter-spacing: -0.022em;
-  font-feature-settings: "tnum" 1, "palt" 1;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Symbol and minor units recede; the integer part carries the weight. */
-.balance__symbol,
-.balance__fraction {
-  color: var(--ink-3);
-  font-size: 0.6em;
-  font-weight: 500;
-  letter-spacing: 0;
-}
-
-/* Optically hang the symbol at cap height instead of sitting it on the
-   baseline, where it looks dropped. */
-.balance__symbol {
-  align-self: flex-start;
-  padding-top: 0.1em;
-}
-
-/* Settled is typographic, never green. A green success state in a two-person
-   ledger is a small indignity, and hue adds nothing that the words do not say. */
-.balance__settled {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  margin: 0;
-  color: var(--ink);
+.add-action {
+  min-height: 3.5rem;
+  /* Matches the cards it sits above rather than nesting inside them. Not
+     --radius-xl: 22px on a 56px box is most of half its height, which is the
+     pill read the radius scale rules out. */
+  border-radius: var(--radius-lg);
   font-size: var(--fs-body);
-  font-weight: 600;
-  line-height: var(--lh-tight);
-}
-
-.balance__dot {
-  flex: none;
-  width: 0.375rem;
-  height: 0.375rem;
-  background-color: var(--accent);
-  border-radius: var(--radius-full);
 }
 
 /* =========================================================================
@@ -404,6 +405,12 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+}
+
+.month-nav__label {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  line-height: var(--lh-tight);
 }
 
 /* =========================================================================
@@ -657,51 +664,13 @@ button.entry__main:active {
 }
 
 /* =========================================================================
-   Amount input, FAB, settings
+   Amount input, settings
    ========================================================================= */
 
 .input--amount {
   font-size: var(--fs-xl);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-}
-
-.fab {
-  position: fixed;
-  right: calc(var(--space-5) + var(--safe-right));
-  bottom: calc(var(--space-5) + var(--safe-bottom));
-  z-index: var(--z-fab);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--fab-size);
-  height: var(--fab-size);
-  background-color: var(--accent);
-  color: var(--accent-text);
-  border-radius: var(--radius-full);
-  box-shadow: var(--shadow-fab);
-  transition: background-color var(--transition-fast);
-}
-
-@media (hover: hover) {
-  .fab:hover {
-    background-color: var(--accent-hover);
-  }
-}
-
-.fab:active {
-  background-color: var(--accent-hover);
-}
-
-/* Pin to the shell's edge rather than the viewport's: a FAB in the corner of a
-   27" monitor is half a metre from the content. */
-@media (min-width: 62rem) {
-  .fab {
-    right: max(
-      calc(var(--space-7) + var(--safe-right)),
-      calc(50vw - var(--shell-max) / 2 + var(--space-7))
-    );
-  }
 }
 
 /* Three sentences that are content rather than annotation: a settings value, a

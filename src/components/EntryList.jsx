@@ -14,7 +14,7 @@ import { WalletIcon } from './icons.jsx'
  * per row: a long month otherwise rebuilds the same three strings for every
  * entry.
  */
-export function EntryList({ groups, config, me, currency, onEdit, onDelete, onAdd }) {
+export function EntryList({ groups, config, me, currency, onEdit, onDelete }) {
   const { t, locale } = useT()
   const money = useMoney(currency)
   const labels = useDayLabels()
@@ -27,10 +27,9 @@ export function EntryList({ groups, config, me, currency, onEdit, onDelete, onAd
           <WalletIcon width={28} height={28} />
         </span>
         <p className="empty__title">{t('list.emptyTitle')}</p>
+        {/* No button: the block add button sits a screen above this card, and two
+            identically named accent buttons read as two different actions. */}
         <p className="empty__text">{t('list.emptyText')}</p>
-        <button type="button" className="btn btn--primary" onClick={onAdd}>
-          {t('list.emptyAction')}
-        </button>
       </div>
     )
   }

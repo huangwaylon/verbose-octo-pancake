@@ -26,6 +26,8 @@ export default {
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'common.add': 'Add',
+  // The app's one primary action, on the block button under the balance.
+  'common.addExpense': 'Add an expense',
   'common.delete': 'Delete',
   'common.close': 'Close',
   'common.retry': 'Try again',
@@ -35,9 +37,6 @@ export default {
   'common.paid': '{name} paid',
   'common.whoPaid': 'Who paid',
   'common.notePresets': 'Frequent notes',
-  // Joins the two names in the header. A separator, so it is a translation
-  // decision: ' & ' in English, a nakaguro in Japanese.
-  'common.peopleSeparator': ' & ',
 
   'header.refresh': 'Refresh from the sheet',
   'header.settings': 'Settings',
@@ -46,9 +45,15 @@ export default {
   'month.next': 'Next month',
 
   // --- balance --------------------------------------------------------------
-  'balance.title': 'Balance',
+  // The line under the figure. The figure itself is a visual composition of
+  // Intl's parts, so the heading holding it is named by one of the two sentences
+  // below instead — a heading that reads "¥12,500" says nothing in a screen
+  // reader's heading list. Both readings exist in full because the word order
+  // differs per language; the amount cannot be appended by the caller.
   'balance.youOwe': 'You owe {name}',
   'balance.owesYou': '{name} owes you',
+  'balance.youOweAmount': 'You owe {name} {amount}',
+  'balance.owesYouAmount': '{name} owes you {amount}',
   'balance.settled': 'All settled up',
 
   // --- month summary --------------------------------------------------------
@@ -71,8 +76,9 @@ export default {
 
   // --- entry list -----------------------------------------------------------
   'list.emptyTitle': 'Nothing logged this month',
+  // No button here: the block button above the list is the one add affordance,
+  // and two identical accent buttons on one screen read as two different actions.
   'list.emptyText': 'Add a grocery run or a meal you split.',
-  'list.emptyAction': 'Add an expense',
 
   'entry.expense': 'Expense',
   'entry.settled': 'Settled up',

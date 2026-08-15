@@ -211,8 +211,8 @@ describe('catalog usage', () => {
 describe('no hardcoded user-facing strings in components', () => {
   /**
    * An attribute nobody sees rendered is the easiest place to leave English
-   * behind — `aria-label="Add an expense"` shipped on the FAB and no catalog
-   * check could see it, because the string never went near a catalog.
+   * behind: an `aria-label` never goes near a catalog, so no catalog check can
+   * see it. Every icon-only control in the app depends on one.
    *
    * `aria-valuetext` earns its place here: the split slider's spoken value is a
    * whole sentence, and it is the only spoken string in the app that is not also
@@ -267,7 +267,7 @@ describe('engine', () => {
 
   it('falls back to the reference locale for a key a translation lacks', () => {
     // Simulated by asking for a locale that does not exist at all.
-    expect(translate('de', 'balance.title')).toBe('Balance')
+    expect(translate('de', 'balance.settled')).toBe('All settled up')
   })
 })
 
@@ -322,7 +322,7 @@ describe('locale switching', () => {
   it('switches and reports the new locale', () => {
     setLocale('ja')
     expect(getLocale()).toBe('ja')
-    expect(t('balance.title')).toBe('貸し借り')
+    expect(t('balance.settled')).toBe('精算ずみ')
   })
 
   it('ignores an unsupported tag rather than blanking the UI', () => {

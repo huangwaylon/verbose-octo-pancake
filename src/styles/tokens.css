@@ -35,18 +35,17 @@
      One hue, swappable: `[data-accent]` at the bottom of this file redefines
      three properties and nothing else, so a preset cannot reach into the
      neutrals or the chart series. Every accent in the set keeps white text at or
-     above 7.5:1 and sits at or above 6.8:1 against --bg, so buttons, focus rings
-     and the FAB stay compliant whichever one is chosen.
+     above 7.5:1 and sits at or above 6.8:1 against --bg, so the add button, the
+     focus ring and the swatches stay compliant whichever one is chosen.
 
-     --accent-text is fixed for every preset, and --accent-shadow and
-     --accent-ring are derived with color-mix rather than restating the accent's
-     channels — which is what keeps adding a preset a three-value change. */
+     --accent-text is fixed for every preset, and --accent-ring is derived with
+     color-mix rather than restating the accent's channels — which is what keeps
+     adding a preset a three-value change. */
   --accent: #3d4e8b;
   --accent-hover: #313f73;
   --accent-text: #ffffff;
   --accent-wash: #edeef7;
   --accent-ring: color-mix(in srgb, var(--accent) 22%, transparent);
-  --accent-shadow: color-mix(in srgb, var(--accent) 38%, transparent);
 
   /* The only semantic color. There is deliberately no --success and no
      --warning: "settled" is stated in words, and money direction is never
@@ -123,13 +122,15 @@
   --fs-label: 0.875rem; /* 14 */
   --fs-body: 1rem; /* 16 — also the iOS no-zoom floor for inputs */
   --fs-lg: 1.125rem; /* 18 */
-  --fs-xl: 1.5rem; /* 24 */
-  /* The hero balance, container-relative so the same component fits a 288px
-     phone and a 352px aside. Its floor stays above --fs-xl on purpose: the month
-     total below it is set at --fs-xl, and a hero the same size as the figure it
-     outranks is no hero at all. Kept only just above, because the balance block
-     sits between the header and the ledger, where height is taken from the list. */
-  --fs-display: clamp(1.625rem, 8cqi, 1.875rem);
+  --fs-xl: 1.5rem; /* 24 — the settled line, and the month total */
+  /* The hero balance, in the sticky header. A fixed step, NOT a container-relative
+     clamp: the header's inline size tracks the shell rather than the figure's own
+     box, so `cqi` there would measure the wrong thing — and with no query container
+     at all a `cqi` term silently falls back to the small viewport, where the clamp
+     floor wins on every phone. Sized to outrank --fs-xl by a third, which is the
+     whole hierarchy now that there is no card frame to help.
+     2rem is also the ceiling: past it the eighth digit ellipsises at 320px. */
+  --fs-hero: 2rem;
 
   /* Nothing below 1.5 can hold Japanese: CJK glyphs fill the em box, and a
      tighter line turns a wrapped sentence into a solid block. --lh-flat is the
@@ -140,16 +141,13 @@
   --lh-prose: 1.8;
 
   /* ---- Elevation -------------------------------------------------------
-     Shadows appear in exactly four places: the sheet panel, the toast, the FAB,
-     and the segmented control's selected thumb. Nowhere else — not on cards,
-     not on inputs, not on buttons — and never added on hover. The focus ring is
-     also drawn with box-shadow, which is a ring rather than an elevation. */
+     Shadows appear in exactly three places: the sheet panel, the toast, and the
+     segmented control's selected thumb. Nowhere else — not on cards, not on
+     inputs, not on buttons — and never added on hover. The focus ring is also
+     drawn with box-shadow, which is a ring rather than an elevation. */
   --shadow-raised: 0 1px 2px rgba(28, 26, 23, 0.05);
   --shadow-overlay: 0 2px 8px rgba(28, 26, 23, 0.06),
     0 16px 48px -12px rgba(28, 26, 23, 0.22);
-  /* The one colored element casts the one colored shadow. */
-  --shadow-fab: 0 1px 2px rgba(28, 26, 23, 0.1),
-    0 8px 24px -6px var(--accent-shadow);
 
   /* ---- Metrics ---------------------------------------------------------
      --main-max is the number that matters: past ~48rem an expense row's
@@ -165,15 +163,23 @@
   /* Secondary controls: chips, the segmented thumb, the row's delete button.
      Still clears WCAG 2.5.8's 24px floor with room to spare. */
   --tap-target-sm: 36px;
-  --header-height: 56px;
+  /* Two lines: the hero figure at --lh-flat (32px), --space-1, then the direction
+     at --fs-caption (19.5px), with --space-2 of block padding either side and the
+     hairline — 72.5px, so 74 is the next quarter step that min-height actually
+     binds at. It has to bind: `.layout__aside`'s sticky offset reads this from
+     OUTSIDE the header, and a token below the content height slides the aside under
+     the band with nothing on screen looking wrong.
+
+     It deliberately excludes --safe-top, which the header pads by on top. That
+     understates the rendered height on any device with a top inset — harmless,
+     because the only reader is the two-column layout at >=62rem, and no notched
+     phone is ever that wide in portrait. */
+  --header-height: 4.625rem;
   --shell-max: 74rem;
   --column-max: 36rem;
   --main-max: 46rem;
   --sheet-max: 30rem;
   --aside-w: 22rem;
-  /* The FAB, and therefore the space every layout must keep clear beneath the
-     content so the button never covers the last row. */
-  --fab-size: 3.5rem;
 
   /* ---- Motion ----------------------------------------------------------
      Duration + easing live together so components can write
@@ -189,7 +195,6 @@
 
   /* ---- Stacking order --------------------------------------------------- */
   --z-header: 100;
-  --z-fab: 200;
   --z-sheet: 300;
   --z-toast: 400;
 
@@ -216,8 +221,8 @@
      teal   青緑  7.50 / 6.89
 
    Every one clears AA for white text with a 1.6x margin and clears the 3:1
-   non-text floor for the ring and the FAB. Indigo is also the closest of the
-   five to --series-1 (ΔE 24.7), so on a screen showing both the meter and the
+   non-text floor for the ring and the add button. Indigo is also the closest of
+   the five to --series-1 (ΔE 24.7), so on a screen showing both the meter and the
    donut, pine or sepia separate the two readings best. */
 /* Indigo is also spelled out, even though :root already carries it, so a
    swatch can scope it locally like any other preset. */
