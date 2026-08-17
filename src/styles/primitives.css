@@ -233,7 +233,7 @@
   outline: none;
 }
 
-/* The form already announces the problem in words; this is the matching visual
+/* The field already announces the problem in words; this is the matching visual
    state, without which the control that failed is unmarked. */
 .input[aria-invalid="true"] {
   border-color: var(--danger);
@@ -406,7 +406,7 @@
 }
 
 /* =========================================================================
-   Bottom sheet / dialog
+   Modal panel: full-screen page or bottom sheet, dialog once there is room
    ========================================================================= */
 
 .sheet {
@@ -441,21 +441,33 @@
      large intrinsic minimum (a date input on iOS) would push the whole panel wider
      than the screen, carrying every field in it off the right edge. */
   min-width: 0;
-  /* Shrinks by the keyboard inset too, or the panel grows past the top of the
-     screen instead of the body scrolling. */
+  /* Content-sized, capped so a long sheet does not run past the top of the screen.
+     Shrinks by the keyboard inset too, or the panel grows upward instead of the body
+     scrolling. The `--full` variant below replaces this with the whole screen. */
   max-height: min(calc(88dvh - var(--keyboard-inset, 0px)), 44rem);
   background-color: var(--surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--shadow-overlay);
 }
 
-.sheet__handle {
-  width: 2.25rem;
-  height: 0.25rem;
-  margin: var(--space-3) auto 0;
-  background-color: var(--line-input);
-  border-radius: var(--radius-full);
-  opacity: 0.5;
+/* A page's worth of form takes the phone's whole screen. Floating it wastes the band
+   above it on scrim while the last field is cut off below the fold — and `44rem` is
+   the term that binds on an iPhone 15 (704px of 852), so this has to lift that cap
+   rather than only asking for more height. */
+.sheet__panel--full {
+  /* `.sheet` is `position: fixed; inset: 0` and already pads its bottom by the keyboard
+     inset, so 100% of its content box IS the screen minus the keyboard. Computing
+     `100dvh - inset` here instead would make the panel a second reader of the inset for
+     one box, and would assume `dvh` always equals that ancestor's height. */
+  height: 100%;
+  max-height: none;
+  border-radius: 0;
+  /* This panel IS the top of the screen now, and `position: fixed` puts it outside
+     base.css's insets on `body`, so it composes its own. Without the top one the
+     title and the close button sit under the Dynamic Island. */
+  padding-top: var(--safe-top);
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
 }
 
 .sheet__header {
@@ -488,6 +500,19 @@
   overscroll-behavior: contain;
 }
 
+/* The header has no background of its own and the body scrolls under it from 12px
+   below the title, so on a full-bleed panel a scrolled field shows as a half-cut line
+   of glyphs with nothing between it and the heading. A rounded floating panel does not
+   need this — its own edge does the separating, and a hairline top and bottom around
+   one sentence would make the delete confirmation read as chrome. */
+.sheet__panel--full .sheet__header {
+  border-bottom: 1px solid var(--line);
+}
+
+.sheet__panel--full .sheet__body {
+  padding-top: var(--space-3);
+}
+
 .sheet__footer {
   display: flex;
   align-items: center;
@@ -495,10 +520,14 @@
   gap: var(--space-2);
   padding: var(--space-4) var(--space-5);
   border-top: 1px solid var(--line);
-  padding-bottom: calc(var(--space-4) + var(--safe-bottom));
+  /* The home indicator's clearance is worth nothing while the keyboard covers the
+     home indicator, and that is the one moment the sheet has no height to spare — so
+     the inset is spent only on whatever the keyboard is not already holding. */
+  padding-bottom: calc(var(--space-4) + max(0px, var(--safe-bottom) - var(--keyboard-inset, 0px)));
 }
 
-/* Sheet becomes a centred dialog once there is room for one. */
+/* Every sheet becomes a centred dialog once there is room for one, the full-screen
+   variant included: full screen is a phone treatment. */
 @media (min-width: 48rem) {
   .sheet {
     align-items: center;
@@ -511,8 +540,23 @@
     border-radius: var(--radius-lg);
   }
 
-  .sheet__handle {
-    display: none;
+  /* Content-sized and un-inset again — full screen is a phone treatment. Every
+     declaration of the variant is undone here, its two descendant rules included: a
+     phone-only rule left standing gives the entry-form dialog a hairline the delete
+     confirmation beside it at the same width does not have. */
+  .sheet__panel--full {
+    height: auto;
+    max-height: min(84dvh, 44rem);
+    border-radius: var(--radius-lg);
+    padding: 0;
+  }
+
+  .sheet__panel--full .sheet__header {
+    border-bottom: none;
+  }
+
+  .sheet__panel--full .sheet__body {
+    padding-top: var(--space-2);
   }
 
   .sheet__footer {
@@ -613,9 +657,12 @@
    Every @keyframes use is wrapped in a no-preference guard rather than relying
    on a universal override, which would need !important to win the cascade. */
 
+/* A fixed length, not a percentage: this keyframe only runs below 48rem, where the
+   panel can now be the whole screen, and 6% of an 852px phone is a 51px slide — a
+   band of scrim flashing under the Dynamic Island for the whole transition. */
 @keyframes sheet-slide-up {
   from {
-    transform: translateY(6%);
+    transform: translateY(1.5rem);
     opacity: 0;
   }
 }

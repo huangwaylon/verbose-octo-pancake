@@ -38,7 +38,7 @@ export function NoteField({ value, presets, onChange }) {
         onChange={(event) => onChange(event.target.value)}
         list={listId}
       />
-      {presets.length > 0 && (
+      {listId && (
         <>
           <datalist id={listId}>
             {presets.map((preset) => (

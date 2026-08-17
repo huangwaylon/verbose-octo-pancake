@@ -160,8 +160,9 @@ Standalone changes what can go wrong, and the rules that follow from it are in
 CLAUDE.md's Platform section: the keyboard covers a fixed footer without shrinking the
 viewport `dvh` reads, `:hover` latches after a tap, a flick from the top reloads the app
 out from under a half-typed entry, and safe-area insets are the app's problem because
-there is no browser chrome to absorb them. Layout is decided at 320px; `npx vite-node
-scripts/preview.jsx` writes fifteen pages for checking it, two of them deliberately
+there is no browser chrome to absorb them. The entry form takes the whole screen there,
+which makes that last one its problem too. Layout is decided at 320px; `npx vite-node
+scripts/preview.jsx` writes seventeen pages for checking it, two of them deliberately
 pathological.
 
 ### Launch speed
@@ -206,9 +207,10 @@ only exists in a build, so exercising it means `npm run build && npm run preview
 the machine.
 
 A green suite says nothing about whether the page looks right; `npx vite-node
-scripts/preview.jsx` writes fifteen static pages with the real stylesheets, and
+scripts/preview.jsx` writes seventeen static pages with the real stylesheets, and
 `scripts/frames.html` renders a page at several widths at once with the measurements
-printed underneath. CLAUDE.md has the invocation.
+printed underneath — including, on a page carrying a sheet, whether Save still clears a
+simulated keyboard. CLAUDE.md has the invocation.
 
 ## Layout
 
@@ -234,6 +236,6 @@ printed underneath. CLAUDE.md has the invocation.
 | `src/state/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts` |
 | `src/i18n/`, `src/components/`, `src/styles/` | engine and `en`/`ja` catalogs; one file per view with inline-SVG icons and chart; `tokens`/`base`/`primitives`/`app` in that order |
 | `test/`, `scripts/preview.jsx` | vitest specs; the static-HTML visual harness |
-| `scripts/frames.html` | views a preview page at several widths, measuring each rather than eyeballing it |
+| `scripts/frames.html` | views a preview page at several widths and heights, measuring each rather than eyeballing it |
 | `scripts/build-sw.js` | walks `dist/` and emits the service worker; importable, so its two silent failure modes are tested |
 | `.github/workflows/deploy.yml` | test, build, deploy to Pages |

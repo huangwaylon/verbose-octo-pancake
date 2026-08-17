@@ -32,6 +32,20 @@ describe('keyboardInset', () => {
     expect(keyboardInset({ innerHeight: 667, height: 600, offsetTop: 300 })).toBe(0)
   })
 
+  it('reads a zoomed viewport at its unzoomed scale, rather than inventing a keyboard', () => {
+    // Zoom shrinks the visual viewport exactly as a keyboard does, so the bare
+    // difference reports 426px of keypad that is not there — and at full screen that
+    // opens the form at half the screen's height.
+    expect(keyboardInset({ innerHeight: 852, height: 426, offsetTop: 0, scale: 2 })).toBe(0)
+    // But a keyboard UNDER that zoom is still real, and still has no Done key: at 2x a
+    // 336px keypad covers 168 CSS px of the visible region.
+    expect(keyboardInset({ innerHeight: 852, height: 258, offsetTop: 0, scale: 2 })).toBe(336)
+    // iOS's near-1 scale at rest must not cost a pixel to the floor.
+    expect(
+      keyboardInset({ innerHeight: 667, height: 331, offsetTop: 0, scale: 1.0000000000000002 }),
+    ).toBe(336)
+  })
+
   it('floors a fractional inset rather than rounding it up', () => {
     // Rounding up would leave the panel a hairline short of the keyboard's top edge.
     expect(keyboardInset({ innerHeight: 667.5, height: 331.2, offsetTop: 0 })).toBe(336)

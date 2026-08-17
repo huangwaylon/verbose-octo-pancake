@@ -148,9 +148,50 @@ describe('the rules an installed iOS web app depends on', () => {
   it('lifts the sheet clear of the software keyboard', () => {
     // `dvh` tracks the LAYOUT viewport, which iOS does not shrink for the keyboard,
     // so without this the footer's Save button sits behind it — and the decimal
-    // keypad has no Done key to dismiss with.
+    // keypad has no Done key to dismiss with. Two readers, and both matter: the
+    // container pads by the inset, and the content-sized panel caps itself by it so a
+    // confirmation does not grow past the top of the screen. The full-screen panel is
+    // deliberately NOT a third — it takes 100% of the container's already-padded box.
     expect(blocksFor(FILES.primitives, '.sheet').join()).toContain('--keyboard-inset')
     expect(blocksFor(FILES.primitives, '.sheet__panel').join()).toContain('--keyboard-inset')
+    // The home indicator's clearance is worth nothing behind a keyboard, and that is
+    // the one moment the panel has no height to spare.
+    expect(blocksFor(FILES.primitives, '.sheet__footer').join()).toContain('--keyboard-inset')
+  })
+
+  it('gives the full-screen panel the whole screen, and undoes it for the dialog', () => {
+    // Asserted PER BLOCK, not against the join of both: with every declaration in one
+    // bucket, hoisting `height: auto` out of the media query and deleting the reset
+    // satisfies each string while leaving the panel never full screen on a phone.
+    const blocks = blocksFor(FILES.primitives, '.sheet__panel--full')
+    expect(blocks).toHaveLength(2)
+    const [phone, dialog] = blocks
+
+    expect(phone).toContain('height: 100%')
+    // `44rem` is the term that binds on an iPhone 15, so the cap has to be lifted and
+    // not merely out-asked, or "full screen" is a 704px panel with square corners.
+    expect(phone).toContain('max-height: none')
+    expect(phone).toContain('border-radius: 0')
+    // The panel is the top of the screen now, and `position: fixed` puts it outside
+    // base.css's insets on `body`, so it composes its own or the title renders under
+    // the Dynamic Island.
+    expect(phone).toContain('--safe-top')
+
+    // Full screen is a phone treatment: a surviving `height` gets capped by max-height
+    // into a fixed 44rem box, so a two-button confirmation renders 704px tall.
+    expect(dialog).toContain('height: auto')
+    expect(dialog).toContain('padding: 0')
+  })
+
+  it('undoes the full-screen panel’s descendant rules for the dialog too', () => {
+    // The hairline exists because a full-bleed header has no edge of its own. Left
+    // standing above the breakpoint it gives the entry-form dialog chrome that the
+    // delete confirmation beside it at the same width does not have.
+    for (const selector of [
+      '.sheet__panel--full .sheet__header',
+      '.sheet__panel--full .sheet__body',
+    ])
+      expect(blocksFor(FILES.primitives, selector)).toHaveLength(2)
   })
 
   it('keeps a toast from swallowing the taps of what it covers', () => {

@@ -144,7 +144,11 @@
      Shadows appear in exactly three places: the sheet panel, the toast, and the
      segmented control's selected thumb. Nowhere else — not on cards, not on
      inputs, not on buttons — and never added on hover. The focus ring is also
-     drawn with box-shadow, which is a ring rather than an elevation. */
+     drawn with box-shadow, which is a ring rather than an elevation.
+
+     A full-screen panel is the one case where the overlay shadow paints nothing,
+     having no ground left to fall on; its header hairline separates the title from
+     the body instead. */
   --shadow-raised: 0 1px 2px rgba(28, 26, 23, 0.05);
   --shadow-overlay: 0 2px 8px rgba(28, 26, 23, 0.06),
     0 16px 48px -12px rgba(28, 26, 23, 0.22);

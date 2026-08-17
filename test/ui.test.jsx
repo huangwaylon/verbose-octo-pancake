@@ -146,9 +146,9 @@ describe('DonutChart', () => {
   })
 })
 
-describe('entry form: presets and default split', () => {
-  const draft = (entry) => ({
-    mode: 'add',
+describe('entry form', () => {
+  const draft = (entry, mode = 'add') => ({
+    mode,
     entry: {
       type: ENTRY_TYPE.EXPENSE,
       date: '2026-08-05',
@@ -160,71 +160,158 @@ describe('entry form: presets and default split', () => {
     },
   })
 
-  const render = (cfg, entry) =>
+  const render = (cfg, entry, { mode, currency = 'JPY' } = {}) =>
     renderToStaticMarkup(
       <EntryFormSheet
-        draft={draft(entry)}
+        draft={draft(entry, mode)}
         config={{ ...config, ...cfg }}
         me={PERSON.P1}
-        currency="JPY"
+        currency={currency}
         onSubmit={noop}
         onDelete={noop}
         onClose={noop}
       />,
     )
 
-  it('offers each configured note as a datalist option and a chip', () => {
-    const markup = render({ notePresets: ['OK Mart', 'Ozeki', 'Life'] })
+  it('orders the fields by how often each is touched', () => {
+    // Amount and note are typed every time; the payer, date and split all default to
+    // something usually right, and the category to `categories[0]`, which is a guess.
+    // Reading order is the whole design of this form, and nothing else can see it.
+    const markup = render({ notePresets: ['OK Mart'] }, { payerShare: EVEN_SHARE })
+    const MARKERS = {
+      amount: 'id="entry-amount"',
+      note: 'id="entry-note"',
+      category: 'id="entry-category"',
+      payer: 'name="payer"',
+      date: 'id="entry-date"',
+      split: 'name="split"',
+    }
+    const expected = Object.keys(MARKERS)
+    for (const [field, marker] of Object.entries(MARKERS)) {
+      expect(markup, `${field} is missing`).toContain(marker)
+    }
+    // Sorted by where each actually appears, then compared to the intended order, so a
+    // failure names the fields that swapped rather than printing two lists of offsets.
+    const rendered = [...expected].sort(
+      (a, b) => markup.indexOf(MARKERS[a]) - markup.indexOf(MARKERS[b]),
+    )
+    expect(rendered).toEqual(expected)
+  })
+
+  it('takes the whole screen for an expense but not for a settlement', () => {
+    // Full screen is a claim about the CONTENT: a settlement drops the note, category
+    // and split controls, leaving three fields that do not fill a phone.
+    expect(render({}, { payerShare: EVEN_SHARE })).toContain('sheet__panel--full')
+    expect(render({}, { type: ENTRY_TYPE.SETTLEMENT, payerShare: 0 })).not.toContain(
+      'sheet__panel--full',
+    )
+  })
+
+  it('is a modal dialog named by its own title', () => {
+    const markup = render({}, { payerShare: EVEN_SHARE })
+    // Matched on ONE element, not against the document: as three separate substring
+    // checks this passes with `role`/`aria-modal` moved onto the backdrop's wrapper,
+    // which would make the scrim the dialog and leave the focus trap on a plain div.
+    expect(markup).toMatch(
+      /class="sheet__panel[^"]*"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="([^"]+)"/,
+    )
+    // And the name has to RESOLVE: a dangling aria-labelledby leaves the dialog
+    // unnamed, which neither a visual check nor the match above would show.
+    const labelledBy = markup.match(/aria-labelledby="([^"]+)"/)[1]
+    expect(markup).toContain(`<h2 class="sheet__title" id="${labelledBy}">`)
+  })
+
+  it('offers each configured note as a datalist option and as a chip', () => {
+    const markup = render({ notePresets: ['OK Mart', 'Ozeki'] })
     expect(markup).toContain('id="note-presets"')
     expect(markup).toContain('list="note-presets"')
-    for (const shop of ['OK Mart', 'Ozeki', 'Life']) {
-      expect(markup).toContain(shop)
+    for (const shop of ['OK Mart', 'Ozeki']) {
+      // The chip specifically: a bare `toContain(shop)` passes on the datalist
+      // `<option>` alone, so deleting the whole chip row — the half that exists
+      // because a datalist has no affordance on a phone — would go unnoticed.
+      expect(markup).toContain(`>${shop}</button>`)
     }
   })
 
   it('leaves the note a plain text input when nothing is configured', () => {
-    const markup = render({ notePresets: [] })
-    expect(markup).not.toContain('note-presets')
+    expect(render({ notePresets: [] })).not.toContain('note-presets')
+  })
+
+  it('lists the configured categories, with the first preselected', () => {
+    const markup = render({ categories: ['Groceries', 'Dining'] })
+    expect(markup).toContain('<option value="Groceries" selected="">Groceries</option>')
+    expect(markup).toContain('<option value="Dining">Dining</option>')
+  })
+
+  it('keeps a stored category the config tab no longer lists, and selects it', () => {
+    // A `<select>` whose value matches no option renders blank and then silently saves
+    // the invisible old value, so editing a row whose category was renamed elsewhere
+    // would quietly rewrite it.
+    const markup = render({ categories: ['Groceries'] }, { category: 'Retired' })
+    expect(markup).toContain('<option value="Retired" selected="">Retired</option>')
+    expect(markup).toContain('<option value="Groceries">Groceries</option>')
   })
 
   it('opens on the even control when the payer’s configured default is even', () => {
-    const markup = render({ defaultSplitP1: 0.5 }, { payerShare: null })
     // The custom slider only renders in custom mode.
-    expect(markup).not.toContain('type="range"')
-  })
-
-  it('opens on the custom control showing the payer’s non-even default', () => {
-    const markup = render({ defaultSplitP1: 0.7 }, { payerShare: null })
-    expect(markup).toContain('type="range"')
-    expect(markup).toContain('70%')
+    expect(render({ defaultSplitP1: 0.5 }, { payerShare: null })).not.toContain('type="range"')
   })
 
   it('applies each payer’s own default, so 80/20 does not invert when p2 pays', () => {
     // The whole point of the per-person setting: p1 bears 80% of what p1 paid,
     // p2 bears 20% of what p2 paid. One universal number cannot express that.
     const cfg = { defaultSplitP1: 0.8, defaultSplitP2: 0.2 }
-    expect(render(cfg, { payer: PERSON.P1, payerShare: null })).toContain('80%')
+    const asP1 = render(cfg, { payer: PERSON.P1, payerShare: null })
+    expect(asP1).toContain('type="range"')
+    expect(asP1).toContain('80%')
     expect(render(cfg, { payer: PERSON.P2, payerShare: null })).toContain('20%')
   })
 
   it('shows a saved entry’s own share rather than the payer’s default', () => {
     // Editing an existing row must not silently re-split it.
-    const markup = render({ defaultSplitP1: 0.8 }, { payerShare: 0.35 })
-    expect(markup).toContain('35%')
+    expect(render({ defaultSplitP1: 0.8 }, { payerShare: 0.35 })).toContain('35%')
   })
 
-  it('falls back to an even split when the payer has no configured default', () => {
-    const markup = render({ defaultSplitP1: undefined }, { payerShare: null })
-    expect(markup).not.toContain('type="range"')
-  })
-
-  it('renders a settlement without any split or note controls', () => {
+  it('drops the note, the category AND the split from a settlement, and says why', () => {
+    // The three controls a settlement sheds now sit either side of the payer and date
+    // controls, so the form carries two `!isSettlement` blocks. Leaving a field in the
+    // wrong one is invisible unless all three are named — and `type="range"` alone is
+    // no test of the split, since an even split renders no slider either.
     const markup = render(
       { notePresets: ['OK Mart'] },
-      { type: ENTRY_TYPE.SETTLEMENT, payerShare: 0, amountCents: 625 },
+      { type: ENTRY_TYPE.SETTLEMENT, payerShare: 0 },
     )
-    expect(markup).not.toContain('note-presets')
-    expect(markup).not.toContain('type="range"')
+    expect(markup).not.toContain('entry-note')
+    expect(markup).not.toContain('entry-category')
+    expect(markup).not.toContain('name="split"')
+    // The payer control stays, and its hint is what explains the row. "You" because
+    // this device is p1, which is `usePeopleLabels`' whole job.
+    expect(markup).toContain('name="payer"')
+    expect(markup).toContain('Records that You paid Sam back.')
+  })
+
+  it('picks the keypad and the placeholder from the currency’s exponent', () => {
+    // ¥1250 and $12.50 are the same digits at different scales, so offering a decimal
+    // point for a zero-decimal currency invites an amount 100x wrong.
+    const yen = render({}, {}, { currency: 'JPY' })
+    expect(yen).toContain('inputMode="numeric"')
+    expect(yen).toContain('placeholder="0"')
+    const dollars = render({}, {}, { currency: 'USD' })
+    expect(dollars).toContain('inputMode="decimal"')
+    expect(dollars).toContain('placeholder="0.00"')
+  })
+
+  it('offers delete only when there is a saved row to delete', () => {
+    expect(render({}, {}, { mode: 'edit' })).toContain('Delete this entry')
+    expect(render({}, {}, { mode: 'add' })).not.toContain('Delete this entry')
+  })
+
+  it('points the footer’s submit button at the form it sits outside of', () => {
+    // Save is in the sheet's footer, a sibling of the <form>, so this attribute pair
+    // is the whole association. Break it and Save silently does nothing.
+    const markup = render({})
+    expect(markup).toContain('<form id="entry-form"')
+    expect(markup).toContain('type="submit" form="entry-form"')
   })
 })
 

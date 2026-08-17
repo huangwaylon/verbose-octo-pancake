@@ -7,10 +7,23 @@
      not eyeballed, and the header's height is checked against --header-height,
      which the sticky aside offsets by from outside the header.
 
+     On an overlay page the sheet is the whole screen, so it is measured too — and
+     because `--keyboard-inset` is a custom property the harness can set it directly,
+     which is the only way to see the state the sheet's whole geometry exists for.
+     `visualViewport` cannot be faked, but the property it feeds can.
+
+     Height matters as much as width once a panel is 100dvh: pass h=852 for an
+     iPhone 15, h=667 for an SE.
+
        npx vite-node scripts/preview.jsx
        python3 -m http.server 8899
-       .../Google Chrome --headless --screenshot=out.png --window-size=1400,1000 \
-         'http://127.0.0.1:8899/scripts/frames.html?page=preview-en&w=320,393,430'
+       .../Google Chrome --headless --virtual-time-budget=3000 --screenshot=out.png \
+         --window-size=1400,1000 \
+         'http://127.0.0.1:8899/scripts/frames.html?page=preview-en-form&w=320,393&h=852'
+
+     --virtual-time-budget outlasts the backdrop's fade-in, which starts at opacity 0:
+     without it a screenshot catches a half-transparent scrim. The panel's own slide-up
+     is not a factor — measureSheet disables it before measuring anything.
 -->
 <html lang="en">
 <head>
@@ -32,11 +45,14 @@
   const params = new URLSearchParams(location.search)
   const page = params.get('page') || 'preview-en'
   const widths = (params.get('w') || '320,393,430,768,1440').split(',').map(Number)
-  const height = Number(params.get('h') || 900)
+  const height = Number(params.get('h') || 852)
+  /* The iPhone SE decimal keypad, the same figure test/viewport.test.js uses. */
+  const keyboard = Number(params.get('keyboard') || 336)
   const row = document.getElementById('row')
 
   const bad = (text) => '<span class="bad">' + text + '</span>'
   const ok = (text) => '<span class="ok">' + text + '</span>'
+  const check = (pass, good, wrong) => (pass ? ok(good) : bad(wrong))
 
   /**
    * A custom property comes back from getComputedStyle UNRESOLVED — "4.625rem" — so
@@ -50,6 +66,100 @@
     const height = probe.getBoundingClientRect().height
     probe.remove()
     return height
+  }
+
+  /**
+   * The sheet, which below 48rem IS the screen. Four things no eye can judge: that a
+   * full-screen panel fills the viewport exactly rather than leaving a band or
+   * overflowing; that a dialog above the breakpoint still floats; that Save is above
+   * the keyboard; and sideways scroll INSIDE the body, which `overflow-x: hidden`
+   * clips — so the document-level check cannot see a field off the right edge.
+   */
+  function measureSheet(doc, lines) {
+    const panel = doc.querySelector('.sheet__panel')
+    if (!panel) return
+    const header = doc.querySelector('.sheet__header')
+    const body = doc.querySelector('.sheet__body')
+    const footer = doc.querySelector('.sheet__footer')
+    const viewport = doc.documentElement.clientHeight
+    const full = panel.classList.contains('sheet__panel--full')
+    // The panel slides up from translateY, and this runs on `load` — so without
+    // this every measurement below would be the animation's first frame, reported as
+    // a panel 24px too low and a Save button 24px under the keyboard.
+    panel.style.animation = 'none'
+    const dialog = doc.defaultView.matchMedia('(min-width: 48rem)').matches
+    const box = panel.getBoundingClientRect()
+
+    lines.push(
+      'panel ' +
+        Math.round(box.height) +
+        'px ' +
+        (full ? 'full' : 'content-sized') +
+        (dialog ? ' dialog' : ''),
+    )
+    if (full && !dialog) {
+      // Both edges. `top` is compared against ZERO, not against --safe-top: the panel
+      // pads INTO its top inset, so the inset is inside its border box. A gap means the
+      // height term is wrong; an overflow means something is added on top of a height
+      // that already filled the screen.
+      lines.push(
+        '  fills ' +
+          check(
+            Math.abs(box.top) <= 1 && Math.abs(box.bottom - viewport) <= 1,
+            'exactly',
+            'TOP ' + Math.round(box.top) + ' BOTTOM ' + Math.round(box.bottom) + '/' + viewport,
+          ),
+      )
+    }
+    if (dialog && header && body && footer) {
+      // Floating is not enough on its own: a panel left at the phone's `height` is capped
+      // by max-height to 44rem, which still floats. Being TALLER THAN ITS CONTENT is what
+      // shows it, so this compares the panel against the height its three parts need.
+      // Honest limit: the only sheet that opts into full screen today has more content
+      // than the cap, so it sits at 44rem either way and reads as content-sized here
+      // whether or not the reset is present — `test/styles.test.js` is what pins that
+      // reset. This catches a SHORT full-screen panel, which is the shape a future
+      // opt-in would add.
+      const natural =
+        header.getBoundingClientRect().height +
+        body.scrollHeight +
+        footer.getBoundingClientRect().height
+      lines.push(
+        '  dialog ' +
+          check(
+            box.top > 0 && box.bottom < viewport && box.height <= natural + 2,
+            'floats, content-sized',
+            box.height > natural + 2
+              ? 'STRETCHED ' + Math.round(box.height) + ' over content ' + Math.round(natural)
+              : 'EDGE TO EDGE',
+          ),
+      )
+    }
+    if (body) {
+      lines.push(
+        '  body ' +
+          check(
+            body.scrollWidth <= body.clientWidth,
+            body.scrollHeight > body.clientHeight ? 'scrolls down only' : 'fits',
+            'SIDEWAYS ' + body.scrollWidth + '>' + body.clientWidth,
+          ),
+      )
+    }
+    // The state the whole --keyboard-inset mechanism exists for, and a phone's alone:
+    // the decimal keypad has no Done key, so a Save button under it leaves no way to
+    // submit at all. The BUTTON is measured, not the footer's box, or a footer whose own
+    // padding collapsed would still read as clear.
+    const save = footer?.querySelector('button:last-of-type')
+    if (!save || dialog) return
+    doc.documentElement.style.setProperty('--keyboard-inset', keyboard + 'px')
+    const covered = save.getBoundingClientRect().bottom - (viewport - keyboard)
+    lines.push(
+      '  save over ' +
+        keyboard +
+        'px keyboard ' +
+        check(covered <= 1, 'clear', 'COVERED by ' + Math.round(covered) + 'px'),
+    )
+    doc.documentElement.style.removeProperty('--keyboard-inset')
   }
 
   for (const width of widths) {
@@ -71,10 +181,14 @@
 
       const lines = [
         width +
-          'px  ' +
-          (root.scrollWidth > root.clientWidth
-            ? bad('SIDEWAYS ' + root.scrollWidth + '>' + root.clientWidth)
-            : ok('no sideways')),
+          'x' +
+          height +
+          '  ' +
+          check(
+            root.scrollWidth <= root.clientWidth,
+            'no sideways',
+            'SIDEWAYS ' + root.scrollWidth + '>' + root.clientWidth,
+          ),
       ]
       // A missing node has to read as a failure, not as "no data": these selectors
       // are what the measurements below are anchored to.
@@ -82,17 +196,15 @@
       else {
         const px = measure(header)
         lines.push(
-          'header ' +
-            px +
-            'px ' +
-            (px > token + 1 ? bad('> token ' + token) : ok('within token ' + token)),
+          'header ' + px + 'px ' + check(px <= token + 1, 'within token ' + token, '> token ' + token),
         )
       }
       if (!add) lines.push(bad('MISSING .add-action'))
       else {
         const px = measure(add)
-        lines.push('add ' + px + 'px ' + (px < tap ? bad('< tap target ' + tap) : ok('tappable')))
+        lines.push('add ' + px + 'px ' + check(px >= tap, 'tappable', '< tap target ' + tap))
       }
+      measureSheet(doc, lines)
       caption.innerHTML = lines.join('\n')
     })
     figure.append(caption, frame)

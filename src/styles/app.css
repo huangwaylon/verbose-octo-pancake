@@ -664,14 +664,8 @@ button.entry__main:active {
 }
 
 /* =========================================================================
-   Amount input, settings
+   Settings
    ========================================================================= */
-
-.input--amount {
-  font-size: var(--fs-xl);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
 
 /* Three sentences that are content rather than annotation: a settings value, a
    confirmation's question, a gate's explanation. Label size at prose leading,

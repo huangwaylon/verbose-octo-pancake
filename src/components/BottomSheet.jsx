@@ -3,19 +3,32 @@ import { useT } from '../i18n/index.js'
 import { keyboardInset } from '../lib/viewport.js'
 import { CloseIcon } from './icons.jsx'
 
+/** Every stop the focus trap cycles through. */
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+/**
+ * Where focus LANDS on open, which is deliberately narrower than the trap's list:
+ * the first field, never a link and never the close button — a sheet that opens with
+ * focus on its own dismiss control raises no keyboard and reads as already leaving.
+ */
+const FIRST_FIELD = 'input, select, textarea, button:not([data-dismiss])'
 
 /** Read by `.sheet` in CSS, so the panel sits above the software keyboard. */
 const KEYBOARD_INSET = '--keyboard-inset'
 
 /**
- * Bottom sheet on phones, centred dialog on wider screens (the CSS decides
- * which). Handles Escape, backdrop dismissal, background scroll locking, focus
- * trapping, moving focus into the panel on open, and staying clear of the
- * software keyboard.
+ * A modal panel: full-screen page or bottom sheet on phones, centred dialog on wider
+ * screens (the CSS decides which). Handles Escape, backdrop dismissal, background
+ * scroll locking, focus trapping, moving focus into the panel on open, and staying
+ * clear of the software keyboard.
+ *
+ * `full` opts into the full-screen phone treatment, and it is opt-in because it is a
+ * claim about the CONTENT: a page's worth of form earns the whole screen, while a
+ * one-sentence confirmation in the same panel would become 600px of white asking
+ * whether to delete a ¥480 coffee. It changes nothing at or above 48rem.
  */
-export function BottomSheet({ title, onClose, children, footer }) {
+export function BottomSheet({ title, full = false, onClose, children, footer }) {
   const { t } = useT()
   const panel = useRef(null)
   const titleId = useId()
@@ -37,7 +50,7 @@ export function BottomSheet({ title, onClose, children, footer }) {
 
     // Focus the first control rather than the panel, so a phone keyboard
     // comes straight up for the amount field.
-    const focusable = node?.querySelector('input, select, textarea, button:not([data-dismiss])')
+    const focusable = node?.querySelector(FIRST_FIELD)
     focusable?.focus({ preventScroll: true })
 
     return () => {
@@ -102,6 +115,7 @@ export function BottomSheet({ title, onClose, children, footer }) {
         innerHeight: window.innerHeight,
         height: viewport.height,
         offsetTop: viewport.offsetTop,
+        scale: viewport.scale,
       })
       root.style.setProperty(KEYBOARD_INSET, `${inset}px`)
     }
@@ -119,15 +133,17 @@ export function BottomSheet({ title, onClose, children, footer }) {
 
   return (
     <div className="sheet">
+      {/* Below 48rem a `full` panel covers this entirely, so backdrop dismissal is a
+          wider-screen affordance — which is why the X and the footer's Cancel both
+          stay: they are the only two routes a phone has. */}
       <div className="sheet__backdrop" onClick={onClose} />
       <div
-        className="sheet__panel"
+        className={full ? 'sheet__panel sheet__panel--full' : 'sheet__panel'}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         ref={panel}
       >
-        <div className="sheet__handle" />
         <header className="sheet__header">
           <h2 className="sheet__title" id={titleId}>
             {title}

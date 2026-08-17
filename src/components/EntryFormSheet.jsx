@@ -12,10 +12,18 @@ import { TrashIcon } from './icons.jsx'
 /**
  * Add or edit a single entry.
  *
- * Nothing in the app creates a settlement any more, but a settlement row already
- * in the sheet still opens here: its split is pinned to 0, so the category, note
- * and split controls are the ones that drop away rather than there being a second
- * form.
+ * The order is by how often a field is touched, not by how the sheet reads: the amount
+ * and the note are typed every time, so they lead and are both reachable with the
+ * keyboard up. The payer defaults to this device's person, the date to today and the
+ * split to the payer's configured default, so those three are usually already right —
+ * and the category is third because `config.categories[0]` is a guess rather than a
+ * default anyone chose.
+ *
+ * Nothing in the app creates a settlement any more, but a settlement row already in the
+ * sheet still opens here: its split is pinned to 0, so the category, note and split
+ * controls are the ones that drop away rather than there being a second form. They now
+ * sit either side of the payer and date controls, which is why there are two
+ * `!isSettlement` blocks and not one.
  */
 export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete, onClose }) {
   const { t } = useT()
@@ -35,13 +43,28 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
   const [date, setDate] = useState(entry.date)
   const [category, setCategory] = useState(entry.category || config.categories[0] || '')
   const [description, setDescription] = useState(entry.description ?? '')
-  const [error, setError] = useState(null)
+  const [rejected, setRejected] = useState(null)
+  const [saveError, setSaveError] = useState(null)
   const [busy, setBusy] = useState(false)
-  const errorId = useId()
+  const amountErrorId = useId()
+  const saveErrorId = useId()
 
   const split = useEntrySplit(entry, config, payer)
   const cents = parseAmountToCents(amount, entryCurrency)
   const payerShare = isSettlement ? 0 : split.payerShare
+
+  /**
+   * Derived from the exact value a submit rejected, so it clears the instant the field
+   * is edited and never returns without another submit. Stored as a message it would
+   * linger over a value that is now fine; keyed on a plain "has submitted" flag it
+   * would come back mid-edit — every select-all-and-retype passes through the empty
+   * string — and a `role="status"` that appears and vanishes as someone types both
+   * shifts the field below it and re-announces itself on each keystroke.
+   */
+  const amountError =
+    rejected != null && amount === rejected
+      ? t('form.amountError', { example: digits ? '42.10' : '1250' })
+      : null
 
   /**
    * The stored category first, even if the config tab no longer lists it. A
@@ -71,11 +94,14 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
 
   async function handleSubmit(event) {
     event.preventDefault()
+    // Cleared before the amount is judged, not after: a save that failed last time is
+    // not still failing, and leaving it set would put two errors on screen at once —
+    // one of them describing a write this submit never attempted.
+    setSaveError(null)
     if (cents == null) {
-      setError(t('form.amountError', { example: digits ? '42.10' : '1250' }))
+      setRejected(amount)
       return
     }
-    setError(null)
     setBusy(true)
     try {
       await onSubmit({
@@ -91,13 +117,17 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
       onClose()
     } catch (cause) {
       setBusy(false)
-      setError(errorMessage(cause, 'form.saveError'))
+      setSaveError(errorMessage(cause, 'form.saveError'))
     }
   }
 
   return (
     <BottomSheet
       title={mode === 'edit' ? t('form.editTitle') : t('form.addTitle')}
+      /* A settlement drops the note, category and split controls, leaving three fields
+         that do not fill a phone — so it stays the content-sized sheet it fits, and
+         only the expense form claims the whole screen. */
+      full={!isSettlement}
       onClose={onClose}
       footer={
         <>
@@ -119,7 +149,16 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
           <button type="button" className="btn btn--ghost" onClick={onClose}>
             {t('common.cancel')}
           </button>
-          <button type="submit" form="entry-form" className="btn btn--primary" disabled={busy}>
+          <button
+            type="submit"
+            form="entry-form"
+            className="btn btn--primary"
+            disabled={busy}
+            /* The failure this button produced has to be reachable FROM it, not merely
+               rendered above it. Ids are document-global, so sitting outside the form
+               is no obstacle — the same is already true of `form`. */
+            aria-describedby={saveError ? saveErrorId : undefined}
+          >
             {busy ? (
               <span className="spinner" />
             ) : mode === 'edit' ? (
@@ -135,7 +174,9 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
         <Field htmlFor="entry-amount" label={t('form.amount')}>
           <input
             id="entry-amount"
-            className="input input--amount"
+            /* Tabular figures because this is the one field digits are typed into one at
+               a time, and proportional ones shift every glyph as the value grows. */
+            className="input tnum"
             type="text"
             /* A zero-decimal currency should get a plain numeric pad. */
             inputMode={digits ? 'decimal' : 'numeric'}
@@ -143,12 +184,39 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
             placeholder={digits ? '0.00' : '0'}
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
-            aria-invalid={error && cents == null ? 'true' : undefined}
-            /* The message sits at the foot of the form, so without this a screen
-               reader reaches the failed field and is told nothing about why. */
-            aria-describedby={error ? errorId : undefined}
+            aria-invalid={amountError ? 'true' : undefined}
+            aria-describedby={amountError ? amountErrorId : undefined}
           />
+          {/* Inside the field, not at the foot of the form: `aria-describedby` reaches it
+              either way, but from down there it renders a screen's worth below the input
+              it describes, with nothing scrolling it into view on submit. */}
+          {amountError && (
+            <p className="field__error" id={amountErrorId} role="status">
+              {amountError}
+            </p>
+          )}
         </Field>
+
+        {!isSettlement && (
+          <>
+            <NoteField value={description} presets={config.notePresets} onChange={setDescription} />
+
+            <Field htmlFor="entry-category" label={t('form.category')}>
+              <select
+                id="entry-category"
+                className="select"
+                value={category}
+                onChange={(event) => setCategory(event.target.value)}
+              >
+                {categories.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </>
+        )}
 
         <Segmented
           name="payer"
@@ -172,36 +240,19 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
         </Field>
 
         {!isSettlement && (
-          <>
-            <Field htmlFor="entry-category" label={t('form.category')}>
-              <select
-                id="entry-category"
-                className="select"
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-              >
-                {categories.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-
-            <NoteField value={description} presets={config.notePresets} onChange={setDescription} />
-
-            <SplitField
-              split={split}
-              payerLabel={payerLabel}
-              otherLabel={otherLabel}
-              breakdown={breakdown}
-            />
-          </>
+          <SplitField
+            split={split}
+            payerLabel={payerLabel}
+            otherLabel={otherLabel}
+            breakdown={breakdown}
+          />
         )}
 
-        {error && (
-          <p className="field__error" id={errorId} role="status">
-            {error}
+        {/* A save failure is not a field's problem, so it stays here — directly above
+            the footer holding the button that produced it. */}
+        {saveError && (
+          <p className="field__error" id={saveErrorId} role="status">
+            {saveError}
           </p>
         )}
       </form>

@@ -6,7 +6,8 @@
  *
  * One file per locale, each accent as its own variant so a colour change can be
  * eyeballed across all five, and one page per overlay — the delete dialog, the entry
- * form and the settings sheet — because those three are what overflow a small phone.
+ * form, the settlement form and the settings sheet — because those are what a small
+ * phone has least room for.
  *
  * The surface is the app's own `LedgerScreen`, so this harness cannot drift from what
  * `App` renders.
@@ -209,13 +210,29 @@ const stressEntries = [
 
 const stressView = viewOf(stressEntries)
 
-/** The three overlays, each the densest thing on a phone screen in its own way. */
+/**
+ * The overlays, each the densest thing on a phone screen in its own way — plus the
+ * settlement form, which is the sparsest: it drops the note, category and split
+ * controls, which now sit either side of the payer and date controls, so it is the one
+ * page where getting the form's two conditional blocks wrong is visible.
+ */
 const OVERLAYS = {
   confirm: <ConfirmDeleteSheet entry={entries[0]} currency="JPY" onConfirm={noop} onClose={noop} />,
   form: (
     <EntryFormSheet
       draft={{ mode: 'edit', entry: { ...entries[0], payerShare: 0.7 } }}
       config={{ ...config, notePresets: ['オーケー', 'Ozeki', 'Life'] }}
+      me={PERSON.P1}
+      currency="JPY"
+      onSubmit={noop}
+      onDelete={noop}
+      onClose={noop}
+    />
+  ),
+  settlement: (
+    <EntryFormSheet
+      draft={{ mode: 'edit', entry: { ...entries[0], type: ENTRY_TYPE.SETTLEMENT, payerShare: 0 } }}
+      config={config}
       me={PERSON.P1}
       currency="JPY"
       onSubmit={noop}

@@ -343,6 +343,12 @@ existing sheet working".
   than once, a layout change silently leaves the only visual check screenshotting a tree
   the app no longer has. `App` keeps the gates, the sheets and the state;
   `useLedgerView` holds every derived figure.
+- **The entry form's field order is by how often each field is touched**, not by how the
+  sheet reads: amount, note, category, who paid, date, split. The amount and the note are
+  typed every time and lead so that both are usable with the keyboard up; the payer, date
+  and split all open on a default that is usually right, and the category sits third
+  because `config.categories[0]` is a guess rather than a default anyone chose. It is a
+  decision, so `test/ui.test.jsx` asserts the order — nothing else can see it.
 
 ### i18n
 
@@ -379,11 +385,26 @@ variant for strings with inline markup (`nodes.jsx`).
 
 ### Accessibility
 
-- **A message a control produced must be reachable from that control.** The form's
-  error carries an `id` and the amount input an `aria-describedby`; anything whose
-  value changes without a page change carries `role="status"` — the split breakdown,
-  the notices, the compact result. A message only positioned near its field says
-  nothing to a screen reader.
+- **A message a control produced must be reachable from that control** — and it must be
+  *reachable on screen* too. The amount error lives inside its own `Field`, not at the
+  foot of the form: `aria-describedby` reaches it from either place, but from the foot it
+  renders a screen's worth below the input on a full-screen form, with nothing scrolling
+  it into view. A save failure is the deliberate opposite — it sits at the foot, directly
+  above the footer, and the **submit button** carries the `aria-describedby` for it, since
+  that is the control that produced it. Ids are document-global, so the button being
+  outside the `<form>` is no obstacle. Anything whose value changes without a page change
+  carries `role="status"`: both errors, the split breakdown, the notices, the compact
+  result.
+- **A validation error is derived from the value that was rejected**, never stored as a
+  message and never keyed on a bare "has submitted" flag. `amountError` compares the field
+  against the exact string a submit refused, so it clears the instant the field is edited
+  and cannot return without another submit. Stored, it lingers over a value that is now
+  fine; keyed on a flag, it reappears mid-edit — every select-all-and-retype passes through
+  the empty string — and a `role="status"` that flickers as someone types both shifts the
+  field below it and re-announces on each keystroke. `saveError` *is* stored, because
+  nothing about the form's own values can tell you the network failed, and it is cleared
+  **before** the amount is judged: left set, a failure from the previous attempt renders
+  beside a fresh field error, describing a write this submit never made.
 - **The balance is the deliberate exception, and must not become a live region.** It
   changes on every write, but every one of those writes already speaks through a toast,
   and a second region queues behind it — delaying the sentence that names what actually
@@ -405,12 +426,32 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
 `test/styles.test.js` pins them, because nothing else can.
 
 - **The sheet lifts clear of the software keyboard.** `position: fixed` and `dvh` both
-  track the LAYOUT viewport, which iOS does not shrink for the keyboard, so a
-  bottom-anchored panel puts its Save button behind it — and the decimal keypad has no
-  Done key to escape with. `BottomSheet` publishes `--keyboard-inset` from
-  `window.visualViewport` (`resize` **and** `scroll`) and `.sheet` pads by it;
-  `scrollIntoView` cannot do this job, because the footer is a sibling of the scrolling
-  body rather than content in it. `lib/viewport.js` holds the arithmetic.
+  track the LAYOUT viewport, which iOS does not shrink for the keyboard, so a panel that
+  reaches the bottom of the screen puts its Save button behind it — and the decimal
+  keypad has no Done key to escape with. `BottomSheet` publishes `--keyboard-inset` from
+  `window.visualViewport` (`resize` **and** `scroll`), and three rules read it: `.sheet`
+  pads by it, `.sheet__panel` caps itself by it so a short sheet cannot grow past the top
+  of the screen, and `.sheet__footer` spends `--safe-bottom` only on what the keyboard is
+  not already covering. The full-screen panel is deliberately NOT a fourth — it takes
+  `height: 100%` of the container's already-padded box, rather than computing the same
+  number a second way. `scrollIntoView` cannot do this job, because the footer is a
+  sibling of the scrolling body rather than content in it. `lib/viewport.js` holds the
+  arithmetic, and it reads the visual viewport's height **at its own scale**: a pinch
+  shrinks that viewport exactly as a keyboard does, so the bare difference invents ~400px
+  of keypad, and answering zero instead would put Save behind a real one. The page is
+  deliberately zoomable, so multiplying back up is the only honest reading.
+- **A page's worth of form takes the whole phone screen; a question does not.** Full
+  screen is `.sheet__panel--full`, opt-in through `BottomSheet`'s `full` prop, because it
+  is a claim about the CONTENT — the expense form fills a phone, while the delete
+  confirmation and a settlement edit (three fields, the note, category and split all
+  gone) would become several hundred pixels of white. Three things there are load-bearing
+  and all three fail quietly: `max-height` has to be lifted as well as `height` set, or
+  the `44rem` term binds and "full screen" is a square-cornered panel with a band of scrim
+  over it; the panel composes its own `--safe-top`, because
+  `position: fixed` puts it outside `base.css`'s insets on `body` and it is the top of
+  the screen now; and every one of those declarations is undone at `48rem` — **its two
+  descendant rules included** — or the centred dialog inherits a height that `max-height`
+  caps into a fixed 44rem box, and a hairline the confirmation beside it does not have.
 - **Hover is a mouse state, `:active` is the touch one.** iOS applies `:hover` on tap
   and holds it until the next tap elsewhere, so every hover rule sits behind
   `@media (hover: hover)` and every hover-styled control has an `:active` too — the
@@ -423,6 +464,10 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
   or they wait 300ms for a double-tap that would only zoom. `.entry__main` carries the
   touch rules on `button.entry__main` alone: the deleted list renders the same class as
   inert text, where a press state promises a tap that does nothing.
+- **A full-screen panel covers the backdrop, so a phone has two ways out, not four.**
+  The X and the footer's Cancel are those two; the backdrop tap and Escape belong to
+  wider screens and to a keyboard. Neither of the two may be removed as a duplicate of
+  the other.
 - **No control may set the width of the sheet it sits in.** `.sheet` is a row flex
   container, so `.sheet__panel`'s automatic minimum size is its min-content width and
   `width: 100%` cannot override it — one child with a large intrinsic minimum carries
@@ -436,7 +481,8 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
   holding config-tab text needs `min-width: 0` (a flex item's automatic minimum is
   min-content) and `overflow-wrap: anywhere` (`break-word` does not reduce min-content
   width). The two `preview-en-stress*` pages are the check: names, categories, notes and
-  amounts that no phone has room for.
+  amounts that no phone has room for. That `hidden` also CLIPS rather than reports, so
+  the harness measures `.sheet__body`'s own scroll width — the document's cannot see it.
 - **The toast stack takes no pointer events.** It outranks everything but a sheet and it
   overlays the last rows of the ledger, so without that it would swallow a tap on a
   delete control for the toast's whole life. Covering one briefly is accepted; the layout
@@ -445,9 +491,10 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
   `-webkit-touch-callout: none`: it is the edit affordance, and a long press should not
   raise the selection magnifier.
 - **Safe areas are composed where they are needed, not globally.** `base.css` applies
-  the horizontal insets to `body`; the sticky header, the sheet footer and the toast stack
-  each add `--safe-top`/`--safe-bottom` themselves, because each has to paint *into* its
-  inset while padding its own content.
+  the horizontal insets to `body`; the sticky header, the sheet footer, the full-screen
+  sheet panel and the toast stack each add `--safe-top`/`--safe-bottom` themselves,
+  because each has to paint *into* its inset while padding its own content. A
+  `position: fixed` element is outside `body`'s padding, so it gets no help from it.
 
 ### Charts
 
@@ -493,10 +540,13 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
 - **Elevations appear in exactly three places** (sheet panel, toast, segmented thumb)
   and never on hover. Cards are a white plane plus one hairline; the temperature step
   from `--bg` to `--surface` is the elevation, and the add button is a flat plane of
-  accent rather than a raised one. `box-shadow` is used for three other things that are
-  not elevations and do not count against those three: the focus ring, the swatch's
-  selection ring, and the meter's segment hairline. It is transitioned in exactly one
-  place, the text control's focus ring; `test/styles.test.js` pins that.
+  accent rather than a raised one. The full-screen panel is the one place the shadow
+  paints nothing — it has no ground left — and `.sheet__panel--full`'s header hairline is
+  what separates the title from the body scrolling under it instead. `box-shadow` is used
+  for three other things that are not elevations and do not count against those three:
+  the focus ring, the swatch's selection ring, and the meter's segment hairline. It is
+  transitioned in exactly one place, the text control's focus ring; `test/styles.test.js`
+  pins that.
 - **Contrast budgets live in `tokens.css`, next to the values, with their measured
   ratios.** Do not restate them here; do not "tidy" two tokens together because they
   look similar. The two that catch people are `--line-input` and `--ink-3`, and both
@@ -507,11 +557,22 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
 - **`.btn--icon` is not combined with `.btn--ghost`.** They disagree about the border,
   and the icon glyph at `--ink-2` is itself the 3:1 graphic.
 - **Never drop a form control below 16px.** Mobile Safari zooms on focus below that
-  and will not zoom back out.
+  and will not zoom back out. The amount input is the same 16px as every other one:
+  it is made primary by being first, focused and given a numeric keypad, not by type
+  size — `.tnum` is all it adds, because it is the one field digits are typed into a
+  character at a time and proportional figures shift every glyph as the value grows.
 - Mobile-first. One column, capped at `--column-max` from `48rem`, two columns at
-  `62rem`; the sheet becomes a centred dialog at `48rem` too — there is no third
-  breakpoint. Tap targets are `var(--tap-target)` (44px), or `var(--tap-target-sm)`
-  (36px) for chips and the segmented thumb.
+  `62rem`; **`48rem` is also where a sheet stops being a phone treatment** — full screen
+  or bottom sheet below it, centred dialog above — and there is no third breakpoint. Tap
+  targets are `var(--tap-target)` (44px), or `var(--tap-target-sm)` (36px) for chips and
+  the segmented thumb.
+- **A modifier that only holds below `48rem` must be undone inside that media query.**
+  `.sheet__panel--full` and `.sheet__panel` are both single-class, so source order alone
+  decides between them, and a phone-only declaration left standing reaches the desktop
+  dialog. Keep the reset next to the rule it undoes.
+- **An animation's distance is a length, not a percentage,** where the element it moves
+  can be the whole screen: `sheet-slide-up` at `6%` was tuned against a floating panel
+  and became a 51px slide once one could be 852px tall.
 - **`--header-height` must never understate the header's real height.** The band holds
   two lines now — a 32px figure and a caption — and `.layout__aside`'s sticky offset reads
   the token from outside the header, so a token that is short slides the aside under the
@@ -559,28 +620,48 @@ the outstanding balance must drive the net to zero, with odd-unit amounts so rou
 is genuinely exercised.
 
 **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the
-real `LedgerScreen` to static HTML with the real stylesheets — fifteen pages: each accent
-in English, indigo in Japanese, the three overlays (delete dialog, entry form, settings)
-in both, the settled balance, and two stress pages whose config tab, notes and amounts
-hold everything a 320px phone has no room for.
+real `LedgerScreen` to static HTML with the real stylesheets — seventeen pages: each
+accent in English, indigo in Japanese, the four overlays (delete dialog, entry form,
+settlement form, settings) in both, the settled balance, and two stress pages whose
+config tab, notes and amounts hold everything a 320px phone has no room for. The
+settlement form earns a page because it is the sparsest thing the entry form renders and
+the one place its two `!isSettlement` blocks are visible.
 
 `scripts/frames.html` is how they are viewed: it loads one page into an `<iframe>` per
 width and prints the measurements underneath. **Iframes, not a resized window** — an
 iframe gets its own viewport so container and media queries resolve honestly, while
 headless Chrome quietly reports a different width than you asked for and every breakpoint
-reads wrong. The readout is the assertion, so sideways scroll and header height are
-measured rather than eyeballed.
+reads wrong. The readout is the assertion: sideways scroll, header height against
+`--header-height`, and — on any page carrying a sheet — that a full-screen panel fills
+the viewport exactly, that a dialog above `48rem` still floats clear of both edges, that
+`.sheet__body` does not scroll sideways (its own `overflow-x: hidden` clips that, so the
+document-level check cannot see it), and that **Save clears a simulated keyboard**. The
+inset is a custom property, so the harness can set it directly: `visualViewport` cannot
+be faked but the thing it feeds can, which is the only way to see the state the sheet's
+whole geometry exists for.
+
+Three traps in the harness itself. It measures on `load`, so it sets `animation: none`
+on the panel first — otherwise every figure is the slide-up's first frame, reported as a
+panel 24px low and a Save button 24px under the keyboard, and at dialog widths as
+`sheet-zoom-in`'s 98% of the real height. The full panel's top edge is compared against
+**zero, not `--safe-top`**, because it pads *into* that inset, so the inset is inside its
+border box. And **height is a parameter now that a panel can fill the screen**: pass
+`h=852` for an iPhone 15, `h=667` for an SE.
 
 ```sh
 npx vite-node scripts/preview.jsx     # writes scripts/preview-*.html (gitignored)
 python3 -m http.server 8899           # iframes need an origin
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
-  --screenshot=/tmp/shot.png --window-size=1220,1000 \
-  'http://127.0.0.1:8899/scripts/frames.html?page=preview-en&w=320,393,430'
+  --virtual-time-budget=3000 --screenshot=/tmp/shot.png --window-size=1220,1000 \
+  'http://127.0.0.1:8899/scripts/frames.html?page=preview-en-form&w=320,393&h=852'
 ```
 
-`page` is any generated file's name without `.html`; `w` is the iframe widths. The ones
-worth walking are 320 (the floor), 393 (iPhone 15), 430, 768 and 1440.
+`page` is any generated file's name without `.html`; `w` is the iframe widths, `h` their
+height, `keyboard` the simulated inset (336 by default, the SE's decimal keypad). The
+widths worth walking are 320 (the floor), 393 (iPhone 15), 430, 768 and 1440.
+`--virtual-time-budget` has to outlast the backdrop's fade-in, which starts at
+`opacity: 0` — without it a screenshot catches a half-transparent scrim. The panel's own
+slide-up is not a factor, since the harness disables it before measuring.
 
 ## Gotchas
 
