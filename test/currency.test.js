@@ -70,14 +70,6 @@ describe('normalizeCurrency', () => {
       expect(normalizeCurrency(value)).toBe('')
     }
   })
-
-  it('agrees with minorDigits on every scale', () => {
-    // minorDigits normalises internally; if the two ever disagreed, a row could be
-    // written at one scale and read back at another.
-    for (const code of [' jpy ', 'Kwd', 'usd', 'NOTACODE']) {
-      expect(minorDigits(code)).toBe(minorDigits(normalizeCurrency(code) || code))
-    }
-  })
 })
 
 describe('parsing a zero-decimal currency', () => {

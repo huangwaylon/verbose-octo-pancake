@@ -148,6 +148,28 @@ describe('telling a bad key from a bad connection', () => {
     expect(c.keyIsSuspect()).toBe(false)
   })
 
+  /**
+   * The 7-day consent-screen expiry: the script's own authorization has lapsed, so it
+   * answers 200 with `{"error":"unavailable"}`. Retrying cannot fix it, so it must not
+   * be classified transient — reported as a blip it hides behind a 30-second retry
+   * loop and a "showing saved data" notice forever — and it is not a bad key either.
+   */
+  it('gives the script’s own lapsed authorization its own terminal message', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply({ error: 'unavailable' })))
+
+    const c = await load({ 'sf.appKey': 'k' })
+    await expect(c.getAccessToken()).rejects.toMatchObject({
+      // The literal, not `CONNECTION_ERROR.SCRIPT_UNAUTHORIZED` — deriving the
+      // expectation from the module under test would let the code and the catalog
+      // drift together. `i18n.test.js` separately proves every code has a translation.
+      i18nKey: 'error.scriptUnauthorized',
+    })
+    // Not the transient bucket a missing branch would fall through to, and not a key
+    // the person should be told to re-type.
+    expect(c.keyIsSuspect()).toBe(false)
+    expect(c.hasKey()).toBe(true)
+  })
+
   it('rejects a reply with no usable sheet id rather than persisting "null"', async () => {
     vi.stubGlobal(
       'fetch',
@@ -186,6 +208,36 @@ describe('the 401 retry path', () => {
     await inFlight
     expect(await refreshed).toBe('fresh')
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not CACHE a token minted before the 401, so a failed retry cannot serve it', async () => {
+    // The returned value alone cannot see the guard — the later mint overwrites the
+    // cache either way. What the guard actually protects is what gets stored: cached,
+    // the rejected token is given a fresh hour of life, and once the retry mint fails
+    // the next caller is handed the very token Google refused with no network call to
+    // discover otherwise.
+    let release
+    const first = new Promise((resolve) => {
+      release = () => resolve(reply({ token: 'stale', spreadsheetId: SHEET_ID }))
+    })
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockRejectedValue(new Error('network down'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const c = await load({ 'sf.appKey': 'k' })
+
+    const inFlight = c.getAccessToken()
+    const refreshed = c.refreshToken()
+    release()
+
+    expect(await inFlight).toBe('stale')
+    await expect(refreshed).rejects.toMatchObject({ i18nKey: 'error.offline' })
+
+    // A third mint, because there is no cached token to short-circuit on.
+    await expect(c.getAccessToken()).rejects.toMatchObject({ i18nKey: 'error.offline' })
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 
   it('caches the refreshed token for subsequent callers', async () => {

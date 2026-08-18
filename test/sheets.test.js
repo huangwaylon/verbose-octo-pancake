@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { EXPENSE_COLUMNS, PERSON, columnIndex, makeEntry } from '../src/schema.js'
+import { DEFAULT_CONFIG } from '../src/config.js'
 import {
   installSheets,
   removeSheets,
@@ -65,8 +66,11 @@ const GIDS = { expenses_p1: 111, expenses_p2: 222, config: 333 }
 describe('every write is RAW', () => {
   it('never sends USER_ENTERED, on any path', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:A')) return values([['e1']])
+      // Checked before the row range: a batchGet's `ranges` never carry `!A2:K`
+      // (`ensureStructure` asks for header rows), but matching it first cannot go
+      // wrong either way.
       if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}] }
+      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
       if (call.url.includes('fields=sheets')) {
         return {
           sheets: Object.entries(GIDS).map(([title, sheetId]) => ({
@@ -95,10 +99,12 @@ describe('every write is RAW', () => {
 })
 
 describe('resolving a row before writing to it', () => {
-  it('writes to the row the id column says, not to any cached position', async () => {
+  it('writes to the row the sheet says, not to any cached position', async () => {
     // The id sits third in the tab, so the write must land on row 4 (header + 2).
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:A')) return values([['other-1'], ['other-2'], ['e1']])
+      if (call.url.includes('!A2:K')) {
+        return values([row({ id: 'other-1' }), row({ id: 'other-2' }), row({ id: 'e1' })])
+      }
       return {}
     })
 
@@ -106,14 +112,16 @@ describe('resolving a row before writing to it', () => {
 
     const [read, write] = calls
     expect(read.method).toBe('GET')
-    expect(read.url).toContain('expenses_p1!A2:A')
+    // The full row range, not the id column alone: an id is not unique within a tab,
+    // so telling a live row from a tombstone needs `deleted_at` as well.
+    expect(read.url).toContain('expenses_p1!A2:K')
     expect(write.method).toBe('PUT')
     expect(write.url).toContain('expenses_p1!A4:K4')
   })
 
   it('stamps deleted_at on the resolved row, in the deleted_at column only', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:A')) return values([['e1']])
+      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
       return {}
     })
 
@@ -128,7 +136,7 @@ describe('resolving a row before writing to it', () => {
 
   it('clears the cell with an empty string when restoring', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:A')) return values([['e1']])
+      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
       return {}
     })
 
@@ -138,12 +146,61 @@ describe('resolving a row before writing to it', () => {
   })
 
   it('refuses to write at all when the id is gone from the sheet', async () => {
-    const calls = installSheets(() => values([['someone-else']]))
+    const calls = installSheets(() => values([row({ id: 'someone-else' })]))
 
     await expect(sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', null)).rejects.toMatchObject({
       i18nKey: 'error.entryGone',
     })
     expect(writes(calls)).toHaveLength(0)
+  })
+
+  /**
+   * An id is NOT unique within a tab: `updateEntry` tombstones the old row whenever the
+   * payer moves, so a payer that has gone p1 -> p2 -> p1 leaves the id in p1 twice.
+   * Resolving to the first match writes to the dead row, and every consequence is
+   * silent — `reconcileById` collapses the duplicate on screen and `supersededRows`
+   * counts tombstones only, so a hidden live copy is never reported.
+   */
+  describe('when the same id appears twice in one tab', () => {
+    const duplicated = (call) =>
+      call.url.includes('!A2:K')
+        ? values([
+            row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
+            row({ id: 'other' }),
+            row({ id: 'e1' }),
+          ])
+        : {}
+
+    it('stamps the LIVE row, so a delete is not silently a no-op', async () => {
+      const calls = installSheets(duplicated)
+
+      await sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', '2026-08-06T00:00:00.000Z')
+
+      // Row 4, the live copy — not row 2, which is already tombstoned.
+      expect(writes(calls)[0].url).toContain('expenses_p1!K4:K4')
+    })
+
+    it('overwrites the LIVE row, so an edit does not resurrect the tombstone', async () => {
+      const calls = installSheets(duplicated)
+
+      await sheets.updateEntry(SHEET, entry(), PERSON.P1)
+
+      // Writing row 2 would clear its `deleted_at` and leave TWO live rows for one id.
+      expect(writes(calls)[0].url).toContain('expenses_p1!A4:K4')
+    })
+
+    it('falls back to a tombstone when no copy in the tab is live', async () => {
+      const calls = installSheets((call) =>
+        call.url.includes('!A2:K')
+          ? values([row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' })])
+          : {},
+      )
+
+      // The payer-move branch has to be able to stamp a row that is already dead.
+      await sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', '2026-08-06T00:00:00.000Z')
+
+      expect(writes(calls)[0].url).toContain('expenses_p1!K2:K2')
+    })
   })
 })
 
@@ -152,7 +209,7 @@ describe('changing who paid moves the row between tabs', () => {
     // Ordering is the invariant: a failure between the two must leave the entry
     // visible under its old payer rather than gone from both tabs.
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:A')) return values([['e1']])
+      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
       return {}
     })
 
@@ -167,7 +224,7 @@ describe('changing who paid moves the row between tabs', () => {
 
   it('overwrites in place when the payer is unchanged', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:A')) return values([['e1']])
+      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
       return {}
     })
 
@@ -396,7 +453,97 @@ describe('loadAll', () => {
       ],
     }))
 
-    expect(await sheets.loadAll(SHEET)).toMatchObject({ supersededRows: 0, undecodedRows: 0 })
+    expect(await sheets.loadAll(SHEET)).toMatchObject({
+      supersededRows: 0,
+      undecodedRows: 0,
+      undatedRows: 0,
+      configMissing: false,
+    })
+  })
+
+  /**
+   * The four things `loadAll` reports about what the sheet holds and the app cannot
+   * show. `ledgerState.test.js` covers how `noticeKeys` turns each into a sentence;
+   * these cover that `loadAll` ever produces one, which nothing else did — every
+   * flag below could be deleted from `sheets.js` with a green suite.
+   */
+  describe('what it reports about the sheet', () => {
+    it('flags a missing config tab, so the default currency is never silent', async () => {
+      let attempt = 0
+      installSheets(() => {
+        attempt += 1
+        if (attempt === 1) return { __status: 400 }
+        return { valueRanges: [{}, {}] }
+      })
+
+      // Without this the app runs the whole sheet on JPY with nothing said, which on a
+      // USD sheet reads every blank-currency row 100x wrong.
+      expect(await sheets.loadAll(SHEET)).toMatchObject({ configMissing: true })
+    })
+
+    it('counts live rows whose date is not a real day', async () => {
+      installSheets(() => ({
+        valueRanges: [
+          values([
+            // What Sheets hands back for a hand-typed date it stored AS a date: reads
+            // are FORMATTED_VALUE, so it arrives in the spreadsheet's own locale.
+            row({ id: 'a', date: '8/5/2026', amount: '100' }),
+            row({ id: 'b', date: '2026-02-31', amount: '100' }),
+            row({ id: 'ok', date: '2026-08-05', amount: '100' }),
+          ]),
+          {},
+          values([['currency', 'JPY']]),
+        ],
+      }))
+
+      // They reach the balance but belong to no month, so they appear in no month's
+      // list and cannot be found and fixed from the app.
+      expect(await sheets.loadAll(SHEET)).toMatchObject({ undatedRows: 2 })
+    })
+
+    it('does not count a blank date as an unreadable one', async () => {
+      installSheets(() => ({
+        valueRanges: [values([row({ id: 'a', amount: '100' })]), {}, values([['currency', 'JPY']])],
+      }))
+
+      // The cell has to have held SOMETHING for the notice to be true.
+      expect(await sheets.loadAll(SHEET)).toMatchObject({ undatedRows: 0 })
+    })
+
+    it('returns the sheet’s own partial config, not the merged one', async () => {
+      installSheets(() => ({
+        valueRanges: [{}, {}, values([['currency', 'USD']])],
+      }))
+
+      const { sheetConfig, config } = await sheets.loadAll(SHEET)
+      // The snapshot stores this, and it must be the pre-merge copy: a merged one
+      // freezes the building build's defaults into every future cold launch, so the
+      // balance can come back at the wrong scale.
+      expect(sheetConfig).toEqual({ currency: 'USD' })
+      expect(config.currency).toBe('USD')
+      expect(config.categories).toEqual(DEFAULT_CONFIG.categories)
+    })
+
+    it('takes the FIRST usable value for a config key', async () => {
+      installSheets(() => ({
+        valueRanges: [
+          values([row({ id: 'a', date: '2026-08-05', amount: '1250' })]),
+          {},
+          // Somebody added a row at the top and forgot the old one lower down.
+          values([
+            ['currency', 'USD'],
+            ['currency', 'JPY'],
+          ]),
+        ],
+      }))
+
+      const { config, entries } = await sheets.loadAll(SHEET)
+      // Last-wins would run the sheet at JPY, where this blank-currency row decodes
+      // as ¥1250 instead of $1250.00 — a 100x error on every row like it.
+      expect(config.currency).toBe('USD')
+      expect(entries[0].currency).toBe('USD')
+      expect(entries[0].amountCents).toBe(125000)
+    })
   })
 })
 

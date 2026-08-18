@@ -64,6 +64,31 @@ describe('column contract', () => {
     expect(columnIndex('deleted_at')).toBe(10)
   })
 
+  it('is exactly this order, and the list is append-only', () => {
+    // The whole list as a literal, because nothing else in the suite can see a
+    // reorder: `rawRow` here and `row` in sheets.test.js both BUILD rows from
+    // EXPENSE_COLUMNS, so they move with it and every assertion still passes.
+    //
+    // A reorder is silent and destructive in a live sheet. Every range and letter is
+    // derived from array position, and `ensureStructure` rewrites a header row that no
+    // longer matches while never touching data rows — so swapping two columns relabels
+    // every existing row under the wrong field, and `created_at`/`updated_at` or
+    // `category`/`description` would read as plausible either way.
+    expect(EXPENSE_COLUMNS).toEqual([
+      'id',
+      'type',
+      'date',
+      'amount',
+      'currency',
+      'category',
+      'description',
+      'payer_share',
+      'created_at',
+      'updated_at',
+      'deleted_at',
+    ])
+  })
+
   it('names one tab per person', () => {
     expect(expensesTab(PERSON.P1)).toBe('expenses_p1')
     expect(expensesTab(PERSON.P2)).toBe('expenses_p2')

@@ -134,3 +134,65 @@ describe('what gets ignored', () => {
     expect(store.has('sf.snapshot')).toBe(true)
   })
 })
+
+/**
+ * The cache is the one input never decoded through `rowToEntry`, and it is restored
+ * during the FIRST render — so a row the aggregates cannot take is not a bad number,
+ * it is an app that will not launch, with no way in to clear the cache. `splitCents`
+ * throws on a non-numeric share and `sumCents` on a non-integer amount.
+ *
+ * Whole-list rejection is the point: a partially dropped ledger is a wrong balance on
+ * screen, which is worse than the empty frame a re-read costs.
+ */
+describe('a row the balance could not survive', () => {
+  const stored = (entries) => ({
+    'sf.snapshot': JSON.stringify({ v: 1, spreadsheetId: SHEET, entries, config: {} }),
+  })
+
+  const unusable = {
+    'a non-integer amount': { amountCents: 12.5 },
+    'a missing amount': { amountCents: undefined },
+    // Not `Number(...)`: null, '' and false all coerce to 0 and then throw.
+    'a null share': { payerShare: null },
+    'an empty-string share': { payerShare: '' },
+    'a non-numeric share': { payerShare: 'half' },
+    // A junk payer decides the SIGN of the balance, so it is a wrong number rather
+    // than a crash — which is worse.
+    'a payer who is neither person': { payer: 'p3' },
+    'a missing payer': { payer: undefined },
+    'a missing id': { id: undefined },
+    'an empty id': { id: '' },
+    'a non-string currency': { currency: 42 },
+  }
+
+  for (const [what, over] of Object.entries(unusable)) {
+    it(`drops the whole snapshot for ${what}`, async () => {
+      const { snapshot } = await load(stored([entry(over)]))
+      expect(snapshot.readSnapshot(SHEET)).toBe(null)
+    })
+  }
+
+  it('drops the whole list, not just the bad row', async () => {
+    const { snapshot } = await load(
+      stored([entry({ id: 'good' }), entry({ id: 'bad', amountCents: 12.5 })]),
+    )
+    expect(snapshot.readSnapshot(SHEET)).toBe(null)
+  })
+
+  it('still restores a list where every row is usable', async () => {
+    const { snapshot } = await load(stored([entry({ id: 'a' }), entry({ id: 'b' })]))
+    expect(snapshot.readSnapshot(SHEET).entries).toHaveLength(2)
+  })
+
+  it('accepts a share of exactly 0 and exactly 1, which are real splits', async () => {
+    // A settlement is `payerShare: 0`, and "the payer covered all of it" is 1. A
+    // falsy-check guard instead of `Number.isFinite` would reject the settlement.
+    const { snapshot } = await load(stored([entry({ payerShare: 0 }), entry({ payerShare: 1 })]))
+    expect(snapshot.readSnapshot(SHEET).entries).toHaveLength(2)
+  })
+
+  it('accepts a zero amount, which is not the same as a missing one', async () => {
+    const { snapshot } = await load(stored([entry({ amountCents: 0 })]))
+    expect(snapshot.readSnapshot(SHEET).entries).toHaveLength(1)
+  })
+})

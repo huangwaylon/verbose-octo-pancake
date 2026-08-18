@@ -20,7 +20,6 @@ import {
   cellRange,
   cellText,
   columnIndex,
-  columnLetter,
   entryToRow,
   expensesDataRange,
   expensesHeaderRange,
@@ -30,7 +29,7 @@ import {
   rowToEntry,
 } from '../schema.js'
 import { normalizeCurrency, parseShare } from './money.js'
-import { reconcileById } from './ledgerState.js'
+import { reconcileById, tombstoneCount } from './ledgerState.js'
 import { getAccessToken, refreshToken } from './connection.js'
 import { i18nError } from '../i18n/index.js'
 
@@ -61,12 +60,6 @@ function isUnreachable(status, payload) {
 const ID_INDEX = columnIndex('id')
 const DELETED_AT_INDEX = columnIndex('deleted_at')
 const DATE_INDEX = columnIndex('date')
-
-/** One column of one person's tab, e.g. "expenses_p1!K2:K". */
-function columnRange(person, field) {
-  const letter = columnLetter(field)
-  return `${expensesTab(person)}!${letter}${FIRST_DATA_ROW}:${letter}`
-}
 
 /**
  * Sheet key <-> config field, plus how to read the value. One list so the two
@@ -307,12 +300,11 @@ export async function loadAll(spreadsheetId) {
   )
 
   const entries = reconcileById(decoded)
-  const tombstones = (list) => list.filter((entry) => entry.deletedAt).length
   return {
     entries,
     config,
     sheetConfig,
-    supersededRows: tombstones(decoded) - tombstones(entries),
+    supersededRows: tombstoneCount(decoded) - tombstoneCount(entries),
     undecodedRows,
     undatedRows,
     configMissing,
@@ -331,14 +323,38 @@ export async function appendEntry(spreadsheetId, entry) {
 }
 
 /**
- * Locate an entry's current row within one person's tab by re-reading its id
- * column. Row numbers cannot be cached: inserting or deleting rows in the Sheets
- * UI shifts every row below the edit, and writing to a stale row silently
- * overwrites a different expense.
+ * Locate an entry's current row within one person's tab.
+ *
+ * Row numbers cannot be cached: inserting or deleting rows in the Sheets UI shifts
+ * every row below the edit, and writing to a stale row silently overwrites a
+ * different expense — so this re-reads immediately before every write.
+ *
+ * It reads the FULL row range rather than the id column alone, because **an id is not
+ * unique within a tab**. `updateEntry` leaves a same-id tombstone behind whenever the
+ * payer moves, so an entry whose payer has moved away and back has the id in this tab
+ * twice — once dead, once live. Taking the first match then writes to the dead row: a
+ * delete stamps a row that is already tombstoned and the live one survives, so the
+ * delete silently does nothing and the expense returns on the next refresh; a plain
+ * edit clears that row's `deleted_at` and resurrects it into a SECOND live row. Both
+ * are invisible afterwards — `reconcileById` collapses the duplicate on screen, and
+ * `supersededRows` counts tombstones only, so a hidden live copy is never reported.
  */
 async function resolveRow(spreadsheetId, person, id) {
-  const data = await getValues(spreadsheetId, columnRange(person, 'id'))
-  const index = (data.values ?? []).findIndex((row) => cellText(row, 0) === id)
+  const data = await getValues(spreadsheetId, expensesDataRange(person))
+  const rows = data.values ?? []
+
+  let live = -1
+  let any = -1
+  rows.forEach((row, index) => {
+    if (cellText(row, ID_INDEX) !== id) return
+    if (any < 0) any = index
+    // The LAST live row wins: rows are only ever appended, so the newest copy is the
+    // one every read reconciles to. Falling back to a tombstone keeps the payer-move
+    // branch below able to stamp a row that is already dead, which is harmless.
+    if (!cellText(row, DELETED_AT_INDEX)) live = index
+  })
+
+  const index = live >= 0 ? live : any
   // Reaches the screen through a toast, so it is translated rather than English.
   if (index < 0) throw i18nError('error.entryGone')
   return FIRST_DATA_ROW + index
@@ -400,6 +416,10 @@ export async function setDeletedAt(spreadsheetId, person, id, deletedAtIso) {
 export async function compact(spreadsheetId, sheetGids) {
   const requests = []
 
+  // One read per tab rather than a single batchGet, deliberately. Batching would save a
+  // round trip on a rare, manual action, at the cost of re-deriving the row numbers
+  // from a positional `valueRanges` reply — and this is the only hard delete in the
+  // app, where being one row out removes somebody else's expense.
   for (const person of PEOPLE) {
     const sheetGid = sheetGids[expensesTab(person)]
     if (sheetGid == null) continue
