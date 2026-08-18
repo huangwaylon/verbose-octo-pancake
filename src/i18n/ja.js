@@ -202,6 +202,8 @@ export default {
   // `Intl.PluralRules('ja')` reports only `other`, so a single branch is correct.
   'warning.configMissing':
     'config タブが見つからないため、名前・通貨・カテゴリーは既定値です。シートで復元してください。',
+  'warning.currencyDefaulted':
+    'config タブに通貨の指定がないため、金額は {currency} として読み取っています。シートに currency の行を追加してください。',
   'warning.undatedRows': {
     other: 'シートに日付を読み取れない行が {count} 行あるため、どの月にも表示されません。',
   },

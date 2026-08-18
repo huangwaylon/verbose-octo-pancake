@@ -155,11 +155,14 @@ rows. `test/currency.test.js` pins both scales. `entryToRow` writes each row at 
 *own* currency's scale, never the config's.
 
 **Anything the sheet holds and the app cannot show is counted and said out loud.**
-`loadAll` returns `undecodedRows`, `undatedRows`, `supersededRows` and `configMissing`,
-each explained where it is counted, and `noticeKeys` turns them into notices. A ledger
-quietly short one expense — or silently running on the default currency — is the exact
-failure this codebase exists to avoid. Never repair `configMissing`: re-seeding writes
-the DEFAULT currency into a sheet whose real one is unknown.
+`loadAll` returns `undecodedRows`, `undatedRows`, `supersededRows`, `configMissing` and
+`currencyDefaulted`, each explained where it is counted, and `noticeKeys` turns them into
+notices. A ledger quietly short one expense — or silently running on the default currency
+— is the exact failure this codebase exists to avoid. The last two are two routes to that
+same currency error and only ONE notice is shown, the more specific: `configMissing` can
+only be set by a *failed* read, so a config tab that is readable but has lost its
+`currency` row needs `currencyDefaulted` or it is silent. Never repair either: re-seeding
+writes the DEFAULT currency into a sheet whose real one is unknown.
 
 **`type` and `currency` are both case-folded on read, and the FIRST usable value for a
 config key wins.** Each is a 100x-or-worse error from one stray cell.

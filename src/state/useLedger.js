@@ -33,6 +33,7 @@ const EMPTY_EXTRAS = {
   undecodedRows: 0,
   undatedRows: 0,
   configMissing: false,
+  currencyDefaulted: false,
 }
 
 /**
@@ -121,6 +122,7 @@ export function useLedger(spreadsheetId) {
       undecodedRows: data.undecodedRows,
       undatedRows: data.undatedRows,
       configMissing: data.configMissing,
+      currencyDefaulted: data.currencyDefaulted,
     })
     setError(null)
     setStatus('ready')

@@ -127,9 +127,9 @@ export function DonutChart({ items, formatMoney, label, otherLabel, formatShare 
               style={{ backgroundColor: slice.color }}
               aria-hidden="true"
             />
-            <span className="chart__name" title={slice.label}>
-              {slice.label}
-            </span>
+            {/* No `title`: the name wraps in full now, so a tooltip would only repeat
+                the visible text — and iOS has no hover to show one anyway. */}
+            <span className="chart__name">{slice.label}</span>
             <span>
               <span className="chart__value">{formatMoney(slice.valueCents)}</span>{' '}
               <span className="chart__share">{formatShare(Math.round(slice.share))}</span>

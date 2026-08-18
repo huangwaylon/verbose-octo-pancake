@@ -43,6 +43,18 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
     ['primitives', '.empty__title'],
   ]
 
+  // The two legend dots share one shape rule and differ only in colour, so a merge
+  // here is exactly the kind this file exists to catch: land the shared block on the
+  // wrong selector and one legend loses its dot entirely, silently.
+  it.each([['.summary__person-swatch'], ['.chart__swatch']])('%s is still a dot', (selector) => {
+    for (const property of ['width', 'height', 'border-radius']) {
+      expect(declares(FILES.app, selector, property)).toBe(true)
+    }
+    // And each still paints its own colour: the meter's from the accent, the chart's
+    // from a --series-N token, which is the whole reason they are two selectors.
+    expect(declares(FILES.app, selector, 'background-color')).toBe(true)
+  })
+
   it.each(headings)('%s %s is still a heading', (file, selector) => {
     const css = FILES[file]
     expect(declares(css, selector, 'font-size')).toBe(true)

@@ -303,7 +303,10 @@
   font-weight: 600;
 }
 
-.summary__person-swatch {
+/* One dot, two legends. The colour is all that differs — the chart's comes inline from
+   a --series-N token, the meter's from the accent — so the shape lives here once. */
+.summary__person-swatch,
+.chart__swatch {
   flex: none;
   width: 0.5rem;
   height: 0.5rem;
@@ -373,18 +376,19 @@
 }
 
 .chart__swatch {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: var(--radius-xs);
-  /* Set inline from the validated --series-N tokens, in fixed order. */
+  /* Set inline from the validated --series-N tokens, in fixed order; the shape is
+     shared with the meter's dot above. */
   background-color: var(--series-1);
 }
 
 .chart__name {
-  overflow: hidden;
+  /* Wraps rather than truncating. `title` is the only recourse an ellipsis leaves and
+     iOS has no hover to show one, so a long category read as "Groceries and househol…"
+     with no way to see the rest. A flex item's automatic minimum is its min-content
+     width, and `break-word` does not reduce that — hence both of these. */
+  min-width: 0;
   color: var(--ink-2);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .chart__value {

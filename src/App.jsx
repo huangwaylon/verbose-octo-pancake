@@ -130,6 +130,8 @@ export default function App() {
     status: ledger.status,
     error: ledger.error,
     mixedCurrencies: view.mixedCurrencies,
+    // The scale amounts are being read at, so the notice can name it.
+    currency,
     ...ledger.sheetExtras,
   }).map(({ key, vars }) => t(key, vars))
 

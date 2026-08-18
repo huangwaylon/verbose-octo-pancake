@@ -510,6 +510,26 @@ describe('loadAll', () => {
       expect(await sheets.loadAll(SHEET)).toMatchObject({ undatedRows: 0 })
     })
 
+    it('flags a config tab that is readable but names no currency', async () => {
+      installSheets(() => ({
+        // The tab is there and parses; it just has no `currency` row any more.
+        valueRanges: [{}, {}, values([['categories', 'Groceries, Dining']])],
+      }))
+
+      // `configMissing` cannot catch this — it is only set when the READ fails — so
+      // without its own flag the whole sheet runs on the default scale in silence.
+      expect(await sheets.loadAll(SHEET)).toMatchObject({
+        configMissing: false,
+        currencyDefaulted: true,
+      })
+    })
+
+    it('does not flag a sheet whose config names a currency', async () => {
+      installSheets(() => ({ valueRanges: [{}, {}, values([['currency', 'USD']])] }))
+
+      expect(await sheets.loadAll(SHEET)).toMatchObject({ currencyDefaulted: false })
+    })
+
     it('returns the sheet’s own partial config, not the merged one', async () => {
       installSheets(() => ({
         valueRanges: [{}, {}, values([['currency', 'USD']])],

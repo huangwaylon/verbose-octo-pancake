@@ -307,13 +307,19 @@ export function entryFromInput(input, now) {
  * `stale` alone is where a cached launch starts, before any read has failed.
  *
  * @param {{status: string, error: unknown, mixedCurrencies: boolean,
- *   configMissing: boolean, undecodedRows: number, undatedRows: number}} state
+ *   configMissing: boolean, currencyDefaulted: boolean, currency: string,
+ *   undecodedRows: number, undatedRows: number}} state
  * @returns {{key: string, vars?: object}[]}
  */
 export function noticeKeys(state = {}) {
   const notices = []
   if (state.status === 'stale' && state.error) notices.push({ key: 'warning.staleData' })
   if (state.configMissing) notices.push({ key: 'warning.configMissing' })
+  // Only when the tab is actually there: a missing tab defaults the currency too, and
+  // the notice above already says so in the more specific way.
+  else if (state.currencyDefaulted) {
+    notices.push({ key: 'warning.currencyDefaulted', vars: { currency: state.currency } })
+  }
   if (state.mixedCurrencies) notices.push({ key: 'warning.mixedCurrencies' })
   if (state.undecodedRows > 0) {
     notices.push({ key: 'warning.undecodedRows', vars: { count: state.undecodedRows } })

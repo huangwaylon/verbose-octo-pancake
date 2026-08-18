@@ -242,6 +242,11 @@ export default {
   // including the currency, which decides the scale of every amount.
   'warning.configMissing':
     'The config tab is missing, so names, currency and categories are the defaults. Restore it in the sheet.',
+  // The tab is there but says nothing about the currency, which is the same silent
+  // 100x risk as the tab being gone: every row with a blank currency cell is read at
+  // the default's scale.
+  'warning.currencyDefaulted':
+    'The config tab sets no currency, so amounts are read as {currency}. Add a currency row in the sheet.',
   // These rows are in the balance but belong to no month, so they appear in no
   // list and cannot be found from here.
   'warning.undatedRows': {

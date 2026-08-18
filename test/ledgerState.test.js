@@ -456,6 +456,23 @@ describe('noticeKeys', () => {
     expect(keysFor({ configMissing: true })).toEqual(['warning.configMissing'])
   })
 
+  it('reports a config tab that names no currency, and says which one is assumed', () => {
+    // The same silent 100x risk as a missing tab, by a different route: `configMissing`
+    // can only be set by a FAILED read, so a tab whose `currency` row was deleted reads
+    // fine and runs the whole ledger on the default.
+    expect(noticeKeys({ currencyDefaulted: true, currency: 'JPY' })).toEqual([
+      { key: 'warning.currencyDefaulted', vars: { currency: 'JPY' } },
+    ])
+  })
+
+  it('says it once when the tab is missing, in the more specific way', () => {
+    // A missing tab defaults the currency too, so both flags are true — and two notices
+    // about one cause is noise stacked over the balance.
+    expect(keysFor({ configMissing: true, currencyDefaulted: true, currency: 'JPY' })).toEqual([
+      'warning.configMissing',
+    ])
+  })
+
   it('counts the rows it cannot show, and passes the count for pluralisation', () => {
     expect(noticeKeys({ undecodedRows: 2 })).toEqual([
       { key: 'warning.undecodedRows', vars: { count: 2 } },

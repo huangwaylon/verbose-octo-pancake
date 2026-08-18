@@ -255,9 +255,15 @@ function defaultConfigRows() {
  * zero minor digits. Reported rather than repaired, because seeding a fresh config
  * tab would write the DEFAULT currency into the sheet and make the error permanent.
  *
+ * `currencyDefaulted` — the tab is readable but names no usable currency, which carries
+ * exactly the same 100x risk as the tab being absent and was the one way to reach it
+ * silently: `configMissing` can only be set by a *failed* read, so a tab whose rows were
+ * cleared, or which merely lost its `currency` row, ran the whole ledger on the default
+ * with nothing said. Also never repaired, for the same reason.
+ *
  * @returns {Promise<{entries: object[], config: object, sheetConfig: object,
  *   supersededRows: number, undecodedRows: number, undatedRows: number,
- *   configMissing: boolean}>}
+ *   configMissing: boolean, currencyDefaulted: boolean}>}
  */
 export async function loadAll(spreadsheetId) {
   const ranges = [expensesDataRange(PERSON.P1), expensesDataRange(PERSON.P2), CONFIG_RANGE]
@@ -308,6 +314,9 @@ export async function loadAll(spreadsheetId) {
     undecodedRows,
     undatedRows,
     configMissing,
+    // Reported whether the tab is missing or merely silent on the currency; which of
+    // the two it is, is `noticeKeys`' problem, not this layer's.
+    currencyDefaulted: !sheetConfig.currency,
   }
 }
 
