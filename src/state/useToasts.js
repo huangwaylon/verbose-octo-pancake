@@ -4,6 +4,14 @@ const DEFAULT_DURATION = 4000
 const ERROR_DURATION = 6000
 
 /**
+ * How many are on screen at once. The stack takes no pointer events and the layout
+ * reserves no band for it, so it overlays the last rows of the ledger — six failed
+ * writes in six seconds would cover them. The NEWEST are kept: an older toast has
+ * had its moment, and its timer still fires, so nothing leaks.
+ */
+const MAX_VISIBLE = 3
+
+/**
  * A tiny toast stack. Two jobs: reporting a write failure, and confirming that a
  * delete or a restore actually reached the sheet. Nothing here is interactive —
  * a deleted entry is recovered from the deleted list, not from a toast that has
@@ -25,7 +33,7 @@ export function useToasts() {
   const push = useCallback(
     ({ message, tone = 'info', duration = DEFAULT_DURATION }) => {
       const id = crypto.randomUUID()
-      setToasts((current) => [...current, { id, message, tone }])
+      setToasts((current) => [...current, { id, message, tone }].slice(-MAX_VISIBLE))
       timers.current.set(
         id,
         setTimeout(() => dismiss(id), duration),

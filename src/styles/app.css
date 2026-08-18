@@ -46,16 +46,23 @@
    column: the figure is the page's most-read number and must not sit half a
    screen from the settings button at 1440px. The same max() as .layout's own
    centring, arrived at by padding rather than a wrapper — a wrapper would have to
-   sit inside the blurred box, which is the element that must stay edge to edge. */
+   sit inside the blurred box, which is the element that must stay edge to edge.
+
+   50%, not 50vw: `.layout` centres with `margin-inline: auto` inside BODY's content
+   box, which base.css has already shrunk by the horizontal safe insets, while a
+   viewport unit measures past them. A rotated iPhone 15 is 852px wide, so it clears
+   this breakpoint with 59px insets, and the two would disagree by exactly that —
+   the figure and the ledger below it visibly out of line. A padding percentage
+   resolves against the containing block, which is the box that actually matters. */
 @media (min-width: 48rem) {
   .app__header {
-    padding-inline: max(var(--space-6), calc(50vw - var(--column-max) / 2 + var(--space-6)));
+    padding-inline: max(var(--space-6), calc(50% - var(--column-max) / 2 + var(--space-6)));
   }
 }
 
 @media (min-width: 62rem) {
   .app__header {
-    padding-inline: max(var(--space-7), calc(50vw - var(--shell-max) / 2 + var(--space-7)));
+    padding-inline: max(var(--space-7), calc(50% - var(--shell-max) / 2 + var(--space-7)));
   }
 }
 
@@ -660,8 +667,17 @@ button.entry__main:active {
   gap: var(--space-2) var(--space-3);
 }
 
+/* Config-tab text — the payer's own name, in the possessive — so it needs the pair
+   every other holder of one gets: a grid item's automatic minimum is its min-content
+   width, and `body`'s `overflow-wrap: break-word` does not reduce that. Spanning both
+   tracks, its min-content contribution lands entirely on the `auto` output track,
+   because `minmax(0, 1fr)` has a fixed zero minimum — so one long name widens the
+   grid past the sheet, where `.sheet__body`'s `overflow-x: hidden` CLIPS it rather
+   than reporting it. */
 .split-control__slider .field__hint {
   grid-column: 1 / -1;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .split-control__slider input {
@@ -721,8 +737,12 @@ button.entry__main:active {
   justify-content: center;
   gap: var(--space-4);
   min-height: 100dvh;
+  /* The keyboard inset is spent as bottom padding, and this box is border-box at
+     `100dvh`, so the padding shrinks the content box the panel is centred in — which
+     lifts Connect above the keypad. `KeyGate` is what publishes it; on every other
+     gate the fallback is 0 and this is the plain safe-area padding. */
   padding: calc(var(--space-6) + var(--safe-top)) var(--space-4)
-    calc(var(--space-6) + var(--safe-bottom));
+    calc(var(--space-6) + var(--safe-bottom) + var(--keyboard-inset, 0px));
 }
 
 .gate__panel {

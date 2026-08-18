@@ -6,8 +6,10 @@
  * components bare with no provider to wire up. There is exactly one locale per
  * tab, so the multi-tenant argument for context does not apply.
  *
- * Both catalogs are statically imported: ~2 KB gzipped for the pair is cheaper
- * than the round trip and Suspense boundary a dynamic import would cost.
+ * Both catalogs are statically imported: 6.3 KB gzipped for the pair, against a
+ * round trip and a Suspense boundary for the dynamic version — and after the app is
+ * installed a split chunk saves no download at all, because every byte comes from
+ * the service worker's precache either way.
  */
 
 import { useMemo, useSyncExternalStore } from 'react'
@@ -225,7 +227,21 @@ export function usePeopleLabels(config, me) {
     const fallbacks = { p1: t('common.person1'), p2: t('common.person2') }
     const you = t('common.you')
     const name = (person) => nameOf(config, person, fallbacks)
-    return { name, label: (person) => (person === me ? you : name(person)) }
+    return {
+      name,
+      label: (person) => (person === me ? you : name(person)),
+      /**
+       * The same label in the possessive, and a separate function because English
+       * inflects: interpolating `label` into a `{name}’s` string reads "You’s
+       * share" for whoever is holding the phone. Japanese takes a uniform particle,
+       * so which of the two forms applies is a catalog decision rather than a rule
+       * here — the caller only says whose.
+       */
+      possessive: (person) =>
+        person === me
+          ? t('common.yourPossessive')
+          : t('common.namePossessive', { name: name(person) }),
+    }
     // `locale` is the dependency that matters; `t` is derived from it.
   }, [config, me, locale])
 }

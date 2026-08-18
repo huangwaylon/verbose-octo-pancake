@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { ENTRY_ERROR, ENTRY_TYPE, PERSON, expensesTab, isPerson, makeEntry } from '../src/schema.js'
+import { ENTRY_ERROR, ENTRY_TYPE, PERSON, expensesTab, isPerson } from '../src/schema.js'
+import { expense, tombstone, FIXED_NOW as NOW } from './support/entries.js'
 import {
+  gateFor,
   acknowledge,
   compactRefusal,
   entryById,
@@ -34,19 +36,8 @@ import {
  * first finished last.
  */
 
-const entry = (id, over = {}) =>
-  makeEntry(
-    {
-      id,
-      date: '2026-08-05',
-      payer: PERSON.P1,
-      amountCents: 1000,
-      currency: 'JPY',
-      category: 'Groceries',
-      ...over,
-    },
-    '2026-08-05T10:00:00.000Z',
-  )
+/** The shared expense, keyed by id: what an id lookup finds is the whole subject here. */
+const entry = (id, over = {}) => expense({ id, ...over })
 
 describe('mergeLoaded', () => {
   it('hands back the server list itself when nothing is in flight', () => {
@@ -244,12 +235,6 @@ describe('counting tombstones', () => {
     expect(tombstoneCount(entries)).toBe(2)
     expect(tombstoneCount([])).toBe(0)
   })
-
-  it('is what compact asks before doing any work', () => {
-    // A separate `hasTombstones` predicate would be this same expression.
-    expect(tombstoneCount([entry('a')])).toBe(0)
-    expect(tombstoneCount([])).toBe(0)
-  })
 })
 
 describe('status while reading', () => {
@@ -294,7 +279,7 @@ describe('the refresh floor', () => {
  */
 describe('reconcileById', () => {
   const live = (id, over) => entry(id, over)
-  const dead = (id, over) => entry(id, { deletedAt: '2026-08-06T00:00:00.000Z', ...over })
+  const dead = (id, over) => tombstone({ id, ...over })
 
   it('keeps the live row when a tombstone shares its id', () => {
     // p1's tab is read first, so the tombstone is the copy `.find` would return.
@@ -344,6 +329,25 @@ describe('reconcileById', () => {
     expect(reconcileById([newer, older])[0].payer).toBe(PERSON.P2)
   })
 
+  it('keeps the FIRST of two tombstones stamped at the same moment', () => {
+    /**
+     * `supersedes` compares timestamps with `>`, so an exact tie leaves the incumbent
+     * in place — and the incumbent is p1's row, because `loadAll` reads p1's tab
+     * first. That decides which payer `useLedger` then hands `updateEntry` as the
+     * tab the row lives in NOW, so it is a real answer rather than a don't-care: a
+     * `>=` here would name p2's tab instead, and the next edit would append into it.
+     * Two rows one second apart is a payer change and a delete in one sitting, which
+     * `updatedAt` records to the second.
+     */
+    const first = dead('moved', { payer: PERSON.P1 })
+    const second = dead('moved', { payer: PERSON.P2 })
+    expect(first.updatedAt).toBe(second.updatedAt) // the tie itself, not an accident
+    expect(reconcileById([first, second])[0].payer).toBe(PERSON.P1)
+    // Stated as "the first one wins" rather than "p1 wins": reversed, the answer
+    // reverses with it, which is what pins the comparison rather than the fixture.
+    expect(reconcileById([second, first])[0].payer).toBe(PERSON.P2)
+  })
+
   it('returns the same array when there is nothing to reconcile', () => {
     // Which is every load but the ones following a payer change.
     const entries = [entry('a'), entry('b'), dead('c')]
@@ -377,7 +381,7 @@ describe('entryFromInput', () => {
   }
 
   it('returns a complete entry for valid input', () => {
-    expect(entryFromInput(input, '2026-08-05T10:00:00.000Z')).toMatchObject({
+    expect(entryFromInput(input, NOW)).toMatchObject({
       id: 'a',
       payer: PERSON.P1,
       amountCents: 1000,
@@ -518,13 +522,13 @@ describe('hasPendingWrite', () => {
 })
 
 describe('compactRefusal', () => {
-  const tombstone = { id: 'gone', deletedAt: '2026-08-06T00:00:00.000Z' }
+  const gone = tombstone({ id: 'gone' })
 
   it('refuses as BUSY while a write is in flight, even with rows to remove', () => {
     // Compact shifts every row below each deletion, and a pending write already
     // resolved its target row number — so it would land on whichever row moved into
     // that position, blanking a live expense or un-deleting an unrelated one.
-    expect(compactRefusal([tombstone, { id: 'a', pending: true }], 0)).toEqual({
+    expect(compactRefusal([gone, { id: 'a', pending: true }], 0)).toEqual({
       removed: 0,
       busy: true,
     })
@@ -533,7 +537,7 @@ describe('compactRefusal', () => {
   it('reports busy rather than "removed 0", which would be a lie', () => {
     // "Removed 0 deleted rows" over a sheet that has rows to remove gives no reason
     // to try again.
-    const refusal = compactRefusal([tombstone, { id: 'a', pending: true }], 0)
+    const refusal = compactRefusal([gone, { id: 'a', pending: true }], 0)
     expect(refusal.busy).toBe(true)
   })
 
@@ -550,7 +554,7 @@ describe('compactRefusal', () => {
   })
 
   it('allows a run when a tombstone is on screen and nothing is in flight', () => {
-    expect(compactRefusal([tombstone], 0)).toBe(null)
+    expect(compactRefusal([gone], 0)).toBe(null)
   })
 
   it('puts busy ahead of nothing-to-remove, so a pending write is never ignored', () => {
@@ -559,15 +563,24 @@ describe('compactRefusal', () => {
 })
 
 describe('newDraftEntry', () => {
-  it('mints a fresh id per draft, so a lost response cannot double-count', () => {
+  it('mints one id per draft, so a lost response cannot double-count', () => {
     // The id belongs to the draft, not to the submit: a `fetch` that rejects after
-    // Google committed the append would otherwise be retried under a second id, and
-    // `reconcileById` cannot collapse two ids.
-    const a = newDraftEntry(PERSON.P1)
-    const b = newDraftEntry(PERSON.P1)
-    expect(a.id).toEqual(expect.any(String))
-    expect(a.id.length).toBeGreaterThan(0)
-    expect(a.id).not.toBe(b.id)
+    // Google committed the append leaves the row on screen as failed, and re-submitting
+    // must write the SAME id — at worst a duplicate row `reconcileById` collapses to
+    // one, never a second expense with an id nothing can pair it with.
+    //
+    // Two submits of one draft is what shows that: `entryFromInput` is what both write
+    // paths call, and a draft carrying no id of its own would have `makeEntry` mint a
+    // fresh one on each pass through it.
+    const draft = newDraftEntry(PERSON.P1)
+    const submit = () =>
+      entryFromInput({ ...draft, amountCents: 1000, currency: 'JPY', category: 'Groceries' }, NOW)
+
+    expect(submit().id).toBe(draft.id)
+    expect(submit().id).toBe(draft.id)
+
+    // And the NEXT draft is a different expense, not a reused row.
+    expect(newDraftEntry(PERSON.P1).id).not.toBe(draft.id)
   })
 
   it('opens on this device’s person, and falls back to a real one', () => {
@@ -593,5 +606,66 @@ describe('newDraftEntry', () => {
 
   it('opens on a date that is a real ISO day', () => {
     expect(newDraftEntry(PERSON.P1).date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+  })
+})
+
+/**
+ * The gate ladder. Every one of these was an early return in `App`, where nothing
+ * could reach it — and the ORDER is the part that can be wrong while every screen it
+ * chooses between looks perfectly correct.
+ */
+describe('gateFor', () => {
+  const ready = {
+    connectionStatus: 'connected',
+    spreadsheetId: 'sheet-1',
+    connectionFailed: false,
+    ledgerStatus: 'ready',
+    me: PERSON.P1,
+  }
+
+  it('shows the ledger once everything is in place', () => {
+    expect(gateFor(ready)).toBe(null)
+  })
+
+  it('reports a missing endpoint before anything else, since nothing can work', () => {
+    // No key screen: there is no endpoint for a key to be presented to, so offering to
+    // type one would be asking for 64 characters that cannot be checked.
+    expect(gateFor({ ...ready, connectionStatus: 'unconfigured' })).toBe('unconfigured')
+  })
+
+  it('sends a REJECTED key back to the key screen, cached sheet id and all', () => {
+    // The id outlives the key and is worthless without a token, so a suspect key
+    // outranks having one. Getting this backwards shows a ledger that can never load.
+    expect(gateFor({ ...ready, connectionStatus: 'no-key' })).toBe('key')
+  })
+
+  it('tells a first mint in flight apart from one that failed', () => {
+    expect(gateFor({ ...ready, spreadsheetId: null })).toBe('loading')
+    expect(gateFor({ ...ready, spreadsheetId: null, connectionFailed: true })).toBe(
+      'connectionError',
+    )
+  })
+
+  it('shows a failed read instead of asking who you are', () => {
+    // Two screens to answer one problem, and the identity question would come back
+    // after the retry anyway.
+    expect(gateFor({ ...ready, ledgerStatus: 'error', me: null })).toBe('readError')
+  })
+
+  it('gates the ledger on the FIRST read only', () => {
+    expect(gateFor({ ...ready, ledgerStatus: 'idle' })).toBe('loading')
+    expect(gateFor({ ...ready, ledgerStatus: 'loading' })).toBe('loading')
+    // A cached launch starts at `stale` and a later read is `refreshing`: both have
+    // something real on screen, so neither may be replaced by a spinner.
+    expect(gateFor({ ...ready, ledgerStatus: 'stale' })).toBe(null)
+    expect(gateFor({ ...ready, ledgerStatus: 'refreshing' })).toBe(null)
+  })
+
+  it('asks who this device is last, and only when nothing else is wrong', () => {
+    // Nothing detects it; this gate and the localStorage choice behind it are the
+    // only path. It comes last because the answer is worth keeping only if the
+    // ledger behind it actually loaded.
+    expect(gateFor({ ...ready, me: null })).toBe('identity')
+    expect(gateFor({ ...ready, me: null, ledgerStatus: 'stale' })).toBe('identity')
   })
 })

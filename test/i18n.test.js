@@ -290,13 +290,12 @@ describe('errorMessage', () => {
       translate('en', 'error.sheetRequest'),
     )
 
+    // Exact equality per cause, which is what stops `.message` ever being the answer:
+    // an error carrying no key must produce the caller's translated sentence and
+    // nothing else, whatever English it happens to be holding.
     for (const cause of [new Error('raw English'), undefined, null, {}]) {
       expect(errorMessage(cause, 'toast.deleteFailed')).toBe(translate('en', 'toast.deleteFailed'))
     }
-  })
-
-  it('never returns the raw message, whatever the cause looks like', () => {
-    expect(errorMessage(new Error('HTTP 403'), 'error.readSheet')).not.toContain('403')
   })
 
   it('keeps an error’s interpolation vars, so no placeholder reaches the screen', () => {

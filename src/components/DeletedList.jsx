@@ -1,6 +1,6 @@
 import { dayLabel } from '../lib/dates.js'
 import { useDayLabels, useEntryTitle, usePeopleLabels, useT } from '../i18n/index.js'
-import { EntryAmount } from './EntryAmount.jsx'
+import { EntryLine } from './EntryLine.jsx'
 import { ChevronRightIcon } from './icons.jsx'
 
 /**
@@ -47,23 +47,19 @@ export function DeletedList({ entries, config, me, currency, onRestore }) {
 /**
  * Its own component because it calls a hook per row: `useEntryTitle` needs the entry,
  * and the title is wanted twice — as the visible text and inside the restore button's
- * accessible name. The per-row currency is `EntryAmount`'s job, not this one's.
+ * accessible name. The row's shape and the per-row currency are `EntryLine`'s job.
  */
 function DeletedRow({ entry, currency, payerLabel, dateLabel, onRestore }) {
   const { t } = useT()
   const description = useEntryTitle(entry)
 
   return (
-    <li className={`entry${entry.pending ? ' entry--pending' : ''}`}>
-      <span className="entry__main">
-        <span className="entry__desc">{description}</span>
-        <span className="entry__meta">
-          {t('deleted.meta', { date: dateLabel, name: payerLabel })}
-        </span>
-      </span>
-
-      <EntryAmount entry={entry} currency={currency} />
-
+    <EntryLine
+      entry={entry}
+      currency={currency}
+      description={description}
+      meta={t('deleted.meta', { date: dateLabel, name: payerLabel })}
+    >
       {/* Text, not an icon: there is no conventional glyph for "undelete", and
           several identical unlabelled buttons in a row say nothing about which
           entry each one restores — hence the per-row accessible name too. */}
@@ -75,6 +71,6 @@ function DeletedRow({ entry, currency, payerLabel, dateLabel, onRestore }) {
       >
         {t('deleted.restore')}
       </button>
-    </li>
+    </EntryLine>
   )
 }

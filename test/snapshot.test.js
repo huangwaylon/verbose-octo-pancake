@@ -111,8 +111,13 @@ describe('what gets ignored', () => {
     const { store, snapshot } = await load()
     // writeStored swallows QuotaExceededError, so an oversized payload would
     // silently never persist and launch would stay slow with no signal at all.
-    const huge = Array.from({ length: 20_000 }, (_unused, index) => entry({ id: `e${index}` }))
-    snapshot.writeSnapshot(SHEET, huge, {})
+    //
+    // The 800,000-character cap is the whole subject, and rows of this shape cross it
+    // at about 3,120 — so this is just past it rather than the 20,000 it used to be,
+    // which spent six times the work proving the same crossing. A fixture that fell
+    // back UNDER the cap would fail this test rather than pass it vacuously.
+    const overCap = Array.from({ length: 3_200 }, (_unused, index) => entry({ id: `e${index}` }))
+    snapshot.writeSnapshot(SHEET, overCap, {})
     expect(store.has('sf.snapshot')).toBe(false)
   })
 

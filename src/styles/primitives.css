@@ -250,14 +250,10 @@
   box-shadow: 0 0 0 3px var(--danger-ring);
 }
 
-.input[disabled],
-.select[disabled] {
-  background-color: var(--sunken);
-  color: var(--ink-4);
-}
-
 /* The select keeps its native chevron and native picker: a custom one is another
-   asset to maintain and the platform picker is better on a phone. */
+   asset to maintain and the platform picker is better on a phone. The chevron is
+   drawn inside the padding box, so the field's own right padding sits tighter than
+   every other control's to keep the gap beside the glyph even. */
 .select {
   padding-right: var(--space-2);
 }
@@ -434,7 +430,10 @@
   position: absolute;
   inset: 0;
   background-color: var(--scrim);
-  /* Dismissal is a single tap, and a drag here must not reach the page behind. */
+  /* Dismissal is a single tap, so it must not wait 300ms for a double-tap that
+     would only zoom. This does NOT stop a drag reaching the page behind —
+     `manipulation` still permits panning; the background lock is `overflow: hidden`
+     set on both `html` and `body` by `BottomSheet`. */
   touch-action: manipulation;
 }
 
@@ -473,6 +472,11 @@
   height: 100%;
   max-height: none;
   border-radius: 0;
+  /* There is no ground left to cast onto — the panel is the whole screen, so every
+     part of the spill is either clipped or behind the keyboard. Left set, Safari still
+     rasterizes a 48px-blur layer around an 852px box on each composite. The header's
+     hairline below is what separates the title from the body scrolling under it. */
+  box-shadow: none;
   /* This panel IS the top of the screen now, and `position: fixed` puts it outside
      base.css's insets on `body`, so it composes its own. Without the top one the
      title and the close button sit under the Dynamic Island. */
@@ -511,9 +515,8 @@
      rather than being wrapped or clipped. */
   overflow-x: hidden;
   padding: var(--space-2) var(--space-5) var(--space-5);
-  -webkit-overflow-scrolling: touch;
-  /* The body's overflow:hidden lock does not stop iOS chaining the scroll to
-     the page behind the sheet once this list hits its end. */
+  /* The background lock does not stop iOS chaining the scroll to the page behind
+     the sheet once this list hits its end. */
   overscroll-behavior: contain;
 }
 
@@ -571,6 +574,7 @@
     height: auto;
     max-height: min(84dvh, 100%, 44rem);
     border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-overlay);
     padding: 0;
   }
 

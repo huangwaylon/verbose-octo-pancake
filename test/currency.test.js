@@ -9,7 +9,8 @@ import {
   parseAmountToCents,
   splitCents,
 } from '../src/lib/money.js'
-import { entryToRow, makeEntry, rowToEntry } from '../src/schema.js'
+import { entryToRow, columnIndex, rowToEntry } from '../src/schema.js'
+import { expense, row as rawRow } from './support/entries.js'
 
 /**
  * Zero- and three-decimal currency support.
@@ -177,19 +178,20 @@ describe('splitting whole yen', () => {
 })
 
 describe('schema rows carry their own currency', () => {
-  const row = (amount, currency) => [
-    'id-1',
-    'expense',
-    '2026-08-05',
-    amount,
-    currency,
-    'Groceries',
-    '',
-    '0.5',
-    '',
-    '',
-    '',
-  ]
+  // The amount and the currency are the two cells every case here is about, so they
+  // are the two the fixture takes. Built by field NAME through the shared helper: as
+  // eleven positional cells, which is what this was, a twelfth column would leave
+  // every value one field to the left with every assertion below still passing.
+  const row = (amount, currency) =>
+    rawRow({
+      id: 'id-1',
+      type: 'expense',
+      date: '2026-08-05',
+      amount,
+      currency,
+      category: 'Groceries',
+      payer_share: '0.5',
+    })
 
   it('reads a JPY row as whole yen', () => {
     const entry = rowToEntry(row('1250', 'JPY'), 'p1', 'JPY')
@@ -235,31 +237,15 @@ describe('schema rows carry their own currency', () => {
   })
 
   it('writes each row back at its own scale', () => {
-    const jpy = makeEntry(
-      {
-        id: 'a',
-        date: '2026-08-05',
-        payer: 'p1',
-        amountCents: 1250,
-        currency: 'JPY',
-        category: 'x',
-      },
-      '2026-08-05T00:00:00.000Z',
-    )
-    expect(entryToRow(jpy)[3]).toBe('1250')
+    // The same 1250 at two scales is the whole case, so both amounts and both codes
+    // stay here; everything else about the entry is the shared fixture's.
+    const jpy = expense({ id: 'a', amountCents: 1250, currency: 'JPY' })
+    // `columnIndex('amount')`, not a literal 3: this is an INPUT to the assertion
+    // rather than the thing under test, so a column added before `amount` must move it.
+    expect(entryToRow(jpy)[columnIndex('amount')]).toBe('1250')
 
-    const usd = makeEntry(
-      {
-        id: 'b',
-        date: '2026-08-05',
-        payer: 'p1',
-        amountCents: 4210,
-        currency: 'USD',
-        category: 'x',
-      },
-      '2026-08-05T00:00:00.000Z',
-    )
-    expect(entryToRow(usd)[3]).toBe('42.10')
+    const usd = expense({ id: 'b', amountCents: 4210, currency: 'USD' })
+    expect(entryToRow(usd)[columnIndex('amount')]).toBe('42.10')
   })
 
   it('survives a full row round trip in both scales', () => {
@@ -270,7 +256,7 @@ describe('schema rows carry their own currency', () => {
     ]) {
       const entry = rowToEntry(row(amount, currency), 'p1', currency)
       expect(entry.amountCents).toBe(expected)
-      expect(entryToRow(entry)[3]).toBe(amount)
+      expect(entryToRow(entry)[columnIndex('amount')]).toBe(amount)
     }
   })
 })

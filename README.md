@@ -167,7 +167,8 @@ pathological.
 
 ### Launch speed
 
-Two caches, and between them a cold launch does no network work at all.
+Two caches, and between them a cold launch paints the real ledger before any network
+reply.
 
 `npm run build` runs `scripts/build-sw.js`, which walks `dist/` and emits a service
 worker precaching every file in it — worth having even though the assets are
@@ -180,10 +181,17 @@ paints from it before requesting anything. A launch with no network therefore sh
 real ledger with a "showing saved data" notice rather than an error screen — with data on
 screen before any network call, offline included.
 
+The one request that cannot wait is the token, because everything after it is serialized:
+token, then the sheet read, then fresh figures. `src/main.jsx` starts it before the first
+React render rather than from an effect, which would have added the whole first paint to
+the wait — and that paint grows with the cached ledger.
+
 Updates activate by reloading, which `src/lib/serviceWorker.js` only does when no entry is
 half-typed and no write is in flight. It also calls `registration.update()` when the app
 returns to the foreground: an installed iOS web app resumed from the app switcher never
-navigates, so without that a new version could wait unactivated for weeks.
+navigates, so without that a new version could wait unactivated for weeks. An update
+refused because a form was open is reconsidered the moment that form closes, since
+somebody who never leaves the app produces no foreground event to ask again.
 
 ## Development
 
@@ -218,7 +226,7 @@ simulated keyboard. CLAUDE.md has the invocation.
 | --- | --- |
 | `index.html` | entry HTML, the CSP, the manifest and Home Screen tags |
 | `base.js`, `vite.config.js` | the Pages base path, in one place; React plugin and vitest config |
-| `src/components/LedgerScreen.jsx` | the whole signed-in surface, rendered by both `App` and the visual harness |
+| `src/components/LedgerScreen.jsx` | the whole signed-in surface; `App`, the visual harness and one render test are its three callers |
 | `src/lib/viewport.js` | how much of the layout viewport the software keyboard covers |
 | `apps-script/` | the token endpoint: `Code.gs` and its manifest, deployed by hand |
 | `public/` | `manifest.webmanifest` and the PNG app icons, copied verbatim into `dist/` |
@@ -233,7 +241,7 @@ simulated keyboard. CLAUDE.md has the invocation.
 | `src/lib/ledgerState.js` | the optimistic list transitions, the status decisions, and duplicate-id reconciliation; pure |
 | `src/lib/split.js` | the payer's default share and the split control's transitions; pure |
 | `src/lib/{identity,dates,theme}.js` | which person this device is; ISO date helpers; accent presets |
-| `src/state/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts` |
+| `src/state/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts`, `useKeyboardInset` |
 | `src/i18n/`, `src/components/`, `src/styles/` | engine and `en`/`ja` catalogs; one file per view with inline-SVG icons and chart; `tokens`/`base`/`primitives`/`app` in that order |
 | `test/`, `scripts/preview.jsx` | vitest specs; the static-HTML visual harness |
 | `scripts/frames.html` | views a preview page at several widths and heights, measuring each rather than eyeballing it |

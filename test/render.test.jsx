@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { DEFAULT_CONFIG } from '../src/config.js'
-import { ENTRY_TYPE, EVEN_SHARE, PERSON, makeEntry } from '../src/schema.js'
+import { ENTRY_TYPE, PERSON } from '../src/schema.js'
+import { expense } from './support/entries.js'
 import {
   computeBalance,
   groupByDate,
@@ -41,20 +42,13 @@ const config = {
 
 const noop = () => {}
 
-function entry(overrides) {
-  return makeEntry(
-    {
-      id: overrides.id,
-      type: ENTRY_TYPE.EXPENSE,
-      date: '2026-08-04',
-      payer: PERSON.P1,
-      currency: 'USD',
-      payerShare: EVEN_SHARE,
-      ...overrides,
-    },
-    '2026-08-04T10:00:00.000Z',
-  )
-}
+/**
+ * The shared expense in USD, which is the currency every markup assertion below is
+ * written in. The amounts stay at the call sites: the figures in the assertions —
+ * $42.10, the $83.59 month total, the $0.70 balance — are derived from them.
+ */
+const entry = (overrides) =>
+  expense({ date: '2026-08-04', currency: 'USD', now: '2026-08-04T10:00:00.000Z', ...overrides })
 
 const entries = [
   entry({ id: 'a', amountCents: 4210, category: 'Groceries', description: "Trader Joe's" }),

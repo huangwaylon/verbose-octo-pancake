@@ -254,6 +254,25 @@ const OVERLAYS = {
   ),
 }
 
+/**
+ * The entry form under the same stress. Not covered by `OVERLAYS.form`, which uses the
+ * short-named config — and the form holds config text in a place the settings sheet
+ * does not: the split slider's label is the payer's own name in the possessive, in a
+ * grid whose other track is sized to its content, where `.sheet__body`'s
+ * `overflow-x: hidden` would CLIP an overflow rather than report it.
+ */
+const STRESS_FORM = (
+  <EntryFormSheet
+    draft={{ mode: 'edit', entry: { ...stressEntries[0], payerShare: 0.7 } }}
+    config={stressConfig}
+    me={PERSON.P1}
+    currency="JPY"
+    onSubmit={noop}
+    onDelete={noop}
+    onClose={noop}
+  />
+)
+
 /** The settings sheet is where the config tab's own text has least room to fit. */
 const STRESS_SETTINGS = (
   <SettingsSheet
@@ -315,6 +334,7 @@ const stress = { view: stressView, config: stressConfig }
 for (const [variant, overlay, options] of [
   ['stress', null, stress],
   ['stress-settings', STRESS_SETTINGS, stress],
+  ['stress-form', STRESS_FORM, stress],
   ['settled', null, { view: settledView }],
 ]) {
   const name = `preview-en-${variant}.html`

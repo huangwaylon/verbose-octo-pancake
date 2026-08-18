@@ -4,8 +4,10 @@
      resized headless window quietly reports a width you did not ask for.
 
      The readout under each frame is the assertion: sideways scroll is measured,
-     not eyeballed, and the header's height is checked against --header-height,
-     which the sticky aside offsets by from outside the header.
+     not eyeballed, and the header's height is checked against --header-height from
+     62rem up, which is where `.layout__aside`'s sticky offset reads that token from
+     outside the header. Below 62rem the band may legitimately be taller than the
+     token, because the direction line wraps and nothing offsets by it.
 
      On an overlay page the sheet is the whole screen, so it is measured too — and
      because `--keyboard-inset` is a custom property the harness can set it directly,
@@ -195,8 +197,21 @@
       if (!header) lines.push(bad('MISSING .app__header'))
       else {
         const px = measure(header)
+        // Compared against the token only from 62rem, which is the only place anything
+        // READS it: `.layout__aside`'s sticky offset. Below that there is no sticky
+        // aside, and the band is legitimately taller — `.balance__direction` wraps
+        // rather than truncating, deliberately, because 「{name}に支払い」 is
+        // verb-final and a tail ellipsis would cut off which way the money runs. An
+        // unconditional check flags every long name as a failure nothing can act on,
+        // which is how a real one later gets ignored.
+        const reads = width >= 62 * 16
         lines.push(
-          'header ' + px + 'px ' + check(px <= token + 1, 'within token ' + token, '> token ' + token),
+          'header ' +
+            px +
+            'px ' +
+            (reads
+              ? check(px <= token + 1, 'within token ' + token, '> token ' + token)
+              : 'token ' + token + ' unread below 62rem'),
         )
       }
       if (!add) lines.push(bad('MISSING .add-action'))

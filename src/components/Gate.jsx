@@ -1,8 +1,9 @@
 import { useId, useState } from 'react'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
+import { useKeyboardInset } from '../state/useKeyboardInset.js'
 import { useTNodes } from '../i18n/nodes.jsx'
-import { Field } from './Field.jsx'
+import { Field, FieldError } from './Field.jsx'
 import { WalletIcon } from './icons.jsx'
 
 /** Full-screen screens shown before the app has what it needs to run. */
@@ -48,6 +49,13 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
   const { t } = useT()
   const [value, setValue] = useState('')
   const failureId = useId()
+  /**
+   * The only text field outside a sheet, and `.gate` is one viewport tall and centres
+   * its content — so there is nothing for iOS to scroll, and the keyboard covers
+   * Connect while the field above it stays visible. The same publisher the sheet uses;
+   * `.gate` spends the inset as bottom padding, which shrinks the box it centres in.
+   */
+  useKeyboardInset()
   /**
    * The one message this screen can produce, whichever source it came from. Connect is
    * what produced it, so Connect is what has to reach it — the same rule the entry
@@ -95,11 +103,7 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
       {/* A stored key the endpoint has rejected shows `error.badKey` with no fresher
           failure to show: the key was kept deliberately, so say why this screen came
           back. */}
-      {failure && (
-        <p className="field__error" id={failureId} role="status">
-          {failure}
-        </p>
-      )}
+      {failure && <FieldError id={failureId}>{failure}</FieldError>}
       <p className="field__hint">{t('gate.keyFine')}</p>
     </Panel>
   )

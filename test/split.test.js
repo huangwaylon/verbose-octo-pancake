@@ -94,10 +94,4 @@ describe('nextSplit', () => {
     expect(nextSplit('even', 0.8)).toEqual({ mode: 'even', percent: 50, share: EVEN_SHARE })
     expect(nextSplit('even', EVEN_SHARE)).toEqual({ mode: 'even', percent: 50, share: EVEN_SHARE })
   })
-
-  it('round-trips through toSplit for an even default', () => {
-    // An 'even' default must not open Custom at 50, which would read as a decision
-    // somebody made rather than as the default.
-    expect(toSplit(defaultSplitFor({}, PERSON.P1)).mode).toBe('even')
-  })
 })

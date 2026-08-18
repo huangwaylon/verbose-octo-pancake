@@ -1,6 +1,6 @@
 import { ENTRY_TYPE, EVEN_SHARE, otherPerson } from '../schema.js'
 import { useEntryTitle, useT } from '../i18n/index.js'
-import { EntryAmount } from './EntryAmount.jsx'
+import { EntryLine } from './EntryLine.jsx'
 import { SwapIcon, TrashIcon } from './icons.jsx'
 
 /**
@@ -39,27 +39,15 @@ export function EntryRow({ entry, label, currency, onEdit, onDelete }) {
         .join(t('entry.metaSeparator'))
 
   return (
-    <li
-      className={`entry${isSettlement ? ' entry--settlement' : ''}${
-        entry.pending ? ' entry--pending' : ''
-      }`}
+    <EntryLine
+      entry={entry}
+      currency={currency}
+      description={description}
+      meta={meta}
+      settlement={isSettlement}
+      icon={isSettlement ? <SwapIcon width={16} height={16} /> : null}
+      onOpen={() => onEdit(entry)}
     >
-      <button type="button" className="entry__main" onClick={() => onEdit(entry)}>
-        <span className="entry__desc">
-          {isSettlement ? (
-            <>
-              <SwapIcon width={16} height={16} />
-              {description}
-            </>
-          ) : (
-            description
-          )}
-        </span>
-        <span className="entry__meta">{meta}</span>
-      </button>
-
-      <EntryAmount entry={entry} currency={currency} />
-
       <button
         type="button"
         className="btn btn--icon entry__delete"
@@ -68,6 +56,6 @@ export function EntryRow({ entry, label, currency, onEdit, onDelete }) {
       >
         <TrashIcon width={18} height={18} />
       </button>
-    </li>
+    </EntryLine>
   )
 }

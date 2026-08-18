@@ -24,24 +24,35 @@ export function SettingsSheet({
   const { name } = usePeopleLabels(config, me)
   const accent = useAccent()
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState(null)
+  /**
+   * What the last compact did, not a sentence about it. This panel is where the
+   * language is chosen, so a stored message would sit there in the language it was
+   * built in while the control that changed it is three rows above.
+   */
+  const [outcome, setOutcome] = useState(null)
   const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`
 
   async function handleCompact() {
     setBusy(true)
-    setMessage(null)
+    setOutcome(null)
     try {
-      const { removed, busy: inFlight } = await onCompact()
-      // A refusal is not a removal of zero rows: it has a reason and a remedy.
-      setMessage(
-        inFlight ? t('settings.compactBusy') : t('settings.removedRows', { count: removed }),
-      )
+      setOutcome(await onCompact())
     } catch (cause) {
-      setMessage(errorMessage(cause, 'settings.compactError'))
+      setOutcome({ cause })
     } finally {
       setBusy(false)
     }
   }
+
+  // A refusal is not a removal of zero rows: `compactRefusal` gives it `busy`, and it
+  // has a reason and a remedy where "Removed 0 rows" would be a plain lie.
+  const message = !outcome
+    ? null
+    : outcome.cause
+      ? errorMessage(outcome.cause, 'settings.compactError')
+      : outcome.busy
+        ? t('settings.compactBusy')
+        : t('settings.removedRows', { count: outcome.removed })
 
   return (
     <BottomSheet

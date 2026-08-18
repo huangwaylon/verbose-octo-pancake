@@ -170,17 +170,32 @@ describe('telling a bad key from a bad connection', () => {
     expect(c.hasKey()).toBe(true)
   })
 
-  it('rejects a reply with no usable sheet id rather than persisting "null"', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(reply({ token: 'ya29.x', spreadsheetId: null })),
-    )
+  it('rejects a reply with no usable sheet id rather than persisting one', async () => {
+    /**
+     * Asserted against the STORE, because `getSpreadsheetId()` answers null from the
+     * seed anyway — so on its own that assertion passes with the guard deleted. The
+     * non-string cases are what show why: unguarded, `writeStored` persists `123`
+     * happily, and every launch afterwards builds `/spreadsheets/123` out of it with
+     * no round trip to discover otherwise. A `null` id is removed rather than stored,
+     * which is why the reachable half of the guard needs the other three.
+     */
+    for (const spreadsheetId of [null, undefined, 123, {}]) {
+      const store = installStorage({ 'sf.appKey': 'k' })
+      vi.resetModules()
+      vi.stubEnv('VITE_SCRIPT_URL', URL_STUB)
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply({ token: 'ya29.x', spreadsheetId })))
+      const c = await import('../src/lib/connection.js')
 
-    const c = await load({ 'sf.appKey': 'k' })
-    await expect(c.getAccessToken()).rejects.toMatchObject({
-      i18nKey: 'error.scriptMisconfigured',
-    })
-    expect(c.getSpreadsheetId()).toBe(null)
+      const cause = await c.getAccessToken().then(
+        () => null,
+        (error) => error,
+      )
+      // The store first, so this is the assertion that reports the failure rather
+      // than the rejection swallowing it.
+      expect(store.has('sf.spreadsheetId')).toBe(false)
+      expect(c.getSpreadsheetId()).toBe(null)
+      expect(cause).toMatchObject({ i18nKey: 'error.scriptMisconfigured' })
+    }
   })
 })
 

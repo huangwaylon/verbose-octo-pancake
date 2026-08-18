@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { EXPENSE_COLUMNS, PERSON, columnIndex, makeEntry } from '../src/schema.js'
+import { EXPENSE_COLUMNS, PERSON, columnIndex } from '../src/schema.js'
 import { DEFAULT_CONFIG } from '../src/config.js'
+import { expense as entry, row } from './support/entries.js'
 import {
   installSheets,
   removeSheets,
@@ -42,25 +43,6 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-/** A raw sheet row, built by field name so tests never depend on column order. */
-const row = (fields) => EXPENSE_COLUMNS.map((column) => fields[column] ?? '')
-
-const entry = (over = {}) =>
-  makeEntry(
-    {
-      id: 'e1',
-      date: '2026-08-05',
-      payer: PERSON.P1,
-      amountCents: 1250,
-      currency: 'JPY',
-      category: 'Groceries',
-      description: 'shop',
-      payerShare: 0.5,
-      ...over,
-    },
-    '2026-08-05T10:00:00.000Z',
-  )
-
 const GIDS = { expenses_p1: 111, expenses_p2: 222, config: 333 }
 
 describe('every write is RAW', () => {
@@ -90,10 +72,19 @@ describe('every write is RAW', () => {
     expect(mutating.length).toBeGreaterThan(3)
     for (const call of mutating) {
       expect(call.url).not.toContain('USER_ENTERED')
-      // A batchUpdate carries the option in its body instead of the query.
-      const raw = call.url.includes('valueInputOption=RAW') || call.body?.valueInputOption === 'RAW'
-      // `:batchUpdate` on the spreadsheet itself writes structure, not values.
-      if (!call.url.includes(`/${SHEET}:batchUpdate`)) expect(raw).toBe(true)
+      // Per endpoint, not "either shape": `values.update` and `:append` read the
+      // option from the QUERY and ignore a body copy entirely, while
+      // `values:batchUpdate` reads it from the BODY and ignores a query copy. An
+      // assertion that accepts both passes while the option is being dropped on
+      // the floor — and a dropped option defaults to USER_ENTERED.
+      if (call.url.includes('/values:batchUpdate')) {
+        expect(call.body.valueInputOption).toBe('RAW')
+      } else if (call.url.includes('/values/')) {
+        expect(call.url).toContain('valueInputOption=RAW')
+      } else {
+        // `:batchUpdate` on the spreadsheet itself writes structure, not values.
+        expect(call.url).toContain(`/${SHEET}:batchUpdate`)
+      }
     }
   })
 })
@@ -201,6 +192,32 @@ describe('resolving a row before writing to it', () => {
 
       expect(writes(calls)[0].url).toContain('expenses_p1!K2:K2')
     })
+
+    /**
+     * The fallback takes the LAST tombstone, not the first, and a restore is what
+     * makes the difference visible: `setDeletedAt` CLEARS the cell as well as
+     * stamping it, so clearing the oldest copy revives the values from before a
+     * payer ever moved while the newest row stays dead. `reconcileById` prefers
+     * the live row, so the stale one is what everybody then sees, and nothing
+     * counts it — `supersededRows` sees a tombstone either way.
+     */
+    it('restores the LAST tombstone, not the first, when every copy is dead', async () => {
+      const calls = installSheets((call) =>
+        call.url.includes('!A2:K')
+          ? values([
+              // The copy from before the payer moved away, carrying stale values.
+              row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
+              row({ id: 'other' }),
+              // The copy the payer moved back to, tombstoned by the delete being undone.
+              row({ id: 'e1', deleted_at: '2026-08-07T10:00:00.000Z' }),
+            ])
+          : {},
+      )
+
+      await sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', null)
+
+      expect(writes(calls)[0].url).toContain('expenses_p1!K4:K4')
+    })
   })
 })
 
@@ -252,8 +269,6 @@ describe('appendEntry', () => {
 
     expect(calls[0].url).toContain('expenses_p2:append')
     expect(calls[0].body.values[0][columnIndex('id')]).toBe('e1')
-    // No payer column exists to disagree with the tab.
-    expect(EXPENSE_COLUMNS).not.toContain('payer')
   })
 })
 
@@ -602,12 +617,30 @@ describe('compact', () => {
     }
 
     expect(removed).toBe(4)
-    // Rows 3, 5 and 8 in p1 (0-based 2, 4, 7), newest first.
+    // Rows 3, 5 and 8 in p1 (0-based 2, 4, 7), newest first. The literal lists are the
+    // whole assertion: a "sorted descending" check over whatever came back passes on a
+    // single request, and on the wrong rows in the right order.
     expect(perTab.get(GIDS.expenses_p1)).toEqual([7, 4, 2])
     expect(perTab.get(GIDS.expenses_p2)).toEqual([1])
-    for (const starts of perTab.values()) {
-      expect([...starts].sort((a, b) => b - a)).toEqual(starts)
-    }
+  })
+
+  /**
+   * One read per tab, never a batchGet, and that is not an oversight worth tidying.
+   * Row numbers here come from POSITION in the reply (`FIRST_DATA_ROW + index`), so
+   * batching would mean re-deriving them from a positional `valueRanges` array — in
+   * the app's only hard delete, where being one row out removes somebody else's
+   * expense. One extra round trip on a rare manual action is the cheaper mistake.
+   */
+  it('reads each tab on its own rather than batching the two', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes('!A2:K') ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
+    )
+
+    await sheets.compact(SHEET, GIDS)
+
+    expect(calls.filter((call) => call.url.includes('values:batchGet'))).toHaveLength(0)
+    const reads = calls.filter((call) => call.url.includes('!A2:K'))
+    expect(reads.map((call) => call.url.includes('expenses_p1'))).toEqual([true, false])
   })
 
   it('deletes exactly one row per request', async () => {
@@ -758,6 +791,37 @@ describe('ensureStructure', () => {
     expect(asObject.currency).toBe('JPY')
   })
 
+  /**
+   * Which keys a fresh sheet gets is a decision, not a consequence: the locale, the
+   * accent and which of the two people this device is are per-DEVICE values, and a
+   * sheet that named any of them would let one person restyle the other's phone —
+   * or tell it who it is. The literal list is the only thing that can catch a new
+   * `CONFIG_FIELDS` entry being seeded by accident.
+   */
+  it('seeds these keys and no others', async () => {
+    const calls = installSheets((call) => {
+      if (call.url.includes('fields=sheets'))
+        return sheetList(['expenses_p1', 'expenses_p2', 'config'])
+      if (call.url.includes('values:batchGet')) {
+        return { valueRanges: [values([EXPENSE_COLUMNS]), values([EXPENSE_COLUMNS]), {}] }
+      }
+      return {}
+    })
+
+    await sheets.ensureStructure(SHEET)
+
+    const data = writes(calls).find((call) => call.body?.data).body.data[0]
+    expect(data.values.slice(1).map(([key]) => key)).toEqual([
+      'person1_name',
+      'person2_name',
+      'currency',
+      'categories',
+      'default_split_p1',
+      'default_split_p2',
+      'note_presets',
+    ])
+  })
+
   it('returns the gids compact needs', async () => {
     installSheets((call) => {
       if (call.url.includes('fields=sheets'))
@@ -780,6 +844,55 @@ describe('ensureStructure', () => {
     const { sheetIds } = await sheets.ensureStructure(SHEET)
 
     expect(sheetIds).toMatchObject({ expenses_p1: 100, expenses_p2: 101, config: 102 })
+  })
+
+  it('takes a created tab’s gid from the reply that created it', async () => {
+    // The addSheet reply already names every tab it made, so asking the
+    // spreadsheet for the same gids again is a wasted round trip on the one path
+    // that runs on a phone with nothing cached.
+    const calls = installSheets((call) => {
+      if (call.url.includes('fields=sheets')) return sheetList(['Sheet1'])
+      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}] }
+      if (call.url.includes(`/${SHEET}:batchUpdate`)) {
+        return {
+          replies: [
+            { addSheet: { properties: { title: 'expenses_p1', sheetId: 11 } } },
+            { addSheet: { properties: { title: 'expenses_p2', sheetId: 22 } } },
+            { addSheet: { properties: { title: 'config', sheetId: 33 } } },
+          ],
+        }
+      }
+      return {}
+    })
+
+    const { sheetIds } = await sheets.ensureStructure(SHEET)
+
+    expect(sheetIds).toMatchObject({ expenses_p1: 11, expenses_p2: 22, config: 33 })
+    expect(calls.filter((call) => call.url.includes('fields=sheets'))).toHaveLength(1)
+  })
+})
+
+describe('readSheetGids', () => {
+  /**
+   * `compact` needs gids and nothing else. It must never reach them through
+   * `ensureStructure`, which WRITES: a ledger whose config tab has been deleted
+   * reports `configMissing` and is deliberately never repaired, but
+   * `ensureStructure` would add the tab back and seed it with the DEFAULT
+   * currency — putting a scale nobody chose into the sheet and taking the notice
+   * away with it. Every amount written afterwards is then 100x out.
+   */
+  it('reads the gids and writes nothing at all', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes('fields=sheets')
+        ? { sheets: [{ properties: { title: 'expenses_p1', sheetId: 7 } }] }
+        : {},
+    )
+
+    const gids = await sheets.readSheetGids(SHEET)
+
+    expect(gids).toEqual({ expenses_p1: 7 })
+    expect(writes(calls)).toHaveLength(0)
+    expect(calls).toHaveLength(1)
   })
 })
 

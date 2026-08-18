@@ -12,7 +12,8 @@ import {
   deletedEntries,
   hasMixedCurrencies,
 } from '../src/lib/balance.js'
-import { makeEntry, PERSON, ENTRY_TYPE, EVEN_SHARE } from '../src/schema.js'
+import { PERSON, ENTRY_TYPE, EVEN_SHARE } from '../src/schema.js'
+import { expense as anExpense, settlement as aSettlement } from './support/entries.js'
 
 /**
  * Deterministic entry factory: explicit id, injected `now`, no crypto.
@@ -24,30 +25,17 @@ import { makeEntry, PERSON, ENTRY_TYPE, EVEN_SHARE } from '../src/schema.js'
  */
 const FIXED_NOW = '2026-03-01T00:00:00.000Z'
 
-function entry(id, overrides = {}) {
-  const { now = FIXED_NOW, ...rest } = overrides
-  return makeEntry({ id, ...rest }, now)
-}
-
+/**
+ * The shared fixtures at this file's own values. Almost everything here is about a
+ * month, so the dates are March and stay visible in one place; the id and the amount
+ * are positional because they are what nearly every assertion below turns on.
+ */
 function expense(id, amountCents, overrides = {}) {
-  return entry(id, {
-    type: ENTRY_TYPE.EXPENSE,
-    date: '2026-03-10',
-    payer: PERSON.P1,
-    category: 'Groceries',
-    amountCents,
-    ...overrides,
-  })
+  return anExpense({ id, amountCents, date: '2026-03-10', now: FIXED_NOW, ...overrides })
 }
 
 function settlement(id, amountCents, overrides = {}) {
-  return entry(id, {
-    type: ENTRY_TYPE.SETTLEMENT,
-    date: '2026-03-31',
-    payer: PERSON.P1,
-    amountCents,
-    ...overrides,
-  })
+  return aSettlement({ id, amountCents, date: '2026-03-31', now: FIXED_NOW, ...overrides })
 }
 
 describe('owedToPayerCents', () => {
@@ -197,9 +185,13 @@ describe('computeBalance', () => {
       expense('e2', 8049, { payer: PERSON.P2, payerShare: 0.7 }),
       settlement('s1', 111, { payer: PERSON.P1 }),
     ]
-    const forward = computeBalance(entries).netCents
-    const backward = computeBalance([...entries].reverse()).netCents
-    expect(forward).toBe(backward)
+    // Against a literal, not against itself: comparing the two directions alone is
+    // commutativity of integer addition, which holds however wrong the arithmetic is.
+    // e1: p2 owes 4331 - round(4331/2) = 2165, in p1's favour.
+    // e2: p1 owes 30% of 8049 = 8049 - round(8049 * 0.7) = 2415, in p2's favour.
+    // s1: p1 hands over 111, which is 111 more owed back to p1.
+    expect(computeBalance(entries).netCents).toBe(2165 - 2415 + 111)
+    expect(computeBalance([...entries].reverse()).netCents).toBe(2165 - 2415 + 111)
   })
 })
 

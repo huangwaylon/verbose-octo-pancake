@@ -21,33 +21,25 @@ import {
   validateEntryCodes,
   isActive,
 } from '../src/schema.js'
+import { expense, row as rawRow } from './support/entries.js'
 
 const NOW = '2026-03-10T12:00:00.000Z'
 
-/** A full, valid entry with no randomness in it. */
-function fullEntry(overrides = {}) {
-  return makeEntry(
-    {
-      id: 'entry-1',
-      type: ENTRY_TYPE.EXPENSE,
-      date: '2026-03-09',
-      payer: PERSON.P1,
-      amountCents: 4210,
-      currency: 'USD',
-      category: 'Groceries',
-      description: 'Weekly shop',
-      payerShare: EVEN_SHARE,
-      createdAt: '2026-03-09T08:30:00.000Z',
-      ...overrides,
-    },
-    NOW,
-  )
-}
-
-/** Build a raw row from field/value pairs so tests never depend on column order. */
-function rawRow(fields) {
-  return EXPENSE_COLUMNS.map((column) => fields[column] ?? '')
-}
+/**
+ * The shared expense at this file's own values: USD, so `SHEET` below decodes it at
+ * the two-decimal scale, and one fixed pair of timestamps so a round trip is exact.
+ */
+const fullEntry = (overrides = {}) =>
+  expense({
+    id: 'entry-1',
+    date: '2026-03-09',
+    amountCents: 4210,
+    currency: 'USD',
+    description: 'Weekly shop',
+    createdAt: '2026-03-09T08:30:00.000Z',
+    now: NOW,
+    ...overrides,
+  })
 
 /**
  * The sheet currency argument, which only decides how a row with a blank
@@ -66,8 +58,8 @@ describe('column contract', () => {
 
   it('is exactly this order, and the list is append-only', () => {
     // The whole list as a literal, because nothing else in the suite can see a
-    // reorder: `rawRow` here and `row` in sheets.test.js both BUILD rows from
-    // EXPENSE_COLUMNS, so they move with it and every assertion still passes.
+    // reorder: the shared `row` fixture builder BUILDS rows from EXPENSE_COLUMNS, so
+    // it moves with the list and every assertion still passes.
     //
     // A reorder is silent and destructive in a live sheet. Every range and letter is
     // derived from array position, and `ensureStructure` rewrites a header row that no
@@ -115,7 +107,6 @@ describe('column contract', () => {
     // the whole guard: every caller passes a name from the list, so the list growing is
     // the only way the limit can be crossed.
     expect(EXPENSE_COLUMNS.length).toBeLessThanOrEqual(26)
-    expect(columnLetter(EXPENSE_COLUMNS[EXPENSE_COLUMNS.length - 1])).toMatch(/^[A-Z]$/)
   })
 
   it('lists exactly the two people, each with their own tab', () => {
@@ -126,7 +117,6 @@ describe('column contract', () => {
   it('otherPerson is an involution', () => {
     expect(otherPerson(PERSON.P1)).toBe(PERSON.P2)
     expect(otherPerson(PERSON.P2)).toBe(PERSON.P1)
-    for (const person of PEOPLE) expect(otherPerson(otherPerson(person))).toBe(person)
   })
 })
 
@@ -246,6 +236,24 @@ describe('rowToEntry', () => {
     expect(rowToEntry(row, PERSON.P1, SHEET).type).toBe(ENTRY_TYPE.EXPENSE)
   })
 
+  /**
+   * Case-folded, like the currency, and every fixture in the suite writes the cell in
+   * lowercase — so without this the `.toLowerCase()` can be deleted with 570 tests
+   * still green. A hand-typed "Settlement" read as an expense keeps the right balance
+   * (its `payer_share` of 0 says everything) but is then counted in the month's spend
+   * and in the category donut, inflating both by the whole transfer.
+   */
+  it('reads a hand-typed type whatever its case', () => {
+    for (const spelling of ['settlement', 'Settlement', 'SETTLEMENT', 'SettleMent']) {
+      const row = rawRow({ id: 'x', amount: '1.00', type: spelling })
+      expect(rowToEntry(row, PERSON.P1, SHEET).type).toBe(ENTRY_TYPE.SETTLEMENT)
+    }
+    // And the default it falls back to is still the expense, not a third state.
+    expect(rowToEntry(rawRow({ id: 'x', amount: '1.00', type: '' }), PERSON.P1, SHEET).type).toBe(
+      ENTRY_TYPE.EXPENSE,
+    )
+  })
+
   it('normalises an empty deleted_at cell to null so isActive works', () => {
     const live = rowToEntry(rawRow({ id: 'x', amount: '1.00' }), PERSON.P1, SHEET)
     const dead = rowToEntry(rawRow({ id: 'y', amount: '1.00', deleted_at: NOW }), PERSON.P1, SHEET)
@@ -258,15 +266,15 @@ describe('rowToEntry', () => {
 })
 
 describe('entryToRow', () => {
-  it('always returns exactly EXPENSE_COLUMNS.length cells', () => {
-    expect(entryToRow(fullEntry())).toHaveLength(EXPENSE_COLUMNS.length)
-    expect(entryToRow(fullEntry({ description: '', category: '' }))).toHaveLength(
-      EXPENSE_COLUMNS.length,
-    )
-    expect(entryToRow(fullEntry({ amountCents: 0 }))).toHaveLength(EXPENSE_COLUMNS.length)
-    expect(entryToRow(makeEntry({ id: 'bare', currency: 'USD' }, NOW))).toHaveLength(
-      EXPENSE_COLUMNS.length,
-    )
+  it('always returns exactly eleven cells, one per column', () => {
+    // The literal, not `EXPENSE_COLUMNS.length`: `entryToRow` IS a map over that list,
+    // so deriving the expectation from it compares the module against itself and
+    // passes for any number of columns. Eleven is also what every range in `schema.js`
+    // spells as `A:K`, so a twelfth column has to break something here.
+    expect(entryToRow(fullEntry())).toHaveLength(11)
+    expect(entryToRow(fullEntry({ description: '', category: '' }))).toHaveLength(11)
+    expect(entryToRow(fullEntry({ amountCents: 0 }))).toHaveLength(11)
+    expect(entryToRow(makeEntry({ id: 'bare', currency: 'USD' }, NOW))).toHaveLength(11)
   })
 
   it('returns only strings, never null/undefined, so RAW writes are predictable', () => {
@@ -309,13 +317,11 @@ describe('entryToRow', () => {
     const row = entryToRow(fullEntry({ deletedAt: null }))
     expect(row[columnIndex('deleted_at')]).toBe('')
   })
-
-  it('does not write a payer column at all — the tab it goes into is the payer', () => {
-    expect(EXPENSE_COLUMNS).not.toContain('payer')
-  })
 })
 
 describe('rowToEntry / entryToRow round trip', () => {
+  // Every case here is USD. The multi-scale trip — JPY, USD and KWD through the same
+  // row — is `currency.test.js`'s, which is the stronger version of it.
   const cases = [
     ['even-split expense', fullEntry()],
     ['payer keeps it all', fullEntry({ payerShare: 1 })],
@@ -328,7 +334,6 @@ describe('rowToEntry / entryToRow round trip', () => {
     ['large amount', fullEntry({ amountCents: 123456789 })],
     ['zero amount', fullEntry({ amountCents: 0 })],
     ['no category or description', fullEntry({ category: '', description: '' })],
-    ['non-USD currency', fullEntry({ currency: 'EUR' })],
   ]
 
   for (const [name, entry] of cases) {

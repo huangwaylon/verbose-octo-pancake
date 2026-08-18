@@ -22,6 +22,10 @@ html {
   /* Kinsoku shori: keeps 、。」 from being orphaned at the start of a line.
      Harmless for Latin, load-bearing for Japanese. */
   line-break: strict;
+  /* Deliberately NO `overflow` here. `BottomSheet` sets `overflow: hidden` on this
+     element as well as on `body` while a sheet is open, and restores whatever it
+     found — a declaration in this rule would become the value it restores to, and
+     the ledger would stay locked after the sheet closed. */
 }
 
 body {

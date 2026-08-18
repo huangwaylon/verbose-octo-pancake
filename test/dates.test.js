@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { currentMonthKey, dayLabel, monthLabel, shiftMonth, todayIso } from '../src/lib/dates.js'
+import {
+  currentMonthKey,
+  dayLabel,
+  isMonthKey,
+  monthLabel,
+  shiftMonth,
+  todayIso,
+} from '../src/lib/dates.js'
 
 /**
  * These helpers exist because `new Date('2026-08-05')` parses as UTC midnight and
@@ -63,6 +70,48 @@ describe('shiftMonth', () => {
   })
 })
 
+/**
+ * The only test of a 'YYYY-MM' key in the app, and until this block existed nothing
+ * called it directly — it was reached only through `shiftMonth` and `filterByMonth`,
+ * neither of which can distinguish "rejected" from "shifted to something harmless".
+ */
+describe('isMonthKey', () => {
+  it('accepts a month key and nothing else', () => {
+    expect(isMonthKey('2026-08')).toBe(true)
+    expect(isMonthKey('2026-01')).toBe(true)
+    expect(isMonthKey('2026-12')).toBe(true)
+  })
+
+  it('rejects a full ISO day, which is the one piece of junk in reach', () => {
+    // `inMonth` compares a key against `entry.date.slice(0, 7)`, so a ten-character
+    // string matches nothing in any month: the ledger renders empty, correctly
+    // formatted, with no notice and no error.
+    expect(isMonthKey('2026-08-05')).toBe(false)
+  })
+
+  it('rejects a month that is not a month, and a shape that only looks like one', () => {
+    for (const value of [
+      '2026-13',
+      '2026-00',
+      '2026-2',
+      '202-08',
+      '20260-08',
+      ' 2026-08',
+      '2026-08 ',
+      '0000-01',
+      '2026/08',
+      '',
+      'nope',
+      202608,
+      undefined,
+      null,
+      {},
+    ]) {
+      expect(isMonthKey(value)).toBe(false)
+    }
+  })
+})
+
 describe('monthLabel', () => {
   it('shows the year only when it is not the current one', () => {
     const now = at(2026, 8, 5)
@@ -98,13 +147,10 @@ describe('dayLabel', () => {
   })
 
   it('spells out an older day, adding the year only outside the current one', () => {
+    // The 1st of a month is also where a UTC-parsed ISO string slips back into the
+    // previous month, which is the whole reason this module builds dates from parts:
+    // 'Fri, Jul 31' would be the wrong day AND the wrong month.
     expect(dayLabel('2026-08-01', { locale: 'en', now, labels: LABELS })).toBe('Sat, Aug 1')
     expect(dayLabel('2025-08-01', { locale: 'en', now, labels: LABELS })).toBe('Fri, Aug 1, 2025')
-  })
-
-  // The whole reason this module builds dates from parts: the 1st of a month is
-  // where a UTC-parsed ISO string slips back into the previous month.
-  it('does not shift the first of the month backwards', () => {
-    expect(dayLabel('2026-08-01', { locale: 'en', now, labels: LABELS })).toContain('Aug 1')
   })
 })

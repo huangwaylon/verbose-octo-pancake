@@ -257,8 +257,9 @@ export function shouldRefresh(now, lastAt, floorMs) {
 
 /**
  * Whether `compact` can run: it needs a numeric gid per expenses tab, and
- * `values.batchGet` cannot report them, so a session that only ever read the sheet
- * has none and has to ask `ensureStructure` for them.
+ * `values.batchGet` cannot report one, so every compact reads them fresh through
+ * `readSheetGids`. A gid still missing after that read is what makes `compact`
+ * refuse loudly instead of silently skipping a tab.
  */
 export function missingExpenseGid(sheetIds) {
   return PEOPLE.some((person) => sheetIds?.[expensesTab(person)] == null)
@@ -328,4 +329,35 @@ export function noticeKeys(state = {}) {
     notices.push({ key: 'warning.undatedRows', vars: { count: state.undatedRows } })
   }
   return notices
+}
+
+/**
+ * Which screen stands in front of the ledger, or null for the ledger itself.
+ *
+ * The precedence is the whole content of this function, and every step of it is a
+ * decision rather than a consequence: `no-key` — which `useConnection` reports for a
+ * key that is absent AND for one the endpoint rejected — outranks holding a cached
+ * sheet id, because the id is worthless without a token; a failed read outranks the
+ * identity question, because asking someone who they are and then showing them an
+ * error is two screens to answer one problem; and a cached launch is `stale`, not
+ * `loading`, so it must fall through to the ledger rather than to a spinner.
+ *
+ * Here rather than as a ladder of `if`s in `App` for the reason every other status
+ * decision is here — a component's early returns are unreachable from a test, and this
+ * order is the one thing about the gates that can be wrong without looking wrong.
+ *
+ * @param {{connectionStatus: 'unconfigured'|'no-key'|'connected',
+ *   spreadsheetId: string|null, connectionFailed: boolean, ledgerStatus: string,
+ *   me: string|null}} state
+ * @returns {'unconfigured'|'key'|'connectionError'|'loading'|'readError'|'identity'|null}
+ */
+export function gateFor(state = {}) {
+  if (state.connectionStatus === 'unconfigured') return 'unconfigured'
+  if (state.connectionStatus === 'no-key') return 'key'
+  // Holding a key but no sheet id: the first mint is in flight, or it failed.
+  if (!state.spreadsheetId) return state.connectionFailed ? 'connectionError' : 'loading'
+  if (state.ledgerStatus === 'error') return 'readError'
+  if (state.ledgerStatus === 'idle' || state.ledgerStatus === 'loading') return 'loading'
+  if (!state.me) return 'identity'
+  return null
 }

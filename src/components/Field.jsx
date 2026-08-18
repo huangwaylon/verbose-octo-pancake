@@ -37,3 +37,23 @@ export function Field({ label, htmlFor, labelId, description, hint, children }) 
     </div>
   )
 }
+
+/**
+ * A message a control produced, at the three places one can appear.
+ *
+ * The `id` is required rather than generated, because the point of the element is to
+ * be named by the `aria-describedby` of whichever control produced it — and that is
+ * not always the control beside it: the entry form's save failure sits at the foot of
+ * the form and is described from the SUBMIT button in the footer, outside the form
+ * entirely. Ids are document-global, so that works; a generated one could not be
+ * referenced at all.
+ *
+ * `role="status"` because the text appears and changes without a page change.
+ */
+export function FieldError({ id, children }) {
+  return (
+    <p className="field__error" id={id} role="status">
+      {children}
+    </p>
+  )
+}

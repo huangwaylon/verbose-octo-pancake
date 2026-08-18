@@ -162,9 +162,10 @@ describe('centsToSheetString', () => {
 
   it('never emits a currency symbol, grouping, or a comma', () => {
     for (const cents of [0, 1, 999, 100000, 123456789]) {
-      const s = centsToSheetString(cents, 'USD')
-      expect(s).not.toMatch(/[,$€£\s]/)
-      expect(s).toMatch(/^-?\d+\.\d{2}$/)
+      // The whole shape, not an absence list: digits, one dot, two places, an
+      // optional sign — which forbids a symbol, a group separator and a space by
+      // construction rather than one character at a time.
+      expect(centsToSheetString(cents, 'USD')).toMatch(/^-?\d+\.\d{2}$/)
     }
   })
 
@@ -177,18 +178,12 @@ describe('centsToSheetString', () => {
 
 describe('centsToSheetString <-> parseAmountToCents round trip', () => {
   // The sweep across four currency scales is in currency.test.js; this is the
-  // boundary list for the two-decimal case.
+  // boundary list for the two-decimal case. It is also what makes a read-modify-write
+  // through the sheet idempotent: `parse(write(cents)) === cents` is exactly what
+  // makes a second write produce the same string.
   it('round-trips every representative value', () => {
     for (const cents of [0, 1, 5, 99, 100, 101, 999, 1000, 4210, 100000, 123456789]) {
       expect(parseAmountToCents(centsToSheetString(cents, 'USD'), 'USD')).toBe(cents)
-    }
-  })
-
-  it('is idempotent under a second write, as a sheet read-modify-write would be', () => {
-    for (const cents of [1, 99, 4210, 123456789]) {
-      const once = centsToSheetString(cents, 'USD')
-      const twice = centsToSheetString(parseAmountToCents(once, 'USD'), 'USD')
-      expect(twice).toBe(once)
     }
   })
 })
@@ -197,22 +192,33 @@ describe('splitCents — never loses or invents a penny', () => {
   const shares = [0, 0.5, 1, 0.333, 0.6667]
   const amounts = [0, 1, 3, 7, 99, 101, 4210, 123456789]
 
-  it('always sums back to the original amount', () => {
+  /**
+   * Conservation on its own cannot fail against the current implementation —
+   * `otherCents` IS `cents - payerCents`, so the sum is an algebraic identity and a
+   * `payerCents + 1` mutation passes. It is still worth asserting, because the
+   * plausible rewrite is computing each side from its own share
+   * (`Math.round(cents * (1 - share))`), which loses a unit on every odd amount.
+   *
+   * So the bound below is the half that can fail: the payer's own side, stated as a
+   * property rather than restated as the formula. Anything further than half a minor
+   * unit from the exact share is money moved by rounding.
+   */
+  it('sums back to the original amount, and lands within half a unit of the exact share', () => {
     for (const cents of amounts) {
       for (const share of shares) {
         const { payerCents, otherCents } = splitCents(cents, share)
         expect(payerCents + otherCents).toBe(cents)
-        expect(Number.isInteger(payerCents)).toBe(true)
-        expect(Number.isInteger(otherCents)).toBe(true)
+        expect(Math.abs(payerCents - cents * share)).toBeLessThanOrEqual(0.5 + 1e-9)
       }
     }
   })
 
-  it('sums back to the original amount across an exhaustive small sweep', () => {
+  it('holds both properties across an exhaustive small sweep', () => {
     for (let cents = 0; cents <= 200; cents += 1) {
       for (let share = 0; share <= 1.0001; share += 0.05) {
         const { payerCents, otherCents } = splitCents(cents, share)
         expect(payerCents + otherCents).toBe(cents)
+        expect(Math.abs(payerCents - cents * Math.min(share, 1))).toBeLessThanOrEqual(0.5 + 1e-9)
       }
     }
   })

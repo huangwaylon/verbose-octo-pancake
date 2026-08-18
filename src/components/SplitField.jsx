@@ -41,7 +41,7 @@ export function useEntrySplit(entry, config, payer) {
  * Who covers how much. The presets are the three answers anyone actually wants;
  * the slider is for the rest.
  */
-export function SplitField({ split, payerLabel, otherLabel, breakdown }) {
+export function SplitField({ split, payerLabel, payerPossessive, otherLabel, breakdown }) {
   const { t } = useT()
 
   return (
@@ -74,7 +74,7 @@ export function SplitField({ split, payerLabel, otherLabel, breakdown }) {
             ))}
           </div>
           <label className="split-control__slider">
-            <span className="field__hint">{t('form.splitShare', { name: payerLabel })}</span>
+            <span className="field__hint">{t('form.splitShare', { owner: payerPossessive })}</span>
             <input
               type="range"
               min="0"
@@ -83,12 +83,17 @@ export function SplitField({ split, payerLabel, otherLabel, breakdown }) {
               value={split.percent}
               /* A range announces a bare "70"; say whose share it is. */
               aria-valuetext={t('form.splitValue', {
-                name: payerLabel,
+                owner: payerPossessive,
                 percent: split.percent,
               })}
               onChange={(event) => split.setPercent(Number(event.target.value))}
             />
-            <output>{t('summary.share', { percent: split.percent })}</output>
+            {/* Hidden from the accessibility tree, not because it says nothing but
+                because `aria-valuetext` above already says it: `<output>`'s implicit
+                role IS `status`, so leaving it exposed puts three live regions on one
+                drag — the valuetext, this, and the breakdown below — and the breakdown
+                is the one carrying the figures that cannot be read off the control. */}
+            <output aria-hidden="true">{t('summary.share', { percent: split.percent })}</output>
           </label>
         </div>
       )}

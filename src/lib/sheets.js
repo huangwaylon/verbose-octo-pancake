@@ -9,7 +9,7 @@
  * exactly what the API wants in "expenses_p1!A2:K" — while escaping the rest.
  */
 
-import { DEFAULT_CONFIG, mergeConfig } from '../config.js'
+import { mergeConfig } from '../config.js'
 import {
   CONFIG_RANGE,
   CONFIG_TAB,
@@ -28,9 +28,9 @@ import {
   rowRange,
   rowToEntry,
 } from '../schema.js'
-import { normalizeCurrency, parseShare } from './money.js'
 import { reconcileById, tombstoneCount } from './ledgerState.js'
 import { getAccessToken, refreshToken } from './connection.js'
+import { defaultConfigRows, parseConfigRows } from './sheetConfig.js'
 import { i18nError } from '../i18n/index.js'
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
@@ -60,41 +60,6 @@ function isUnreachable(status, payload) {
 const ID_INDEX = columnIndex('id')
 const DELETED_AT_INDEX = columnIndex('deleted_at')
 const DATE_INDEX = columnIndex('date')
-
-/**
- * Sheet key <-> config field, plus how to read the value. One list so the two
- * directions cannot drift. `list`, `fraction` and `code` values are not plain
- * strings, so they need explicit parsers; everything else is text.
- *
- * There are deliberately no email keys. The access token belongs to the account
- * that owns the sheet rather than to either person, so nothing can produce an
- * address to match against — which of the two people this is is a per-device
- * choice, like the locale and the accent.
- */
-const CONFIG_FIELDS = [
-  ['person1_name', 'person1Name', 'text'],
-  ['person2_name', 'person2Name', 'text'],
-  ['currency', 'currency', 'code'],
-  ['categories', 'categories', 'list'],
-  ['default_split_p1', 'defaultSplitP1', 'fraction'],
-  ['default_split_p2', 'defaultSplitP2', 'fraction'],
-  ['note_presets', 'notePresets', 'list'],
-]
-
-/** Each kind answers null for a value it cannot use, so the default wins. */
-const PARSERS = {
-  text: (value) => value,
-  code: (value) => normalizeCurrency(value) || null,
-  fraction: parseShare,
-  list: (value) => {
-    const list = value
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-    // An empty list must never shadow a default, or the category picker is empty.
-    return list.length ? list : null
-  },
-}
 
 function buildQuery(params) {
   const query = new URLSearchParams()
@@ -152,8 +117,8 @@ async function request(path, { method = 'GET', params, body, allowRetry = true }
   const error = new Error(`Google Sheets: ${message} (HTTP ${response.status})`)
   error.status = response.status
   // A 403/404 is not a blip: the account has lost access to the spreadsheet, or the
-  // id is wrong. Reporting it as transient hides it behind a 30-second retry loop
-  // and a "showing saved data" notice, forever.
+  // id is wrong. Reporting it as transient hides it behind the focus refresh's
+  // 30-second floor and a "showing saved data" notice, forever.
   error.i18nKey = isUnreachable(response.status, payload)
     ? 'error.sheetUnreachable'
     : 'error.sheetRequest'
@@ -177,49 +142,6 @@ function updateValues(spreadsheetId, range, values) {
     method: 'PUT',
     params: { valueInputOption: RAW },
     body: { values },
-  })
-}
-
-/**
- * Config tab rows -> a partial config object. Exported for testing: it is pure,
- * and the percentage-vs-fraction rule needs cases pinned to it.
- *
- * A key that is absent, or present with a blank or unparseable value, is omitted
- * so the caller's defaults win. The FIRST usable value for a key wins: a tab where
- * someone added `currency, USD` at the top and forgot an old `currency, JPY` lower
- * down would otherwise run the whole sheet at JPY, which is a 100x error on every
- * row with a blank currency cell.
- */
-export function parseConfigRows(rows) {
-  const byKey = new Map(CONFIG_FIELDS.map(([key, field, kind]) => [key, { field, kind }]))
-  const parsed = {}
-
-  for (const row of rows) {
-    const key = cellText(row, 0).toLowerCase()
-    const value = cellText(row, 1)
-    const spec = byKey.get(key)
-    if (!spec || !value || spec.field in parsed) continue
-
-    const result = PARSERS[spec.kind](value)
-    if (result != null) parsed[spec.field] = result
-  }
-
-  return parsed
-}
-
-/**
- * What a freshly seeded `config` tab says the two people are called, and the only
- * place these strings exist. They are NOT in `DEFAULT_CONFIG`: a default there
- * would shadow the localized fallback `nameOf` applies when the sheet says
- * nothing, and everything written to the sheet stays unlocalized regardless of
- * whose device seeded it.
- */
-const SEED_NAMES = { person1Name: 'Person 1', person2Name: 'Person 2' }
-
-function defaultConfigRows() {
-  return CONFIG_FIELDS.map(([key, field]) => {
-    const value = SEED_NAMES[field] ?? DEFAULT_CONFIG[field]
-    return [key, Array.isArray(value) ? value.join(', ') : String(value ?? '')]
   })
 }
 
@@ -356,10 +278,13 @@ async function resolveRow(spreadsheetId, person, id) {
   let any = -1
   rows.forEach((row, index) => {
     if (cellText(row, ID_INDEX) !== id) return
-    if (any < 0) any = index
-    // The LAST live row wins: rows are only ever appended, so the newest copy is the
-    // one every read reconciles to. Falling back to a tombstone keeps the payer-move
-    // branch below able to stamp a row that is already dead, which is harmless.
+    // The LAST match wins on both counts, live or dead: rows are only ever appended,
+    // so the newest copy is the one every read reconciles to. The fallback matters as
+    // much as the live case, because `setDeletedAt` also CLEARS the cell — a restore
+    // where every copy in this tab is tombstoned would otherwise revive the oldest
+    // one, putting the values from before a payer move back on screen while the newest
+    // row stays dead, and `reconcileById` prefers the live row so nothing reports it.
+    any = index
     if (!cellText(row, DELETED_AT_INDEX)) live = index
   })
 
@@ -474,7 +399,19 @@ export async function compact(spreadsheetId, sheetGids) {
   return { removed: requests.length }
 }
 
-async function readSheetIds(spreadsheetId) {
+/**
+ * Tab title -> numeric sheetId. `values.batchGet` cannot reveal a gid, and
+ * `deleteDimension` takes nothing else, so this is the only way to name a tab to
+ * `compact`.
+ *
+ * Exported because `compact` needs the gids and must NOT go through
+ * `ensureStructure` to get them: that path WRITES. A ledger whose config tab has
+ * been deleted reports `configMissing` and is deliberately never repaired, but
+ * `ensureStructure` would add the tab back and seed it with `DEFAULT_CONFIG` —
+ * putting the default currency into a sheet whose real one is unknown, and taking
+ * the notice away with it. Reading is the whole of what `compact` is owed.
+ */
+export async function readSheetGids(spreadsheetId) {
   const data = await request(`/${encodeURIComponent(spreadsheetId)}`, {
     params: { fields: 'sheets(properties(sheetId,title))' },
   })
@@ -495,10 +432,11 @@ async function readSheetIds(spreadsheetId) {
  * is never reseeded, and expense data rows are never touched.
  *
  * @returns {Promise<{sheetIds: Record<string, number>}>} tab title -> numeric
- *   sheetId, which is what `compact` needs.
+ *   sheetId, for a caller that has just built the tabs. `compact` reads its own
+ *   through `readSheetGids`, because this path writes.
  */
 export async function ensureStructure(spreadsheetId) {
-  let sheetIds = await readSheetIds(spreadsheetId)
+  const sheetIds = await readSheetGids(spreadsheetId)
   const wantedTabs = [...PEOPLE.map(expensesTab), CONFIG_TAB]
   const missing = wantedTabs.filter((title) => !(title in sheetIds))
 
@@ -516,11 +454,18 @@ export async function ensureStructure(spreadsheetId) {
   }
 
   if (missing.length > 0) {
-    await request(`/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+    const reply = await request(`/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
       method: 'POST',
       body: { requests: missing.map((title) => ({ addSheet: { properties: { title } } })) },
     })
-    sheetIds = await readSheetIds(spreadsheetId)
+    // The reply already names every tab it just created, so re-reading the
+    // spreadsheet for the same gids is a wasted round trip. Read defensively:
+    // a gid that does not arrive stays absent, and `compact` skips a tab it
+    // cannot name rather than deleting rows from a guess.
+    for (const { addSheet } of reply.replies ?? []) {
+      const { title, sheetId } = addSheet?.properties ?? {}
+      if (title != null && sheetId != null) sheetIds[title] = sheetId
+    }
   }
 
   const { valueRanges = [] } = await batchGetValues(spreadsheetId, [

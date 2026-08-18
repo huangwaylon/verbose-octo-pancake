@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useConnection } from './state/useConnection.js'
 import { useLedger } from './state/useLedger.js'
-import { hasPendingWrite, newDraftEntry, noticeKeys } from './lib/ledgerState.js'
+import { gateFor, hasPendingWrite, newDraftEntry, noticeKeys } from './lib/ledgerState.js'
 import { useLedgerView, useInitialMonth } from './state/useLedgerView.js'
 import { useToasts } from './state/useToasts.js'
 import { currentMonthKey } from './lib/dates.js'
 import { useT, errorMessage } from './i18n/index.js'
 import { readStoredIdentity, storeIdentity } from './lib/identity.js'
-import { setSafeToReload } from './lib/serviceWorker.js'
+import { reconsiderUpdate, setSafeToReload } from './lib/serviceWorker.js'
 import { LedgerScreen } from './components/LedgerScreen.jsx'
 import { EntryFormSheet } from './components/EntryFormSheet.jsx'
 import { ConfirmDeleteSheet } from './components/ConfirmDeleteSheet.jsx'
@@ -49,20 +49,25 @@ export default function App() {
   }, [])
 
   // A service worker update activates by reloading, so it must never land while
-  // an entry is half-typed or a write has not reached the sheet.
+  // an entry is half-typed or a write has not reached the sheet. Nudging after the
+  // predicate changes is the other half: a worker refused while the form was open
+  // gets no `focus` event to ask again, because nobody left the app.
   useEffect(() => {
     setSafeToReload(() => !draft && !hasPendingWrite(ledger.entries))
+    reconsiderUpdate()
   }, [draft, ledger.entries])
 
   const openAdd = () => setDraft({ mode: 'add', entry: newDraftEntry(me) })
 
-  const submitDraft = (input) =>
-    draft.mode === 'edit' ? ledger.editEntry(input) : ledger.addEntry(input)
-
   /**
-   * The two write paths that report to a toast. `useLedger` has already reverted
+   * The four write paths that report to a toast. `useLedger` has already reverted
    * the optimistic change by the time the catch runs, so there is nothing to undo
    * here — only something to say.
+   *
+   * Saying it is not decoration: the balance in the header deliberately carries no
+   * `role="status"`, on the grounds that every write already speaks through a toast.
+   * A save that announced nothing would leave a VoiceOver user with a closed sheet
+   * and a figure that changed silently.
    */
   const report = async (write, okKey, failKey) => {
     try {
@@ -73,21 +78,24 @@ export default function App() {
     }
   }
 
+  /**
+   * Rethrown, unlike the other three: the form stays open on a failure and shows the
+   * reason against its own Save button, so the toast is the SUCCESS half only.
+   */
+  const submitDraft = async (input) => {
+    const edit = draft.mode === 'edit'
+    const entry = await (edit ? ledger.editEntry(input) : ledger.addEntry(input))
+    toasts.push({ message: t(edit ? 'toast.saved' : 'toast.added') })
+    return entry
+  }
+
   const removeEntry = (entry) => {
     setPendingDelete(null)
-    return report(
-      () => ledger.removeEntry(entry.id, entry.payer),
-      'toast.deleted',
-      'toast.deleteFailed',
-    )
+    return report(() => ledger.removeEntry(entry.id), 'toast.deleted', 'toast.deleteFailed')
   }
 
   const restoreEntry = (entry) =>
-    report(
-      () => ledger.restoreEntry(entry.id, entry.payer),
-      'toast.restored',
-      'toast.restoreFailed',
-    )
+    report(() => ledger.restoreEntry(entry.id), 'toast.restored', 'toast.restoreFailed')
 
   const forgetKey = () => {
     setShowSettings(false)
@@ -96,8 +104,17 @@ export default function App() {
 
   const connectionError = connection.error ? errorMessage(connection.error, 'error.offline') : null
 
-  if (connection.status === 'unconfigured') return <UnconfiguredGate />
-  if (connection.status === 'no-key') {
+  /** Which screen stands in front of the ledger is `gateFor`'s decision, in lib. */
+  const gate = gateFor({
+    connectionStatus: connection.status,
+    spreadsheetId: connection.spreadsheetId,
+    connectionFailed: Boolean(connection.error),
+    ledgerStatus: ledger.status,
+    me,
+  })
+
+  if (gate === 'unconfigured') return <UnconfiguredGate />
+  if (gate === 'key') {
     return (
       <KeyGate
         onConnect={connection.connect}
@@ -107,23 +124,16 @@ export default function App() {
       />
     )
   }
-  // Holding a key but no sheet id yet: the first mint is in flight, or it failed.
-  if (!connection.spreadsheetId) {
-    return connectionError ? (
-      <ErrorGate message={connectionError} onRetry={connection.retry} />
-    ) : (
-      <LoadingGate label={t('gate.loadingSheet')} />
+  if (gate === 'connectionError') {
+    return <ErrorGate message={connectionError} onRetry={connection.retry} />
+  }
+  if (gate === 'readError') {
+    return (
+      <ErrorGate message={errorMessage(ledger.error, 'error.readSheet')} onRetry={ledger.refresh} />
     )
   }
-  if (ledger.status === 'error') {
-    return <ErrorGate message={ledger.error} onRetry={ledger.refresh} />
-  }
-  if (ledger.status === 'idle' || ledger.status === 'loading') {
-    return <LoadingGate label={t('gate.loadingSheet')} />
-  }
-  if (!me) {
-    return <IdentityGate config={config} onPick={setMe} />
-  }
+  if (gate === 'loading') return <LoadingGate label={t('gate.loadingSheet')} />
+  if (gate === 'identity') return <IdentityGate config={config} onPick={setMe} />
 
   /** Which notices apply is `noticeKeys`' decision, in lib, where it is testable. */
   const notices = noticeKeys({

@@ -160,15 +160,27 @@ describe('the rules an installed iOS web app depends on', () => {
   it('lifts the sheet clear of the software keyboard', () => {
     // `dvh` tracks the LAYOUT viewport, which iOS does not shrink for the keyboard,
     // so without this the footer's Save button sits behind it — and the decimal
-    // keypad has no Done key to dismiss with. TWO rules name the inset, and each
-    // matters: the container pads by it, and the footer spends `--safe-bottom` only on
-    // what the keyboard is not already covering. Neither panel names it — both cap
-    // themselves against `100%` of the container's already-padded box instead, so the
-    // inset has exactly one source of truth rather than being restated per panel.
+    // keypad has no Done key to dismiss with. Two selectors inside the sheet name the
+    // inset and each matters: the container pads by it, and the footer spends
+    // `--safe-bottom` only on what the keyboard is not already covering. Neither panel
+    // names it — both cap themselves against `100%` of the container's already-padded
+    // box instead, so the inset has one source of truth rather than a copy per panel.
     expect(blocksFor(FILES.primitives, '.sheet').join()).toContain('--keyboard-inset')
     // The home indicator's clearance is worth nothing behind a keyboard, and that is
     // the one moment the panel has no height to spare.
     expect(blocksFor(FILES.primitives, '.sheet__footer').join()).toContain('--keyboard-inset')
+    for (const selector of ['.sheet__panel', '.sheet__panel--full']) {
+      expect(blocksFor(FILES.primitives, selector).join()).not.toContain('--keyboard-inset')
+    }
+  })
+
+  it('lifts the key screen’s Connect button clear of the keyboard too', () => {
+    // The app key is the one text field outside a sheet, and `.gate` is one viewport
+    // tall and centres its content — so there is nothing for iOS to scroll and the
+    // keypad simply covers the button while the field above it stays visible. The box
+    // is border-box at `100dvh`, so spending the inset as bottom padding shrinks the
+    // content box being centred in. `KeyGate` mounts the same publisher the sheet uses.
+    expect(blocksFor(FILES.app, '.gate').join()).toContain('--keyboard-inset')
   })
 
   it('keeps the sheet clear of the keyboard at DIALOG widths too', () => {

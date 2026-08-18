@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef } from 'react'
 import { useT } from '../i18n/index.js'
-import { keyboardInset } from '../lib/viewport.js'
+import { useKeyboardInset } from '../state/useKeyboardInset.js'
 import { CloseIcon } from './icons.jsx'
 
 /** Every stop the focus trap cycles through. */
@@ -13,9 +13,6 @@ const FOCUSABLE =
  * focus on its own dismiss control raises no keyboard and reads as already leaving.
  */
 const FIRST_FIELD = 'input, select, textarea, button:not([data-dismiss])'
-
-/** Read by `.sheet` in CSS, so the panel sits above the software keyboard. */
-const KEYBOARD_INSET = '--keyboard-inset'
 
 /**
  * A modal panel: full-screen page or bottom sheet on phones, centred dialog on wider
@@ -45,7 +42,17 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
   // Opening the sheet: lock the background and move focus in, exactly once.
   useEffect(() => {
     const node = panel.current
-    const previousOverflow = document.body.style.overflow
+    const root = document.documentElement
+    const previous = { root: root.style.overflow, body: document.body.style.overflow }
+    /**
+     * Both elements, not just `body`. Setting it on `body` alone reaches the viewport
+     * only through the spec's propagation rule, which applies while `html` declares no
+     * `overflow` of its own — one declaration added to that rule in `base.css` and the
+     * ledger silently pans behind every sheet again. Safari is also the platform where
+     * a body-only lock is least reliable for touch panning. `overflow: hidden` keeps
+     * the scroll position, unlike the `position: fixed` version of this trick.
+     */
+    root.style.overflow = 'hidden'
     document.body.style.overflow = 'hidden'
 
     /**
@@ -61,7 +68,8 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
     focusable?.focus({ preventScroll: true })
 
     return () => {
-      document.body.style.overflow = previousOverflow
+      root.style.overflow = previous.root
+      document.body.style.overflow = previous.body
       // `isConnected` because the opener is often gone by now: the row's own trash
       // control opens the delete confirmation, and confirming unmounts the row. The
       // add button is the honest fallback — it is where the flow started.
@@ -112,47 +120,12 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
   }, [])
 
   /**
-   * Publish how much of the layout viewport the keyboard covers, so the CSS can
-   * lift the whole panel clear of it. `scrollIntoView` above cannot do this job: it
-   * scrolls within `.sheet__body`, and the footer holding Save is a sibling of that
-   * body, not content inside it. The decimal keypad has no Done key, so a footer
-   * behind the keyboard leaves no way to submit at all.
+   * Lift the panel clear of the software keyboard. `scrollIntoView` above cannot do
+   * this job: it scrolls within `.sheet__body`, and the footer holding Save is a
+   * sibling of that body, not content inside it. The decimal keypad has no Done key,
+   * so a footer behind the keyboard leaves no way to submit at all.
    */
-  useEffect(() => {
-    const viewport = window.visualViewport
-    if (!viewport) return
-
-    const root = document.documentElement
-    let published = null
-    const sync = () => {
-      const inset = keyboardInset({
-        innerHeight: window.innerHeight,
-        height: viewport.height,
-        offsetTop: viewport.offsetTop,
-        scale: viewport.scale,
-      })
-      // Only on a change. `--keyboard-inset` is inherited from the root, so writing it
-      // invalidates computed style for the whole document — the ledger still mounted
-      // behind the sheet included — and `scroll` fires every frame while iOS shifts the
-      // visual viewport to follow the focused field. The inset is deliberately constant
-      // across exactly those events (`keyboardInset` subtracts `offsetTop` so that it
-      // is), so without this the keyboard animation pays for a full style invalidation
-      // per frame to publish the number it already had.
-      if (inset === published) return
-      published = inset
-      root.style.setProperty(KEYBOARD_INSET, `${inset}px`)
-    }
-    sync()
-    // `scroll` as well as `resize`: iOS shifts the visual viewport within the layout
-    // one to follow the focused field, without changing its height.
-    viewport.addEventListener('resize', sync)
-    viewport.addEventListener('scroll', sync)
-    return () => {
-      viewport.removeEventListener('resize', sync)
-      viewport.removeEventListener('scroll', sync)
-      root.style.removeProperty(KEYBOARD_INSET)
-    }
-  }, [])
+  useKeyboardInset()
 
   return (
     <div className="sheet">

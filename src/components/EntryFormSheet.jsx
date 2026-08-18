@@ -1,9 +1,9 @@
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { centsToSheetString, minorDigits, parseAmountToCents, splitCents } from '../lib/money.js'
 import { ENTRY_TYPE, PEOPLE, PERSON, otherPerson } from '../schema.js'
 import { errorMessage, usePeopleLabels, useMoney, useT } from '../i18n/index.js'
-import { Field } from './Field.jsx'
+import { Field, FieldError } from './Field.jsx'
 import { NoteField } from './NoteField.jsx'
 import { Segmented } from './Segmented.jsx'
 import { SplitField, useEntrySplit } from './SplitField.jsx'
@@ -48,6 +48,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
   const [busy, setBusy] = useState(false)
   const amountErrorId = useId()
   const saveErrorId = useId()
+  const amountInput = useRef(null)
 
   const split = useEntrySplit(entry, config, payer)
   const cents = parseAmountToCents(amount, entryCurrency)
@@ -76,7 +77,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
     ? config.categories
     : [category, ...config.categories].filter(Boolean)
 
-  const { label } = usePeopleLabels(config, me)
+  const { label, possessive } = usePeopleLabels(config, me)
   const payerLabel = label(payer)
   const otherLabel = label(otherPerson(payer))
 
@@ -100,6 +101,12 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
     setSaveError(null)
     if (cents == null) {
       setRejected(amount)
+      // Focus follows the refusal. The error is a newly INSERTED `role="status"`,
+      // which iOS announces unreliably, and the button that was pressed is at the
+      // foot of a full-screen form — so without this a VoiceOver user taps Save,
+      // hears nothing, and has no idea which field is wrong. `BottomSheet`'s
+      // `focusin` handler scrolls it into view from here.
+      amountInput.current?.focus()
       return
     }
     setBusy(true)
@@ -185,6 +192,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
         <Field htmlFor="entry-amount" label={t('form.amount')}>
           <input
             id="entry-amount"
+            ref={amountInput}
             /* Tabular figures because this is the one field digits are typed into one at
                a time, and proportional ones shift every glyph as the value grows. */
             className="input tnum"
@@ -201,11 +209,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
           {/* Inside the field, not at the foot of the form: `aria-describedby` reaches it
               either way, but from down there it renders a screen's worth below the input
               it describes, with nothing scrolling it into view on submit. */}
-          {amountError && (
-            <p className="field__error" id={amountErrorId} role="status">
-              {amountError}
-            </p>
-          )}
+          {amountError && <FieldError id={amountErrorId}>{amountError}</FieldError>}
         </Field>
 
         {!isSettlement && (
@@ -254,6 +258,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
           <SplitField
             split={split}
             payerLabel={payerLabel}
+            payerPossessive={possessive(payer)}
             otherLabel={otherLabel}
             breakdown={breakdown}
           />
@@ -261,11 +266,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
 
         {/* A save failure is not a field's problem, so it stays here — directly above
             the footer holding the button that produced it. */}
-        {saveError && (
-          <p className="field__error" id={saveErrorId} role="status">
-            {saveError}
-          </p>
-        )}
+        {saveError && <FieldError id={saveErrorId}>{saveError}</FieldError>}
       </form>
     </BottomSheet>
   )

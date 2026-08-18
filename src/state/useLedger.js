@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { mergeConfig } from '../config.js'
-import { errorMessage, i18nError } from '../i18n/index.js'
+import { i18nError } from '../i18n/index.js'
 import * as sheets from '../lib/sheets.js'
 import {
   acknowledge,
@@ -63,7 +63,6 @@ export function useLedger(spreadsheetId) {
   const [seed] = useState(() => readSnapshot(spreadsheetId))
   const [entries, setEntries] = useState(() => seed?.entries ?? [])
   const [config, setConfig] = useState(() => mergeConfig(seed?.config))
-  const [sheetIds, setSheetIds] = useState({})
   const [status, setStatus] = useState(() => (seed ? 'stale' : 'idle'))
   const [error, setError] = useState(null)
   /**
@@ -110,7 +109,7 @@ export function useLedger(spreadsheetId) {
   /** The sheet's own partial config, which is what the snapshot has to store. */
   const sheetConfigRef = useRef(seed?.config)
 
-  const applyLoad = useCallback((id, data) => {
+  const applyLoad = useCallback((data) => {
     setEntries((current) => mergeLoaded(current, data.entries ?? []))
     // Config before amounts, always: the balance and the month totals format
     // at `config.currency`, so entries seeded against a stale currency render
@@ -169,11 +168,15 @@ export function useLedger(spreadsheetId) {
 
       const fail = (cause) => {
         if (!isCurrent()) return
-        setError(errorMessage(cause, 'error.readSheet'))
+        // The cause, never a sentence. Translating here freezes the message in
+        // whichever language was current when the read failed, and this one can sit
+        // on screen for as long as the sheet is unreachable — through a language
+        // change in settings. `errorMessage` at the render is what keeps it live.
+        setError(cause)
         setStatus(statusOnLoadFailure(everLoaded.current))
       }
       const apply = (data) => {
-        if (isCurrent()) applyLoad(id, data)
+        if (isCurrent()) applyLoad(data)
       }
 
       try {
@@ -184,9 +187,8 @@ export function useLedger(spreadsheetId) {
         // spreadsheet that already looks like somebody else's work.
         if (looksUninitialized(cause)) {
           try {
-            const { sheetIds: ids } = await sheets.ensureStructure(id)
+            await sheets.ensureStructure(id)
             if (!isCurrent()) return
-            setSheetIds(ids ?? {})
             apply(await sheets.loadAll(id))
           } catch (secondCause) {
             fail(secondCause)
@@ -211,7 +213,6 @@ export function useLedger(spreadsheetId) {
       sheetConfigRef.current = undefined
       setEntries([])
       setConfig(mergeConfig())
-      setSheetIds({})
       setSheetExtras(EMPTY_EXTRAS)
       setStatus('idle')
       setError(null)
@@ -300,11 +301,18 @@ export function useLedger(spreadsheetId) {
   )
 
   const setDeleted = useCallback(
-    async (id, payer, deletedAt) => {
+    async (id, deletedAt) => {
+      // The row's CURRENT tab comes from local state, exactly as `editEntry` takes it,
+      // and being absent is refused rather than guessed: `sheets` would throw the same
+      // `entryGone` a moment later, but only after a read, and the revert below needs
+      // `previous` anyway. There is deliberately no payer parameter — a caller cannot
+      // pass one that would be ignored, or one this layer would have to choose between.
       const previous = entryById(entriesRef.current, id)
+      if (!previous) throw i18nError('error.entryGone')
+
       setEntries((current) => withPendingDeletedAt(current, id, deletedAt))
       try {
-        await sheets.setDeletedAt(spreadsheetId, payer, id, deletedAt)
+        await sheets.setDeletedAt(spreadsheetId, previous.payer, id, deletedAt)
         setEntries((current) => settled(current, id))
       } catch (cause) {
         setEntries((current) => reverted(current, id, previous))
@@ -314,45 +322,50 @@ export function useLedger(spreadsheetId) {
     [spreadsheetId],
   )
 
-  const removeEntry = useCallback(
-    (id, payer) => setDeleted(id, payer, new Date().toISOString()),
-    [setDeleted],
-  )
-  const restoreEntry = useCallback((id, payer) => setDeleted(id, payer, null), [setDeleted])
+  const removeEntry = useCallback((id) => setDeleted(id, new Date().toISOString()), [setDeleted])
+  const restoreEntry = useCallback((id) => setDeleted(id, null), [setDeleted])
 
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
   const compact = useCallback(async () => {
     // Both refusals — a write in flight, and nothing to remove — live in `lib` where a
     // test can reach them; this only owns the call order below.
-    const refusal = compactRefusal(entries, sheetExtras.supersededRows)
+    const refusal = compactRefusal(entriesRef.current, sheetExtras.supersededRows)
     if (refusal) return refusal
 
-    let gids = sheetIds
-    if (missingExpenseGid(gids)) {
-      const { sheetIds: refreshed } = await sheets.ensureStructure(spreadsheetId)
-      setSheetIds(refreshed ?? {})
-      gids = refreshed ?? {}
-    }
-    // Not redundant with the skip inside `sheets.compact`: this is what makes a
-    // missing gid loud instead of a silently half-compacted sheet.
+    // Read the gids, never `ensureStructure`: that path writes, and it would seed a
+    // deleted config tab with the default currency — silently taking away the notice
+    // that said the sheet's own currency was unknown. `values.batchGet` cannot carry a
+    // gid, so this read is unavoidable and happens every time.
+    const gids = await sheets.readSheetGids(spreadsheetId)
+    // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab
+    // it cannot name, which is right for it and wrong to leave unsaid here.
     if (missingExpenseGid(gids)) throw i18nError('error.missingTabs')
 
     const result = await sheets.compact(spreadsheetId, gids)
     await refresh()
     return result
-  }, [entries, sheetExtras.supersededRows, sheetIds, spreadsheetId, refresh])
+  }, [sheetExtras.supersededRows, spreadsheetId, refresh])
+
+  /**
+   * What `compact` would remove, which is every tombstone in the sheet — so the ones
+   * `reconcileById` hid behind a live row count too, or the button offers nothing to
+   * remove while the sheet still holds removable rows.
+   *
+   * Memoised because only the closed settings sheet reads it, and a full pass over
+   * the ledger on every render of `App` — one per toast, per month change, per
+   * keystroke that reaches a gate — buys a number nobody is looking at.
+   */
+  const tombstones = useMemo(
+    () => tombstoneCount(entries) + sheetExtras.supersededRows,
+    [entries, sheetExtras.supersededRows],
+  )
 
   return {
     entries,
     config,
     status,
     error,
-    /**
-     * What `compact` would remove, which is every tombstone in the sheet — so the
-     * ones `reconcileById` hid behind a live row count too, or the button offers
-     * nothing to remove while the sheet still holds removable rows.
-     */
-    tombstoneCount: tombstoneCount(entries) + sheetExtras.supersededRows,
+    tombstoneCount: tombstones,
     /** What the last read could not show, whole: `noticeKeys` reads exactly this. */
     sheetExtras,
     refresh,

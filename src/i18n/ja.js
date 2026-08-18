@@ -20,6 +20,9 @@ export default {
   'common.you': 'あなた',
   'common.person1': 'ひとり目',
   'common.person2': 'ふたり目',
+  // 助詞は同じなので、英語と違って形は一つで足りる。
+  'common.yourPossessive': 'あなたの',
+  'common.namePossessive': '{name}の',
   'common.cancel': 'キャンセル',
   'common.save': '保存',
   'common.add': '追加',
@@ -104,8 +107,8 @@ export default {
   'form.splitCustom': 'カスタム',
   'form.splitAll': '{name}が全額',
   'form.splitHalf': '半分',
-  'form.splitShare': '{name}の負担',
-  'form.splitValue': '{name}の負担、{percent}%',
+  'form.splitShare': '{owner}負担',
+  'form.splitValue': '{owner}負担、{percent}%',
   'form.breakdown': '{payer}：{payerAmount}・{other}：{otherAmount}',
   'form.deleteEntry': 'この記録を削除',
   'form.saveError': '保存できませんでした。',
@@ -168,6 +171,8 @@ export default {
   'gate.errorTitle': 'シートを読み込めませんでした',
 
   // --- toasts and errors ----------------------------------------------------
+  'toast.added': '追加しました',
+  'toast.saved': '保存しました',
   'toast.deleted': '削除しました',
   'toast.deleteFailed': '削除できませんでした。',
   'toast.restored': '元に戻しました',

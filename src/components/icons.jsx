@@ -40,10 +40,11 @@ export function ChevronRightIcon(props) {
 /**
  * An eight-tooth cog, and the one icon here whose path is not hand-drawn.
  *
- * Every coordinate comes from `12 + r·cos θ` at 45° steps, so the teeth are evenly
- * spaced and the shape is symmetric by construction — a hand-transcribed gear path
- * lands one tooth slightly off, which at 20px reads as an unfinished glyph. Do not
- * "tidy" the numbers: the symmetry is in the arithmetic that produced them.
+ * Every point is `(12 + r·cos θ, 12 + r·sin θ)` at `θ = 45k° ± 13°`, on `r = 9.2` at a
+ * tooth's tip and `r = 6.5` at its root — so the eight teeth are centred on the 45°
+ * steps and every shoulder is radial, symmetric by construction. A hand-transcribed
+ * gear lands one tooth slightly off, which at 20px reads as an unfinished glyph.
+ * Regenerate rather than retouch: the symmetry is in the arithmetic, not the digits.
  */
 export function SettingsIcon(props) {
   return (

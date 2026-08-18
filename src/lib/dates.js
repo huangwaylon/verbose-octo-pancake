@@ -63,14 +63,20 @@ function partsOf(iso) {
  * parser for the two functions below: without a guard, `shiftMonth` answers the
  * string 'NaN-NaN' for junk, which then matches no entry in any month and reads on
  * screen as an empty month rather than as a bug.
+ *
+ * The SHAPE is checked before the numbers, because the numbers alone accept plenty
+ * of things that are not a month key: `split('-')` discards everything past the
+ * second part, so a full ISO day ('2026-08-05') parses as a perfectly valid August.
+ * That is the one piece of junk actually in reach, and it is the worst kind —
+ * `inMonth` compares against a `slice(0, 7)`, which a ten-character string can never
+ * equal, so every entry falls out of the month and the ledger renders empty with
+ * nothing reported anywhere.
  */
 function monthParts(monthKey) {
-  const [year, month] = String(monthKey ?? '')
-    .split('-')
-    .map(Number)
-  if (!Number.isInteger(year) || year < 1 || !Number.isInteger(month) || month < 1 || month > 12) {
-    return null
-  }
+  const text = String(monthKey ?? '')
+  if (!/^\d{4}-\d{2}$/.test(text)) return null
+  const [year, month] = text.split('-').map(Number)
+  if (year < 1 || month < 1 || month > 12) return null
   return { year, month }
 }
 

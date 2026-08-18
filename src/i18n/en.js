@@ -23,6 +23,10 @@ export default {
   'common.you': 'You',
   'common.person1': 'Person 1',
   'common.person2': 'Person 2',
+  // The two possessive forms `usePeopleLabels` chooses between. English inflects,
+  // so "You" cannot simply be dropped into the `{name}’s` one.
+  'common.yourPossessive': 'Your',
+  'common.namePossessive': '{name}’s',
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'common.add': 'Add',
@@ -126,10 +130,10 @@ export default {
   'form.splitCustom': 'Custom',
   'form.splitAll': 'All {name}',
   'form.splitHalf': 'Half',
-  'form.splitShare': '{name}’s share',
+  'form.splitShare': '{owner} share',
   // The slider's spoken value. A range otherwise announces a bare "70", which
   // says nothing about whose share it is.
-  'form.splitValue': '{name}’s share, {percent}%',
+  'form.splitValue': '{owner} share, {percent}%',
   'form.breakdown': '{payer}: {payerAmount} · {other}: {otherAmount}',
   'form.deleteEntry': 'Delete this entry',
   'form.saveError': 'Could not save that.',
@@ -198,6 +202,8 @@ export default {
   'gate.errorTitle': 'Could not read the sheet',
 
   // --- toasts and errors ----------------------------------------------------
+  'toast.added': 'Added',
+  'toast.saved': 'Saved',
   'toast.deleted': 'Deleted',
   'toast.deleteFailed': 'Could not delete that.',
   'toast.restored': 'Restored',

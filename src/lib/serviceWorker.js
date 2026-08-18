@@ -12,12 +12,16 @@
  * like anyway — but not while an entry is half-typed or a write is in flight.
  */
 
+import { shouldRefresh } from './ledgerState.js'
+
 /** Resume happens constantly; an update check every time would be wasteful. */
 const UPDATE_CHECK_FLOOR_MS = 60 * 60_000
 
 let safeToReload = () => true
 let reloading = false
 let lastCheck = 0
+/** Held at module scope so `reconsiderUpdate` can reach it from outside the `.then`. */
+let registration = null
 
 /**
  * Set by the app: false while a draft is open or a write has not landed. Reloading
@@ -25,6 +29,21 @@ let lastCheck = 0
  */
 export function setSafeToReload(predicate) {
   safeToReload = predicate
+}
+
+/**
+ * Take over now if a worker is waiting and nothing would be lost.
+ *
+ * Exported because the answer changes for a reason this module cannot see: a worker
+ * that reaches `waiting` while a form is open is refused, and the person is IN the
+ * app, so no `focus` or `visibilitychange` follows to ask again. Without a nudge
+ * when the draft closes, that update waits for the next time the app is backgrounded
+ * — which for an installed web app can be days.
+ */
+export function reconsiderUpdate() {
+  if (registration?.waiting && safeToReload()) {
+    registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+  }
 }
 
 export function registerServiceWorker() {
@@ -41,28 +60,25 @@ export function registerServiceWorker() {
   })
 
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then(
-    (registration) => {
-      const activateIfSafe = () => {
-        if (registration.waiting && safeToReload()) {
-          registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-        }
-      }
+    (active) => {
+      registration = active
 
       const onForeground = () => {
         if (document.visibilityState !== 'visible') return
-        activateIfSafe()
-        const now = Date.now()
-        if (now - lastCheck < UPDATE_CHECK_FLOOR_MS) return
-        lastCheck = now
-        registration.update().catch(() => {})
+        reconsiderUpdate()
+        // The same floor decision as a focus-triggered sheet read, from the same
+        // helper: a resumed app fires both of these events constantly.
+        if (!shouldRefresh(Date.now(), lastCheck, UPDATE_CHECK_FLOOR_MS)) return
+        lastCheck = Date.now()
+        active.update().catch(() => {})
       }
 
       lastCheck = Date.now()
-      activateIfSafe()
+      reconsiderUpdate()
 
-      registration.addEventListener('updatefound', () => {
+      active.addEventListener('updatefound', () => {
         // The new worker installs and then waits; take over when it is safe.
-        registration.installing?.addEventListener('statechange', activateIfSafe)
+        active.installing?.addEventListener('statechange', reconsiderUpdate)
       })
 
       document.addEventListener('visibilitychange', onForeground)

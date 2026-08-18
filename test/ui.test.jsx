@@ -5,7 +5,8 @@ import { afterEach } from 'vitest'
 import { DEFAULT_CONFIG } from '../src/config.js'
 import { DEFAULT_LOCALE } from '../src/i18n/catalogs.js'
 import { setLocale } from '../src/i18n/index.js'
-import { ENTRY_TYPE, EVEN_SHARE, PERSON, makeEntry } from '../src/schema.js'
+import { ENTRY_TYPE, EVEN_SHARE, PERSON } from '../src/schema.js'
+import { expense, tombstone } from './support/entries.js'
 import {
   computeBalance,
   groupByDate,
@@ -54,7 +55,10 @@ describe('foldTail', () => {
 
   it('keeps exactly MAX_SLICES without folding', () => {
     const items = Array.from({ length: MAX_SLICES }, (_, i) => cat(`c${i}`, 10 - i))
-    expect(foldTail(items, 'Other')).toHaveLength(MAX_SLICES)
+    // The whole list back, identical. A length assertion cannot see the off-by-one it
+    // is named after: folding a 6-item list yields 5 kept plus one "Other" bucket,
+    // which is still 6 long, so `toHaveLength(MAX_SLICES)` passes either way.
+    expect(foldTail(items, 'Other')).toEqual(items)
   })
 
   it('folds the tail into one bucket past MAX_SLICES', () => {
@@ -316,20 +320,9 @@ describe('entry form', () => {
 })
 
 describe('delete confirmation', () => {
-  const target = makeEntry(
-    {
-      id: 'x',
-      type: ENTRY_TYPE.EXPENSE,
-      date: '2026-08-04',
-      payer: PERSON.P1,
-      amountCents: 1250,
-      currency: 'JPY',
-      category: 'Groceries',
-      description: 'Ozeki',
-      payerShare: EVEN_SHARE,
-    },
-    '2026-08-04T10:00:00.000Z',
-  )
+  // ¥1,250 and the note are what the assertions below read, so they stay here; the
+  // rest of a valid expense comes from the shared fixture.
+  const target = expense({ id: 'x', amountCents: 1250, description: 'Ozeki' })
 
   const render = (entry) =>
     renderToStaticMarkup(
@@ -362,22 +355,7 @@ describe('delete confirmation', () => {
 })
 
 describe('deleted entries list', () => {
-  const removed = (id, overrides) =>
-    makeEntry(
-      {
-        id,
-        type: ENTRY_TYPE.EXPENSE,
-        date: '2026-08-04',
-        payer: PERSON.P1,
-        amountCents: 1250,
-        currency: 'JPY',
-        category: 'Groceries',
-        payerShare: EVEN_SHARE,
-        deletedAt: '2026-08-04T12:00:00.000Z',
-        ...overrides,
-      },
-      '2026-08-04T10:00:00.000Z',
-    )
+  const removed = (id, overrides) => tombstone({ id, amountCents: 1250, ...overrides })
 
   const render = (entries) =>
     renderToStaticMarkup(
@@ -427,49 +405,16 @@ describe('deleted entries list', () => {
 })
 
 describe('Japanese rendering', () => {
+  // Two payers and one deleted row, because the strings under test are one per
+  // component: the balance direction needs a debtor, the summary needs both people's
+  // spend, and the deleted list needs a tombstone. ¥1,250 is what the yen assertions
+  // read, and the 800 is `payerShare: 1` so the two are not mirror images.
   const entries = [
-    makeEntry(
-      {
-        id: 'a',
-        type: ENTRY_TYPE.EXPENSE,
-        date: '2026-08-04',
-        payer: PERSON.P1,
-        amountCents: 1250,
-        currency: 'JPY',
-        category: 'Groceries',
-        payerShare: EVEN_SHARE,
-      },
-      '2026-08-04T10:00:00.000Z',
-    ),
-    makeEntry(
-      {
-        id: 'b',
-        type: ENTRY_TYPE.EXPENSE,
-        date: '2026-08-03',
-        payer: PERSON.P2,
-        amountCents: 800,
-        currency: 'JPY',
-        category: 'Dining',
-        payerShare: 1,
-      },
-      '2026-08-03T10:00:00.000Z',
-    ),
+    expense({ id: 'a', amountCents: 1250 }),
+    expense({ id: 'b', amountCents: 800, payer: PERSON.P2, category: 'Dining', payerShare: 1 }),
   ]
 
-  const removed = makeEntry(
-    {
-      id: 'c',
-      type: ENTRY_TYPE.EXPENSE,
-      date: '2026-08-02',
-      payer: PERSON.P2,
-      amountCents: 640,
-      currency: 'JPY',
-      category: 'Dining',
-      payerShare: EVEN_SHARE,
-      deletedAt: '2026-08-02T12:00:00.000Z',
-    },
-    '2026-08-02T10:00:00.000Z',
-  )
+  const removed = tombstone({ id: 'c', amountCents: 640, payer: PERSON.P2, category: 'Dining' })
 
   function renderAll() {
     const balance = computeBalance(entries)
