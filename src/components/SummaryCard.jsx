@@ -33,12 +33,12 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
   return (
     <section className="card summary">
       <div>
-        <p className="eyebrow">{t('summary.title')}</p>
+        <h2 className="eyebrow">{t('summary.title')}</h2>
         <p className="summary__total tnum">{money(monthSpend)}</p>
       </div>
 
       <div className="summary__section">
-        <p className="eyebrow">{t('common.whoPaid')}</p>
+        <h2 className="eyebrow">{t('common.whoPaid')}</h2>
         {paidTotal > 0 && (
           <div
             className="summary__meter"
@@ -77,7 +77,7 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
 
       {items.length > 0 && (
         <div className="summary__section">
-          <p className="eyebrow">{t('summary.byCategory')}</p>
+          <h2 className="eyebrow">{t('summary.byCategory')}</h2>
           <DonutChart
             items={items}
             formatMoney={money}

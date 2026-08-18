@@ -48,8 +48,15 @@ export function SettingsSheet({
       title={t('settings.title')}
       onClose={onClose}
       footer={
-        <button type="button" className="btn btn--ghost btn--block" onClick={onForget}>
-          {t('settings.forgetKey')}
+        /**
+         * A close button, not the destructive one. The panel is 704px of an 852px phone
+         * and its body scrolls, so the footer is the only control reliably in reach —
+         * and it is the slot every other sheet fills with Save. Putting "Forget key"
+         * there made the biggest, lowest, easiest-to-hit target the one that destroys a
+         * 64-character key, with the X in the worst one-handed corner as the way out.
+         */
+        <button type="button" className="btn btn--primary btn--block" onClick={onClose}>
+          {t('common.close')}
         </button>
       }
     >
@@ -170,6 +177,16 @@ export function SettingsSheet({
               {message}
             </p>
           )}
+        </Field>
+
+        {/* Last in the body, where the destructive thing belongs: reachable, explained,
+            and no longer the button a thumb lands on by default. */}
+        <Field label={t('settings.forgetKeyTitle')} description={t('settings.forgetKeyHint')}>
+          <div className="row">
+            <button type="button" className="btn btn--danger btn--sm" onClick={onForget}>
+              {t('settings.forgetKey')}
+            </button>
+          </div>
         </Field>
       </div>
     </BottomSheet>

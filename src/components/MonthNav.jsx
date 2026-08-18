@@ -16,7 +16,10 @@ export function MonthNav({ monthKey, onChange }) {
       >
         <ChevronLeftIcon />
       </button>
-      <span className="month-nav__label">{monthLabel(monthKey, { locale })}</span>
+      {/* A heading, not a span: it names everything below it, and iOS VoiceOver's
+          Headings rotor is how a long month gets navigated. `.month-nav__label` restates
+          the size and weight, so it outranks base.css's heading reset and nothing moves. */}
+      <h2 className="month-nav__label">{monthLabel(monthKey, { locale })}</h2>
       <button
         type="button"
         className="btn btn--icon"

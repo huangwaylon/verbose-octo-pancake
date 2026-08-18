@@ -121,9 +121,20 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
     }
   }
 
+  /**
+   * Keyed on the type as well as the mode. A settlement opening under "Edit expense"
+   * contradicts the sentence directly below it, which reads "Records that you paid them
+   * back". Nothing in the UI creates one, so there is no settlement ADD title to match.
+   */
+  const title = isSettlement
+    ? t('form.editSettlementTitle')
+    : mode === 'edit'
+      ? t('form.editTitle')
+      : t('form.addTitle')
+
   return (
     <BottomSheet
-      title={mode === 'edit' ? t('form.editTitle') : t('form.addTitle')}
+      title={title}
       /* A settlement drops the note, category and split controls, leaving three fields
          that do not fill a phone — so it stays the content-sized sheet it fits, and
          only the expense form claims the whole screen. */

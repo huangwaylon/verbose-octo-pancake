@@ -48,6 +48,13 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
+    /**
+     * Where focus came from, so closing can put it back. Without this the VoiceOver
+     * cursor lands on `<body>` every time a sheet closes, and a phone user restarts
+     * from the top of the page after every entry.
+     */
+    const opener = document.activeElement
+
     // Focus the first control rather than the panel, so a phone keyboard
     // comes straight up for the amount field.
     const focusable = node?.querySelector(FIRST_FIELD)
@@ -55,6 +62,12 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
 
     return () => {
       document.body.style.overflow = previousOverflow
+      // `isConnected` because the opener is often gone by now: the row's own trash
+      // control opens the delete confirmation, and confirming unmounts the row. The
+      // add button is the honest fallback — it is where the flow started.
+      const fallback = document.querySelector('.add-action')
+      const restore = opener?.isConnected ? opener : fallback
+      restore?.focus?.({ preventScroll: true })
     }
   }, [])
 

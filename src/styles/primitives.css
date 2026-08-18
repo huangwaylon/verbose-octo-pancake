@@ -77,6 +77,10 @@
   line-height: var(--lh-tight);
   text-align: center;
   text-decoration: none;
+  /* `base.css` sets this on `button` only, and `.btn` is also worn by an `<a>` (the
+     link to the sheet, in Settings) — which would otherwise wait 300ms for a
+     double-tap that could only zoom. */
+  touch-action: manipulation;
   transition:
     background-color var(--transition-fast),
     border-color var(--transition-fast),
@@ -192,6 +196,9 @@
   font-size: var(--fs-label);
   font-weight: 500;
   line-height: var(--lh-tight);
+  /* A `<label htmlFor>` forwards its tap to the control, so it is tappable and needs
+     the same 300ms opt-out every button gets. */
+  touch-action: manipulation;
 }
 
 .field__hint {

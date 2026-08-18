@@ -41,8 +41,14 @@ export function EntryList({ groups, config, me, currency, onEdit, onDelete }) {
           {/* Outside the white card, on the page ground: structure carried by
               typography and whitespace rather than a tinted header bar. */}
           <header className="day-group__label">
-            <span>{dayLabel(group.date, { locale, labels })}</span>
-            <span className="day-group__total tnum">{money(group.totalCents)}</span>
+            <h3 className="day-group__day">{dayLabel(group.date, { locale, labels })}</h3>
+            {/* Omitted at zero rather than printed. A day whose only entry is a
+                settlement totals nothing — settlements are transfers, never spend — and
+                "¥0" over a six-figure row reads as a bug rather than as arithmetic.
+                Display only: no total is recomputed and no type is branched on. */}
+            {group.totalCents > 0 && (
+              <span className="day-group__total tnum">{money(group.totalCents)}</span>
+            )}
           </header>
           <ul className="surface">
             {group.entries.map((entry) => (

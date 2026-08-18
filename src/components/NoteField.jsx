@@ -50,6 +50,10 @@ export function NoteField({ value, presets, onChange }) {
               <button
                 key={preset}
                 type="button"
+                /* The chip is a toggle, and its selected state is otherwise carried by
+                   colour alone — VoiceOver announces both states identically without
+                   this. */
+                aria-pressed={value === preset}
                 className={`btn btn--sm ${value === preset ? 'btn--primary' : 'btn--ghost'}`}
                 onClick={() => onChange(value === preset ? '' : preset)}
               >

@@ -91,6 +91,7 @@ export default {
   // --- add / edit form ------------------------------------------------------
   'form.addTitle': '支出を追加',
   'form.editTitle': '支出を編集',
+  'form.editSettlementTitle': '精算を編集',
   'form.amount': '金額',
   'form.amountError': '{example}のように金額を入力してください',
   'form.settlementHint': '{payer}が{other}に返したことを記録します。',
@@ -145,6 +146,9 @@ export default {
   'settings.compactError': 'シートを整理できませんでした。',
   'settings.compactBusy': '保存中の変更があります。少し待ってからもう一度お試しください。',
   'settings.forgetKey': 'この端末からキーを削除',
+  'settings.forgetKeyTitle': 'アプリキー',
+  'settings.forgetKeyHint':
+    'この端末からキーとキャッシュを削除します。スプレッドシートはそのままですが、再度開くにはキーが必要です。',
 
   // --- gates ----------------------------------------------------------------
   'gate.unconfiguredTitle': '設定が未完了です',

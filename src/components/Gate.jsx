@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
@@ -47,6 +47,14 @@ export function UnconfiguredGate() {
 export function KeyGate({ onConnect, connecting, error, suspect }) {
   const { t } = useT()
   const [value, setValue] = useState('')
+  const failureId = useId()
+  /**
+   * The one message this screen can produce, whichever source it came from. Connect is
+   * what produced it, so Connect is what has to reach it — the same rule the entry
+   * form's save failure follows. Without it a failed mint on iOS speaks nothing at all:
+   * focus stays on the button and the sentence appears silently below it.
+   */
+  const failure = suspect && !error ? t('error.badKey') : error
 
   return (
     <Panel title={t('app.name')}>
@@ -78,15 +86,20 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
           type="submit"
           className="btn btn--primary btn--block"
           disabled={connecting || !value.trim()}
+          aria-describedby={failure ? failureId : undefined}
         >
           {connecting ? <span className="spinner" /> : null}
           {t('gate.connect')}
         </button>
       </form>
-      {/* A stored key the endpoint has rejected, with no fresher failure to show:
-          the key was kept deliberately, so say why this screen came back. */}
-      {suspect && !error && <p className="field__error">{t('error.badKey')}</p>}
-      {error && <p className="field__error">{error}</p>}
+      {/* A stored key the endpoint has rejected shows `error.badKey` with no fresher
+          failure to show: the key was kept deliberately, so say why this screen came
+          back. */}
+      {failure && (
+        <p className="field__error" id={failureId} role="status">
+          {failure}
+        </p>
+      )}
       <p className="field__hint">{t('gate.keyFine')}</p>
     </Panel>
   )

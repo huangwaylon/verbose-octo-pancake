@@ -451,6 +451,13 @@
   font-weight: 400;
 }
 
+/* The day label is a heading so the Headings rotor can reach it, and this is what keeps
+   it looking like the band it sits in: base.css gives every heading `font-weight: 600`,
+   and that is a direct rule on the child, so it outranks the 500 it would inherit. */
+.day-group__day {
+  font: inherit;
+}
+
 .entry {
   position: relative;
   display: grid;
@@ -475,13 +482,19 @@
 }
 
 /* The row inherits the list's corners so the tinted settlement background does
-   not square them off. */
+   not square them off. Logical per-corner properties, not the `border-radius`
+   shorthand: the two selectors have equal specificity, so on a row that is BOTH first
+   and last — a day whose only entry is a settlement — the shorthand from `:last-child`
+   overrides the whole of `:first-child`'s and squares the top corners off over the
+   card's rounded ones, with the accent wash bleeding past the hairline. */
 .entry:first-child {
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  border-start-start-radius: var(--radius-lg);
+  border-start-end-radius: var(--radius-lg);
 }
 
 .entry:last-child {
-  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  border-end-start-radius: var(--radius-lg);
+  border-end-end-radius: var(--radius-lg);
 }
 
 .entry--pending {

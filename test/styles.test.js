@@ -272,6 +272,12 @@ describe('the rules an installed iOS web app depends on', () => {
       ['primitives', '.segmented__option'],
       ['primitives', '.swatch'],
       ['primitives', '.sheet__backdrop'],
+      // `.btn` is worn by an `<a>` as well as a `<button>` — the link to the sheet in
+      // Settings is the only route to it and got the 300ms wait.
+      ['primitives', '.btn'],
+      // A `<label htmlFor>` forwards its tap to the control it names, so it is a
+      // tappable that `button` never covers.
+      ['primitives', '.field__label'],
       ['app', '.deleted__summary'],
       // The button form only: the deleted list renders the same class as an inert
       // span, where a press state promises a tap that does nothing.

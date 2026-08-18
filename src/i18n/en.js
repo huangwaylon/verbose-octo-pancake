@@ -113,6 +113,7 @@ export default {
   // --- add / edit form ------------------------------------------------------
   'form.addTitle': 'Add expense',
   'form.editTitle': 'Edit expense',
+  'form.editSettlementTitle': 'Edit settlement',
   'form.amount': 'Amount',
   'form.amountError': 'Enter an amount, like {example}',
   'form.settlementHint': 'Records that {payer} paid {other} back.',
@@ -175,6 +176,9 @@ export default {
   // still resolving its own row number.
   'settings.compactBusy': 'A change is still saving. Try again in a moment.',
   'settings.forgetKey': 'Forget key on this device',
+  'settings.forgetKeyTitle': 'App key',
+  'settings.forgetKeyHint':
+    'Removes the key and the cached ledger from this phone. The spreadsheet is untouched, and you will need the key again to get back in.',
 
   // --- gates ----------------------------------------------------------------
   'gate.unconfiguredTitle': 'Not configured yet',
