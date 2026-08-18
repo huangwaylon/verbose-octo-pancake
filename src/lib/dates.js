@@ -13,6 +13,31 @@
 /** The only English text here; callers override it from the catalog. */
 const EN_DAY_LABELS = { today: 'Today', yesterday: 'Yesterday', none: 'No date' }
 
+/**
+ * Constructed date formatters, keyed by every option that decides one.
+ *
+ * `Date#toLocaleDateString` builds a formatter per call, which costs an order of
+ * magnitude more than reusing one, and a month's list asks for one per day heading.
+ * The key space is (locale × the two shapes below × with-year or not), so it is
+ * bounded by a handful of entries for the life of the page.
+ */
+const DATE_FORMATS = new Map()
+
+function dateFormatter(locale, options) {
+  // Every option, sorted, so a shape added later cannot collide with an existing key
+  // and silently render in the wrong one.
+  const shape = Object.keys(options)
+    .sort()
+    .map((name) => `${name}:${options[name]}`)
+    .join(',')
+  const key = `${locale ?? ''}|${shape}`
+  const cached = DATE_FORMATS.get(key)
+  if (cached) return cached
+  const formatter = new Intl.DateTimeFormat(locale, options)
+  DATE_FORMATS.set(key, formatter)
+  return formatter
+}
+
 export function todayIso(now = new Date()) {
   return toIso(now)
 }
@@ -76,10 +101,10 @@ export function monthLabel(monthKey, { locale, now = new Date() } = {}) {
   if (!parts) return ''
   const date = new Date(parts.year, parts.month - 1, 1)
   const sameYear = date.getFullYear() === now.getFullYear()
-  return date.toLocaleDateString(locale, {
+  return dateFormatter(locale, {
     month: 'long',
     ...(sameYear ? {} : { year: 'numeric' }),
-  })
+  }).format(date)
 }
 
 /**
@@ -102,10 +127,10 @@ export function dayLabel(iso, { now = new Date(), locale, labels = EN_DAY_LABELS
 
   const date = partsOf(iso)
   const sameYear = date.getFullYear() === now.getFullYear()
-  return date.toLocaleDateString(locale, {
+  return dateFormatter(locale, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
     ...(sameYear ? {} : { year: 'numeric' }),
-  })
+  }).format(date)
 }

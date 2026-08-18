@@ -210,6 +210,34 @@ export function centsToSheetString(minor, currency) {
 }
 
 /**
+ * Constructed formatters, keyed by everything that decides one.
+ *
+ * A month's ledger asks for one formatter per amount on screen, and constructing an
+ * `Intl.NumberFormat` costs an order of magnitude more than reusing one — enough to
+ * be about half the cost of rendering the whole screen, which is paid again on the
+ * cold-launch snapshot paint and on every refresh. The key space is
+ * (locale × currency × 0|2|3) and both the locale and the sheet's currency are fixed
+ * for an install, so this never grows.
+ */
+const FORMATTERS = new Map()
+
+function formatterFor(locale, currency, fractionDigits) {
+  const key = `${locale ?? ''}|${currency}|${fractionDigits}`
+  const cached = FORMATTERS.get(key)
+  if (cached) return cached
+  // Constructed before it is stored, so an unusable code from the sheet's config tab
+  // keeps throwing into the callers' fallback instead of being remembered as one.
+  const formatter = new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  })
+  FORMATTERS.set(key, formatter)
+  return formatter
+}
+
+/**
  * Shared by the two display formatters. The float division is the only one in
  * this module and it is display-only: Intl needs a Number, and the result is
  * rendered immediately, never stored or summed.
@@ -218,13 +246,7 @@ function currencyFormat(cents, currency, { locale, trimZeroCents = false }) {
   const digits = minorDigits(currency)
   const scale = 10 ** digits
   const fractionDigits = trimZeroCents && cents % scale === 0 ? 0 : digits
-  const formatter = new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
-  })
-  return { formatter, value: cents / scale }
+  return { formatter: formatterFor(locale, currency, fractionDigits), value: cents / scale }
 }
 
 /**

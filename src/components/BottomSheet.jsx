@@ -110,6 +110,7 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
     if (!viewport) return
 
     const root = document.documentElement
+    let published = null
     const sync = () => {
       const inset = keyboardInset({
         innerHeight: window.innerHeight,
@@ -117,6 +118,15 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
         offsetTop: viewport.offsetTop,
         scale: viewport.scale,
       })
+      // Only on a change. `--keyboard-inset` is inherited from the root, so writing it
+      // invalidates computed style for the whole document — the ledger still mounted
+      // behind the sheet included — and `scroll` fires every frame while iOS shifts the
+      // visual viewport to follow the focused field. The inset is deliberately constant
+      // across exactly those events (`keyboardInset` subtracts `offsetTop` so that it
+      // is), so without this the keyboard animation pays for a full style invalidation
+      // per frame to publish the number it already had.
+      if (inset === published) return
+      published = inset
       root.style.setProperty(KEYBOARD_INSET, `${inset}px`)
     }
     sync()

@@ -40,6 +40,23 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Finances" />
     <!--
+      Warm the sockets for the three hosts a fresh launch talks to, in the order it
+      talks to them: the token endpoint, the origin its /exec 302 lands on, and the
+      Sheets API. All three are strictly serialized after JS boot — the token has to
+      exist before the batchGet — so on cellular their handshakes are several hundred
+      ms of the wait for fresh data. Starting them at parse time overlaps that with
+      the bundle's own parse and compile.
+
+      This does not touch first paint, which is already cached and network-free; it
+      only shortens the gap to the server's copy. `crossorigin` is load-bearing: the
+      real requests are anonymous CORS, and without it the warmed socket belongs to
+      the credentialed pool and is not reused. No CSP change — all three are already
+      in `connect-src`, and a preconnect is a hint rather than a fetch.
+    -->
+    <link rel="preconnect" href="https://script.google.com" crossorigin />
+    <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
+    <link rel="preconnect" href="https://sheets.googleapis.com" crossorigin />
+    <!--
       An allowlist, not boilerplate. No third-party JavaScript executes in this
       app at all: `script-src 'self'` is possible because there is no Google
       Identity Services script and no Picker iframe any more — the token comes
