@@ -148,17 +148,48 @@ describe('the rules an installed iOS web app depends on', () => {
   it('lifts the sheet clear of the software keyboard', () => {
     // `dvh` tracks the LAYOUT viewport, which iOS does not shrink for the keyboard,
     // so without this the footer's Save button sits behind it — and the decimal
-    // keypad has no Done key to dismiss with. Three readers, and each matters: the
-    // container pads by the inset, the content-sized panel caps itself by it so a
-    // confirmation does not grow past the top of the screen, and the footer spends
-    // `--safe-bottom` only on what the keyboard is not already covering. The
-    // full-screen panel is deliberately NOT a fourth — it takes 100% of the
-    // container's already-padded box rather than computing the same number twice.
+    // keypad has no Done key to dismiss with. TWO rules name the inset, and each
+    // matters: the container pads by it, and the footer spends `--safe-bottom` only on
+    // what the keyboard is not already covering. Neither panel names it — both cap
+    // themselves against `100%` of the container's already-padded box instead, so the
+    // inset has exactly one source of truth rather than being restated per panel.
     expect(blocksFor(FILES.primitives, '.sheet').join()).toContain('--keyboard-inset')
-    expect(blocksFor(FILES.primitives, '.sheet__panel').join()).toContain('--keyboard-inset')
     // The home indicator's clearance is worth nothing behind a keyboard, and that is
     // the one moment the panel has no height to spare.
     expect(blocksFor(FILES.primitives, '.sheet__footer').join()).toContain('--keyboard-inset')
+  })
+
+  it('keeps the sheet clear of the keyboard at DIALOG widths too', () => {
+    // Asserted PER BLOCK, not against the join: a phone in landscape is 852px wide, so
+    // it takes the >=48rem treatment, and that block sets `padding` as a SHORTHAND —
+    // which discards the phone rule's `padding-bottom: var(--keyboard-inset)` outright.
+    // Joining the blocks hides it, because the phone block satisfies the string on its
+    // own while the rotated phone puts Save back behind a keypad that has no Done key.
+    for (const body of blocksFor(FILES.primitives, '.sheet')) {
+      if (!/(^|;|\s)padding(-bottom)?\s*:/.test(body)) continue
+      expect(body).toContain('--keyboard-inset')
+    }
+
+    // And a cap has to be relative to the box that padding just shrank, not to the
+    // whole viewport — `100%` is that box, since `.sheet` is `fixed; inset: 0`. A cap
+    // written against `dvh` alone lets a tall dialog overflow the padded box and pushes
+    // its footer straight back under the keyboard. `max-height: none` is the deliberate
+    // exception: the full-screen phone panel takes 100% of the container directly.
+    for (const selector of ['.sheet__panel', '.sheet__panel--full']) {
+      for (const body of blocksFor(FILES.primitives, selector)) {
+        const capped = body.match(/(?:^|;|\s)max-height\s*:([^;]*)/)
+        if (!capped || capped[1].trim() === 'none') continue
+        expect(capped[1]).toContain('100%')
+      }
+    }
+  })
+
+  it('lets the sheet body shrink, so the footer cannot leave the panel', () => {
+    // `.sheet__panel` is a COLUMN flex container, so the body's automatic minimum size
+    // is its min-content HEIGHT and `flex: 1 1 auto` does not override it. Without this
+    // the body refuses to shrink and pushes the footer out through the rounded corner —
+    // and in landscape, back under the keyboard.
+    expect(declares(FILES.primitives, '.sheet__body', 'min-height')).toBe(true)
   })
 
   it('gives the full-screen panel the whole screen, and undoes it for the dialog', () => {

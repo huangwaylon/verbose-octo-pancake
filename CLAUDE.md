@@ -455,12 +455,18 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
   track the LAYOUT viewport, which iOS does not shrink for the keyboard, so a panel that
   reaches the bottom of the screen puts its Save button behind it — and the decimal
   keypad has no Done key to escape with. `BottomSheet` publishes `--keyboard-inset` from
-  `window.visualViewport` (`resize` **and** `scroll`), and three rules read it: `.sheet`
-  pads by it, `.sheet__panel` caps itself by it so a short sheet cannot grow past the top
-  of the screen, and `.sheet__footer` spends `--safe-bottom` only on what the keyboard is
-  not already covering. The full-screen panel is deliberately NOT a fourth — it takes
-  `height: 100%` of the container's already-padded box, rather than computing the same
-  number a second way. `scrollIntoView` cannot do this job, because the footer is a
+  `window.visualViewport`, and exactly TWO rules name it: `.sheet` pads by it, and
+  `.sheet__footer` spends `--safe-bottom` only on what the keyboard is not already
+  covering. No panel names it. Both cap themselves against **`100%`** of the container's
+  already-padded box, so the inset has one source of truth instead of a copy per panel —
+  and a cap written against `dvh` alone lets a tall dialog overflow that box and pushes
+  its footer straight back under the keyboard. **The `48rem` block has to restate
+  `padding-bottom` after its `padding` shorthand**, or the shorthand discards it: a phone
+  in landscape is 852px wide, so it takes the dialog treatment, and Save goes back behind
+  the keypad. `.sheet__body` needs `min-height: 0` for the same reason the panel needs
+  `min-width: 0` — a column flex item will not shrink below its min-content height, and
+  the footer leaves the panel through the rounded corner instead.
+  `scrollIntoView` cannot do this job, because the footer is a
   sibling of the scrolling body rather than content in it. `lib/viewport.js` holds the
   arithmetic, and it reads the visual viewport's height **at its own scale**: a pinch
   shrinks that viewport exactly as a keyboard does, so the bare difference invents ~400px

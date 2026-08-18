@@ -442,9 +442,13 @@
      than the screen, carrying every field in it off the right edge. */
   min-width: 0;
   /* Content-sized, capped so a long sheet does not run past the top of the screen.
-     Shrinks by the keyboard inset too, or the panel grows upward instead of the body
-     scrolling. The `--full` variant below replaces this with the whole screen. */
-  max-height: min(calc(88dvh - var(--keyboard-inset, 0px)), 44rem);
+     `100%` is the load-bearing term: `.sheet` is `fixed; inset: 0` and already pads
+     itself by the keyboard inset, so its content box IS the space the keyboard leaves
+     and a percentage cap tracks that without restating the arithmetic. Subtracting the
+     inset from the dvh term instead caps BELOW the panel's own header-plus-footer
+     minimum in landscape, and the footer overflows the rounded corner.
+     The `--full` variant below replaces this with the whole screen. */
+  max-height: min(88dvh, 100%, 44rem);
   background-color: var(--surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--shadow-overlay);
@@ -488,6 +492,12 @@
 
 .sheet__body {
   flex: 1 1 auto;
+  /* `.sheet__panel` is a COLUMN flex container, so this body's automatic minimum size
+     is its min-content HEIGHT — and `flex: 1 1 auto` cannot override that. Without
+     this the body refuses to shrink and pushes the footer clean out of the panel, so
+     Save renders below the rounded corner and, in landscape, back under the keyboard.
+     Same rule as the panel's own `min-width: 0`, one axis over. */
+  min-height: 0;
   overflow-y: auto;
   /* Not `visible`: with overflow-y set, the spec computes a `visible` overflow-x to
      `auto`, so one over-wide child would turn the sheet into a sideways scroller
@@ -532,11 +542,17 @@
   .sheet {
     align-items: center;
     padding: var(--space-5);
+    /* Restated after the shorthand, which would otherwise DISCARD the phone rule's
+       `padding-bottom: var(--keyboard-inset)`. A phone in landscape is 852px wide, so
+       it lands here — the entry form becomes a centred dialog whose footer stops
+       tracking the keyboard, and Save goes back behind a keypad that has no Done key.
+       Centring inside the padded box is what lifts the dialog clear of it. */
+    padding-bottom: calc(var(--space-5) + var(--keyboard-inset, 0px));
   }
 
   .sheet__panel {
     max-width: var(--sheet-max);
-    max-height: min(84dvh, 44rem);
+    max-height: min(84dvh, 100%, 44rem);
     border-radius: var(--radius-lg);
   }
 
@@ -546,7 +562,7 @@
      confirmation beside it at the same width does not have. */
   .sheet__panel--full {
     height: auto;
-    max-height: min(84dvh, 44rem);
+    max-height: min(84dvh, 100%, 44rem);
     border-radius: var(--radius-lg);
     padding: 0;
   }
