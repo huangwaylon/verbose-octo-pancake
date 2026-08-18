@@ -11,7 +11,17 @@
  * list that has been handed to `writeSnapshot`, must never be edited in place.
  */
 
-import { PEOPLE, expensesTab, isActive, makeEntry, validateEntryCodes } from '../schema.js'
+import {
+  ENTRY_TYPE,
+  PEOPLE,
+  PERSON,
+  expensesTab,
+  isActive,
+  isPerson,
+  makeEntry,
+  validateEntryCodes,
+} from '../schema.js'
+import { todayIso } from './dates.js'
 import { i18nError } from '../i18n/index.js'
 
 /**
@@ -149,6 +159,69 @@ export function reverted(entries, id, previous) {
  */
 export function tombstoneCount(entries) {
   return entries.filter((entry) => entry.deletedAt).length
+}
+
+/**
+ * Whether any write has not reached the sheet yet.
+ *
+ * Three separate decisions turn on it and all three are load-bearing: the launch cache
+ * must not persist an unacknowledged optimistic row, `compact` must not shift rows a
+ * pending write already resolved a number for, and a service-worker update must not
+ * reload through a write in flight. Spelled once so they cannot drift apart.
+ */
+export function hasPendingWrite(entries) {
+  return entries.some((entry) => entry.pending)
+}
+
+/**
+ * Why `compact` will not run, or null if it can.
+ *
+ * Never while a write is in flight: `compact` deletes rows, which shifts every row
+ * below each one, and a pending `updateEntry`/`setDeletedAt` already resolved its
+ * target row number before the shift — so its write would land on whichever row moved
+ * into that position, blanking a cell in a live expense or un-deleting an unrelated
+ * one.
+ *
+ * That case reports `busy` rather than a bare `{removed: 0}`: "Removed 0 deleted rows"
+ * is a lie when there are rows to remove, and it gives no reason to try again.
+ *
+ * `supersededRows` is counted because those tombstones are real rows in the sheet that
+ * `reconcileById` hid behind a live one — so there can be nothing to remove in
+ * `entries` while the sheet still holds removable rows.
+ */
+export function compactRefusal(entries, supersededRows) {
+  if (hasPendingWrite(entries)) return { removed: 0, busy: true }
+  if (!tombstoneCount(entries) && !supersededRows) return { removed: 0 }
+  return null
+}
+
+/**
+ * A blank entry for the add form.
+ *
+ * The id is minted when the draft OPENS rather than per submit. A `fetch` that rejects
+ * after Google committed the append — the response lost, not the request — leaves the
+ * row on screen as failed; re-submitting with a fresh id would write a second expense
+ * that `reconcileById` cannot collapse, and the balance would double-count it forever.
+ * The same id makes a retry at worst a duplicate row the client reconciles to one.
+ *
+ * Deliberately not `makeEntry`, which stamps `createdAt`/`updatedAt`: a draft has not
+ * been saved and must not claim to have been.
+ *
+ * `payerShare` is left null, meaning "follow the payer's default" — the form re-derives
+ * it whenever the payer control changes. Seeding it here would pin the opening payer's
+ * share onto whoever it is switched to.
+ */
+export function newDraftEntry(person) {
+  return {
+    id: crypto.randomUUID(),
+    type: ENTRY_TYPE.EXPENSE,
+    date: todayIso(),
+    payer: isPerson(person) ? person : PERSON.P1,
+    amountCents: 0,
+    category: '',
+    description: '',
+    payerShare: null,
+  }
 }
 
 /**

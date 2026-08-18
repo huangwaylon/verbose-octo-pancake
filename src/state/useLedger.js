@@ -4,8 +4,10 @@ import { errorMessage, i18nError } from '../i18n/index.js'
 import * as sheets from '../lib/sheets.js'
 import {
   acknowledge,
+  compactRefusal,
   entryById,
   entryFromInput,
+  hasPendingWrite,
   looksUninitialized,
   mergeLoaded,
   missingExpenseGid,
@@ -115,10 +117,10 @@ export function useLedger(spreadsheetId) {
     sheetConfigRef.current = data.sheetConfig
     setConfig(mergeConfig(data.sheetConfig))
     setSheetExtras({
-      supersededRows: data.supersededRows ?? 0,
-      undecodedRows: data.undecodedRows ?? 0,
-      undatedRows: data.undatedRows ?? 0,
-      configMissing: Boolean(data.configMissing),
+      supersededRows: data.supersededRows,
+      undecodedRows: data.undecodedRows,
+      undatedRows: data.undatedRows,
+      configMissing: data.configMissing,
     })
     setError(null)
     setStatus('ready')
@@ -136,7 +138,7 @@ export function useLedger(spreadsheetId) {
    */
   useEffect(() => {
     if (!spreadsheetId || !everLoaded.current) return
-    if (entries.some((entry) => entry.pending)) return
+    if (hasPendingWrite(entries)) return
     persist(spreadsheetId, entries, sheetConfigRef.current)
   }, [spreadsheetId, entries, persist])
 
@@ -150,11 +152,17 @@ export function useLedger(spreadsheetId) {
    * spreadsheet id is checked as well as the generation.
    */
   const loadGeneration = useRef(0)
+  /** When the sheet was last read, which is what the focus throttle is about. */
+  const lastRefresh = useRef(0)
 
   const load = useCallback(
     async (id) => {
       const generation = (loadGeneration.current += 1)
       const isCurrent = () => generation === loadGeneration.current
+      // Every read counts against the focus floor, this one included. Otherwise the
+      // launch read, or a tap on Refresh, is followed by a window switch that spends a
+      // second read for the same data seconds later.
+      lastRefresh.current = Date.now()
       setStatus(statusOnLoadStart)
 
       const fail = (cause) => {
@@ -223,15 +231,12 @@ export function useLedger(spreadsheetId) {
    * open sits on stale data. Throttled, because switching windows is constant
    * and every refresh spends per-user quota.
    */
-  const lastRefresh = useRef(0)
   useEffect(() => {
     if (!spreadsheetId) return
 
     const maybeRefresh = () => {
       if (document.visibilityState !== 'visible') return
-      const now = Date.now()
-      if (!shouldRefresh(now, lastRefresh.current, REFRESH_THROTTLE_MS)) return
-      lastRefresh.current = now
+      if (!shouldRefresh(Date.now(), lastRefresh.current, REFRESH_THROTTLE_MS)) return
       refresh()
     }
 
@@ -315,18 +320,10 @@ export function useLedger(spreadsheetId) {
 
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
   const compact = useCallback(async () => {
-    /**
-     * Never while a write is in flight. `compact` deletes rows, which shifts every
-     * row below each one, and a pending `updateEntry`/`setDeletedAt` already resolved
-     * its target row number before the shift — so its write would land on whichever
-     * row moved into that position, blanking a cell in a live expense or un-deleting
-     * an unrelated one.
-     *
-     * Reported as `busy`, not as `{removed: 0}`: "Removed 0 deleted rows" is a lie
-     * when there are rows to remove, and it gives no reason to try again.
-     */
-    if (entries.some((entry) => entry.pending)) return { removed: 0, busy: true }
-    if (!tombstoneCount(entries) && !sheetExtras.supersededRows) return { removed: 0 }
+    // Both refusals — a write in flight, and nothing to remove — live in `lib` where a
+    // test can reach them; this only owns the call order below.
+    const refusal = compactRefusal(entries, sheetExtras.supersededRows)
+    if (refusal) return refusal
 
     let gids = sheetIds
     if (missingExpenseGid(gids)) {
@@ -354,9 +351,8 @@ export function useLedger(spreadsheetId) {
      * nothing to remove while the sheet still holds removable rows.
      */
     tombstoneCount: tombstoneCount(entries) + sheetExtras.supersededRows,
-    undecodedRows: sheetExtras.undecodedRows,
-    undatedRows: sheetExtras.undatedRows,
-    configMissing: sheetExtras.configMissing,
+    /** What the last read could not show, whole: `noticeKeys` reads exactly this. */
+    sheetExtras,
     refresh,
     addEntry,
     editEntry,

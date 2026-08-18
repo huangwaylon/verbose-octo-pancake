@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useConnection } from './state/useConnection.js'
 import { useLedger } from './state/useLedger.js'
-import { noticeKeys } from './lib/ledgerState.js'
+import { hasPendingWrite, newDraftEntry, noticeKeys } from './lib/ledgerState.js'
 import { useLedgerView, useInitialMonth } from './state/useLedgerView.js'
 import { useToasts } from './state/useToasts.js'
-import { ENTRY_TYPE, PERSON } from './schema.js'
-import { currentMonthKey, todayIso } from './lib/dates.js'
+import { currentMonthKey } from './lib/dates.js'
 import { useT, errorMessage } from './i18n/index.js'
 import { readStoredIdentity, storeIdentity } from './lib/identity.js'
 import { setSafeToReload } from './lib/serviceWorker.js'
@@ -52,34 +51,10 @@ export default function App() {
   // A service worker update activates by reloading, so it must never land while
   // an entry is half-typed or a write has not reached the sheet.
   useEffect(() => {
-    setSafeToReload(() => !draft && !ledger.entries.some((entry) => entry.pending))
+    setSafeToReload(() => !draft && !hasPendingWrite(ledger.entries))
   }, [draft, ledger.entries])
 
-  const openAdd = () =>
-    setDraft({
-      mode: 'add',
-      entry: {
-        /**
-         * Minted when the draft opens, not per submit. A `fetch` that rejects after
-         * Google committed the append — the response lost, not the request — leaves
-         * the row on screen as failed; re-submitting with a fresh id would write a
-         * second expense that `reconcileById` cannot collapse, and the balance would
-         * double-count it forever. Same id means the retry is at worst a duplicate
-         * row the client reconciles to one.
-         */
-        id: crypto.randomUUID(),
-        type: ENTRY_TYPE.EXPENSE,
-        date: todayIso(),
-        payer: me ?? PERSON.P1,
-        amountCents: 0,
-        category: '',
-        description: '',
-        // Left unset: the form derives it from the config tab per payer, and
-        // re-derives when the payer control changes. Seeding it here would pin
-        // the opening payer's share onto whoever it is switched to.
-        payerShare: null,
-      },
-    })
+  const openAdd = () => setDraft({ mode: 'add', entry: newDraftEntry(me) })
 
   const submitDraft = (input) =>
     draft.mode === 'edit' ? ledger.editEntry(input) : ledger.addEntry(input)
@@ -155,9 +130,7 @@ export default function App() {
     status: ledger.status,
     error: ledger.error,
     mixedCurrencies: view.mixedCurrencies,
-    configMissing: ledger.configMissing,
-    undecodedRows: ledger.undecodedRows,
-    undatedRows: ledger.undatedRows,
+    ...ledger.sheetExtras,
   }).map(({ key, vars }) => t(key, vars))
 
   return (

@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { ENTRY_ERROR, PERSON, expensesTab, makeEntry } from '../src/schema.js'
+import { ENTRY_ERROR, ENTRY_TYPE, PERSON, expensesTab, isPerson, makeEntry } from '../src/schema.js'
 import {
   acknowledge,
+  compactRefusal,
   entryById,
   entryFromInput,
+  hasPendingWrite,
   looksUninitialized,
   mergeLoaded,
   missingExpenseGid,
+  newDraftEntry,
   noticeKeys,
   reconcileById,
   reverted,
@@ -480,5 +483,98 @@ describe('noticeKeys', () => {
       'warning.undecodedRows',
       'warning.undatedRows',
     ])
+  })
+})
+
+/**
+ * The three predicates the hook used to spell inline, where nothing could reach them.
+ */
+describe('hasPendingWrite', () => {
+  it('is true while any row has not reached the sheet', () => {
+    expect(hasPendingWrite([{ id: 'a' }, { id: 'b', pending: true }])).toBe(true)
+  })
+
+  it('is false for a settled list and for an empty one', () => {
+    expect(hasPendingWrite([{ id: 'a' }, { id: 'b', pending: false }])).toBe(false)
+    expect(hasPendingWrite([])).toBe(false)
+  })
+})
+
+describe('compactRefusal', () => {
+  const tombstone = { id: 'gone', deletedAt: '2026-08-06T00:00:00.000Z' }
+
+  it('refuses as BUSY while a write is in flight, even with rows to remove', () => {
+    // Compact shifts every row below each deletion, and a pending write already
+    // resolved its target row number — so it would land on whichever row moved into
+    // that position, blanking a live expense or un-deleting an unrelated one.
+    expect(compactRefusal([tombstone, { id: 'a', pending: true }], 0)).toEqual({
+      removed: 0,
+      busy: true,
+    })
+  })
+
+  it('reports busy rather than "removed 0", which would be a lie', () => {
+    // "Removed 0 deleted rows" over a sheet that has rows to remove gives no reason
+    // to try again.
+    const refusal = compactRefusal([tombstone, { id: 'a', pending: true }], 0)
+    expect(refusal.busy).toBe(true)
+  })
+
+  it('refuses quietly when there is genuinely nothing to remove', () => {
+    expect(compactRefusal([{ id: 'a' }], 0)).toEqual({ removed: 0 })
+    expect(compactRefusal([], 0)).toEqual({ removed: 0 })
+  })
+
+  it('allows a run for a tombstone the sheet holds but the list cannot show', () => {
+    // `reconcileById` hides a superseded tombstone behind its live row, so `entries`
+    // can look clean while the sheet still holds removable rows. Refusing here would
+    // leave them unremovable for the life of the install.
+    expect(compactRefusal([{ id: 'a' }], 1)).toBe(null)
+  })
+
+  it('allows a run when a tombstone is on screen and nothing is in flight', () => {
+    expect(compactRefusal([tombstone], 0)).toBe(null)
+  })
+
+  it('puts busy ahead of nothing-to-remove, so a pending write is never ignored', () => {
+    expect(compactRefusal([{ id: 'a', pending: true }], 0)).toEqual({ removed: 0, busy: true })
+  })
+})
+
+describe('newDraftEntry', () => {
+  it('mints a fresh id per draft, so a lost response cannot double-count', () => {
+    // The id belongs to the draft, not to the submit: a `fetch` that rejects after
+    // Google committed the append would otherwise be retried under a second id, and
+    // `reconcileById` cannot collapse two ids.
+    const a = newDraftEntry(PERSON.P1)
+    const b = newDraftEntry(PERSON.P1)
+    expect(a.id).toEqual(expect.any(String))
+    expect(a.id.length).toBeGreaterThan(0)
+    expect(a.id).not.toBe(b.id)
+  })
+
+  it('opens on this device’s person, and falls back to a real one', () => {
+    expect(newDraftEntry(PERSON.P2).payer).toBe(PERSON.P2)
+    // The payer decides the sign of the balance, so it may never be undefined.
+    for (const junk of [undefined, null, '', 'p3', 42]) {
+      expect(isPerson(newDraftEntry(junk).payer)).toBe(true)
+    }
+  })
+
+  it('carries no share, meaning "follow the payer’s default"', () => {
+    // Seeding one would pin the opening payer's share onto whoever it is switched to.
+    expect(newDraftEntry(PERSON.P1).payerShare).toBe(null)
+  })
+
+  it('is an expense, and claims no timestamps it has not earned', () => {
+    const draft = newDraftEntry(PERSON.P1)
+    expect(draft.type).toBe(ENTRY_TYPE.EXPENSE)
+    // Not `makeEntry`: a draft has not been saved, so it must not look saved.
+    expect(draft.createdAt).toBeUndefined()
+    expect(draft.updatedAt).toBeUndefined()
+  })
+
+  it('opens on a date that is a real ISO day', () => {
+    expect(newDraftEntry(PERSON.P1).date).toMatch(/^\d{4}-\d{2}-\d{2}$/)
   })
 })

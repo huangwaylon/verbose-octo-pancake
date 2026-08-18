@@ -16,7 +16,7 @@ import { currentMonthKey } from '../lib/dates.js'
 /**
  * Everything the signed-in screen shows, derived from the raw ledger.
  *
- * Split out of `App` because it is the only part of it that is arithmetic: nine
+ * Split out of `App` because it is the only part of it that is arithmetic: eight
  * values, all of them a pure function of the entries, the sheet's currency and
  * which month is on screen. `App` is then just gates, sheets and layout.
  *
