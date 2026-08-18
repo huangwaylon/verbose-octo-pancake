@@ -148,10 +148,12 @@ describe('the rules an installed iOS web app depends on', () => {
   it('lifts the sheet clear of the software keyboard', () => {
     // `dvh` tracks the LAYOUT viewport, which iOS does not shrink for the keyboard,
     // so without this the footer's Save button sits behind it — and the decimal
-    // keypad has no Done key to dismiss with. Two readers, and both matter: the
-    // container pads by the inset, and the content-sized panel caps itself by it so a
-    // confirmation does not grow past the top of the screen. The full-screen panel is
-    // deliberately NOT a third — it takes 100% of the container's already-padded box.
+    // keypad has no Done key to dismiss with. Three readers, and each matters: the
+    // container pads by the inset, the content-sized panel caps itself by it so a
+    // confirmation does not grow past the top of the screen, and the footer spends
+    // `--safe-bottom` only on what the keyboard is not already covering. The
+    // full-screen panel is deliberately NOT a fourth — it takes 100% of the
+    // container's already-padded box rather than computing the same number twice.
     expect(blocksFor(FILES.primitives, '.sheet').join()).toContain('--keyboard-inset')
     expect(blocksFor(FILES.primitives, '.sheet__panel').join()).toContain('--keyboard-inset')
     // The home indicator's clearance is worth nothing behind a keyboard, and that is

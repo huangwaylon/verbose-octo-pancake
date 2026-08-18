@@ -1,10 +1,9 @@
 /**
  * A labelled form field: the label, the control, and prose above or below it.
  *
- * The shape was hand-rolled at eleven call sites, each one re-deciding whether the
- * label is a `<label>` or a `<span>`. That is an accessibility decision, not a
- * styling one, so it lives here: `htmlFor` when the field wraps ONE control that can
- * own the name, a `<span>` when it wraps several — a radio group, a row of pills, a
+ * One home for the `<label htmlFor>` vs `<span>` decision, which is an accessibility
+ * decision rather than a styling one: `htmlFor` when the field wraps ONE control that
+ * can own the name, a `<span>` when it wraps several — a radio group, a row of pills, a
  * button plus its result — because a `<label>` pointing at a group makes a screen
  * reader announce the wrong element.
  *

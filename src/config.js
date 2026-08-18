@@ -17,8 +17,8 @@ export const STORAGE_KEYS = {
    *
    * NOTE: localStorage is scoped to the ORIGIN, not the path, so every site
    * published from this GitHub Pages account can read this key. That is an
-   * accepted trade-off and the reason for the invariant in CLAUDE.md about
-   * never publishing anything untrusted from the same origin.
+   * accepted trade-off, and the reason nothing untrusted may be published from
+   * this origin — see the Security model section of README.md.
    */
   appKey: 'sf.appKey',
   token: 'sf.token',

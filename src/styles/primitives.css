@@ -324,7 +324,7 @@
 .segmented__option:has(input:checked) {
   background-color: var(--surface);
   color: var(--ink);
-  /* One of the four permitted shadows: without it the white thumb does not
+  /* One of the three permitted elevations: without it the white thumb does not
      read as sitting above the --sunken track. */
   box-shadow: var(--shadow-raised);
 }

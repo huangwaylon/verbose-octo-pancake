@@ -30,11 +30,11 @@ const MAX_CHARS = 800_000
  * Whether a restored row is safe to hand to the balance.
  *
  * The cache is the one input the app trusts without having decoded it through
- * `rowToEntry`, and it paints during the FIRST render — before any network call and
- * inside a `useMemo`, where a throw is an app that will not launch. `splitCents`
- * throws on a non-numeric share and `sumCents` on a non-integer amount, so a single
- * bad row from an un-bumped `VERSION` would white-screen the app with no way in to
- * clear it. Cheaper to check here and re-fetch: the sheet is the source of truth.
+ * `rowToEntry`, and it is restored in a `useState` initializer, so it paints during the
+ * FIRST render — before any network call. `splitCents` throws on a non-numeric share and
+ * `sumCents` on a non-integer amount, and those run inside `useLedgerView`'s memos, so a
+ * single bad row from an un-bumped `VERSION` would white-screen the app with no way in
+ * to clear it. Cheaper to check here and re-fetch: the sheet is the source of truth.
  */
 function isRestorable(entry) {
   return (

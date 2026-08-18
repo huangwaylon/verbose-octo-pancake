@@ -48,10 +48,22 @@ sign and nothing throws.
 lives in *is* the payer, so a caller that cannot name one has lost track of the tab it
 is reading, and every row it touches would be attributed wrongly.
 
-**An id is not unique across the two tabs**, because a payer change leaves a
-tombstone behind. Every read goes through `reconcileById`, which says what breaks
-without it. Those hidden tombstones are still real rows, so `supersededRows` is added
-back to the count the compact button acts on.
+**An id is not unique across the two tabs, and it is not unique WITHIN one either** —
+a payer change appends to the new tab and tombstones the old row, so a payer that has
+moved away and back leaves the id in that tab twice. Two separate rules follow.
+
+Every *read* goes through `reconcileById`, which says what breaks without it. Those
+hidden tombstones are still real rows, so `supersededRows` is added back to the count
+the compact button acts on.
+
+Every *write* goes through `resolveRow`, which reads the full row range and prefers the
+LAST LIVE row — never merely the first id match. Matching the first writes to the dead
+copy, and both outcomes are silent: a delete stamps a row that is already tombstoned
+while the live one survives, so the delete does nothing and the expense returns on the
+next refresh; a plain edit clears that row's `deleted_at` and resurrects it into a
+SECOND live row. Nothing reports either, because `reconcileById` collapses the duplicate
+on screen, `supersededRows` counts tombstones only, and `compact` removes tombstones
+only — so it can never clean one up.
 
 **`updateEntry` must be told the row's CURRENT payer**, which is the tab the row
 lives in now — `useLedger` passes `previous.payer` from local state, never
@@ -93,7 +105,9 @@ id → row through `resolveRow` immediately before writing. There is deliberatel
 
 **`compact` reads the full row range, not just the `deleted_at` column**, because its
 row numbers come from position and that column is empty on most rows. Being one row out
-in the only hard delete removes somebody else's expense.
+in the only hard delete removes somebody else's expense. Its two tab reads are also
+deliberately *serialized* rather than batched: one round trip on a rare, manual action is
+not worth re-deriving those row numbers from a positional `valueRanges` reply.
 
 **`compact()` is the only hard delete**, and it must issue its `deleteDimension`
 requests in **descending** row order within each tab, or earlier deletions shift the
@@ -171,8 +185,9 @@ both ways: `SEED_NAMES` in `sheets.js` writes English into a fresh sheet, and
 `DEFAULT_CONFIG` deliberately carries no names at all, so that a sheet which says
 nothing falls through to `nameOf`'s localized fallback instead of "Person 1".
 
-**Neither per-device preference may ever be written to the sheet.** Neither person
-gets to restyle the other's phone.
+**Neither the locale nor the accent may ever be written to the sheet.** Neither person
+gets to restyle the other's phone. Which of the two people this device is, is the third
+per-device value and is likewise never written — nothing in the sheet can name it.
 
 **Never add an `if (type === 'settlement')` branch to arithmetic** — `payer_share: 0`
 already says it — and never count one toward a spend total or a category breakdown.
@@ -191,8 +206,8 @@ records a decision someone already made.
 **Dates are ISO strings, compared as strings.** Never `new Date('2026-08-05')` —
 that parses as UTC midnight and shifts to the previous day in western timezones. Use
 the helpers in `src/lib/dates.js`, which build dates from explicit parts. `isMonthKey`
-there is the only test of a `'YYYY-MM'` key — a second regex elsewhere disagreed with it
-about whether month 13 is a month.
+there is the only test of a `'YYYY-MM'` key: a second one anywhere else is two answers to
+whether month 13 is a month.
 
 **Config values are not all strings.** `CONFIG_FIELDS` in `src/lib/sheets.js`
 carries a kind per key — `text`, `code`, `list` or `fraction` — and each parser in
@@ -202,17 +217,27 @@ up empty. A share must never yield NaN: that reaches `splitCents` and moves mone
 wrongly. `test/config.test.js` pins these.
 
 **A hook holds effects; the decisions live in `lib/`.** There is no DOM in the test
-environment and no renderer for hooks, so anything inside a `use*` file is
-unreachable from a test. `useLedger` owns state, effects and call order only. Every
+environment and no renderer for hooks, so nothing a `use*.js` file decides for itself is
+reachable from a test. `useLedger` owns state, effects and call order only. Every
 "given this list, what is the list next", every status decision, and every refusal
 lives in `lib/` — `ledgerState.js` (list transitions, `reconcileById`,
-`looksUninitialized`, `entryFromInput`), `balance.js` (`initialMonthKey` and the
-aggregates), `split.js` (`toSplit`, `nextSplit`). Put new logic there, not in the
+`looksUninitialized`, `entryFromInput`, `hasPendingWrite`, `compactRefusal`,
+`newDraftEntry`), `balance.js` (`initialMonthKey` and the aggregates), `split.js`
+(`toSplit`, `nextSplit`). Put new logic there, not in the
 hook, or it cannot be tested at all.
 
-**Refreshes on focus are throttled to a 30s floor.** Two people share one sheet with
-no push channel, so `useLedger` re-reads on `focus` and `visibilitychange`; window
-switching is constant and every refresh spends per-user quota. Do not remove it.
+**Refreshes on focus are throttled to a 30s floor, and EVERY read counts against it.**
+Two people share one sheet with no push channel, so `useLedger` re-reads on `focus` and
+`visibilitychange`; window switching is constant and every refresh spends per-user quota.
+`load` stamps the clock, not the focus handler, so the launch read and a tap on Refresh
+are not followed seconds later by a window switch spending another. Do not remove it.
+
+**Display formatters are cached, keyed on everything that decides one.** `money.js` and
+`dates.js` each hold a `Map`, because a month's ledger asks for one `Intl` formatter per
+amount and per day heading and constructing one costs an order of magnitude more than
+reusing it. The currency cache stores only *successful* constructions, or an unusable
+code from the config tab would be remembered as a formatter instead of falling through
+to the display fallback. Neither cache may key on less than the full set of options.
 
 **The app key is never a build-time value.** It is typed once per device and lives
 only there. `VITE_SCRIPT_URL` ships in the public bundle, so nothing may depend on
@@ -261,9 +286,10 @@ becomes a sentence, and it never falls back to `.message`. Show `cause.message` 
 Japanese reader gets "The caller does not have permission (HTTP 403)".
 
 **The snapshot is validated per entry, and dropped whole if any row fails.** It is the
-one input never decoded through `rowToEntry`, and it paints during the FIRST render
-inside a `useMemo`, where a throw is an app that will not launch with no way in to clear
-the cache. A partially dropped list would be a wrong balance instead.
+one input never decoded through `rowToEntry`, and it is restored in a `useState`
+initializer so it paints during the FIRST render — where a throw from `splitCents` or
+`sumCents` downstream is an app that will not launch, with no way in to clear the cache.
+A partially dropped list would be a wrong balance instead.
 
 **Bump `VERSION` whenever the persisted shape changes**; `v` is a drop marker, never a
 migration. Three other things there are easy to break: it silently stops writing past
@@ -439,7 +465,11 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
   arithmetic, and it reads the visual viewport's height **at its own scale**: a pinch
   shrinks that viewport exactly as a keyboard does, so the bare difference invents ~400px
   of keypad, and answering zero instead would put Save behind a real one. The page is
-  deliberately zoomable, so multiplying back up is the only honest reading.
+  deliberately zoomable, so multiplying back up is the only honest reading. The property
+  is published **only when the value changes**: it is inherited from the root, so every
+  write invalidates computed style for the whole document — the ledger behind the sheet
+  included — and `scroll` fires per frame while iOS follows the focused field, across
+  which the inset is deliberately constant.
 - **A page's worth of form takes the whole phone screen; a question does not.** Full
   screen is `.sheet__panel--full`, opt-in through `BottomSheet`'s `full` prop, because it
   is a claim about the CONTENT — the expense form fills a phone, while the delete
@@ -491,10 +521,12 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
   `-webkit-touch-callout: none`: it is the edit affordance, and a long press should not
   raise the selection magnifier.
 - **Safe areas are composed where they are needed, not globally.** `base.css` applies
-  the horizontal insets to `body`; the sticky header, the sheet footer, the full-screen
-  sheet panel and the toast stack each add `--safe-top`/`--safe-bottom` themselves,
-  because each has to paint *into* its inset while padding its own content. A
-  `position: fixed` element is outside `body`'s padding, so it gets no help from it.
+  the horizontal insets to `body`; every element that has to paint *into* an inset while
+  padding its own content adds `--safe-top`/`--safe-bottom` itself. Six do: the sticky
+  header, `.layout`, `.gate`, the full-screen sheet panel (which adds the horizontal
+  pair too), the sheet footer and the toast stack. A `position: fixed` element is
+  outside `body`'s padding, so it gets no help from it — and neither does anything at
+  `min-height: 100dvh`, which is what the two non-fixed cases have in common.
 
 ### Charts
 
@@ -524,7 +556,7 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
   is stated in words, and money direction is never encoded in hue.
 - **An accent preset is three custom properties** under `[data-accent]` in
   `tokens.css` — attribute-scoped rather than `:root`-scoped so a settings swatch can
-  paint its own colour, with `--accent-ring`/`--accent-shadow` derived by `color-mix`
+  paint its own colour, with `--accent-ring` and `--danger-ring` derived by `color-mix`
   rather than restated.
 - **Use the tokens.** In particular use `var(--transition-fast|base)` rather than a
   hardcoded duration — the tokens collapse to ~0ms under `prefers-reduced-motion`, so
@@ -571,8 +603,8 @@ Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties),
   decides between them, and a phone-only declaration left standing reaches the desktop
   dialog. Keep the reset next to the rule it undoes.
 - **An animation's distance is a length, not a percentage,** where the element it moves
-  can be the whole screen: `sheet-slide-up` at `6%` was tuned against a floating panel
-  and became a 51px slide once one could be 852px tall.
+  can be the whole screen: `sheet-slide-up`'s offset is read against the panel's own
+  height, so a percentage tuned on a floating panel becomes a ~50px lurch on an 852px one.
 - **`--header-height` must never understate the header's real height.** The band holds
   two lines now — a 32px figure and a caption — and `.layout__aside`'s sticky offset reads
   the token from outside the header, so a token that is short slides the aside under the
@@ -627,41 +659,31 @@ config tab, notes and amounts hold everything a 320px phone has no room for. The
 settlement form earns a page because it is the sparsest thing the entry form renders and
 the one place its two `!isSettlement` blocks are visible.
 
-`scripts/frames.html` is how they are viewed: it loads one page into an `<iframe>` per
-width and prints the measurements underneath. **Iframes, not a resized window** — an
-iframe gets its own viewport so container and media queries resolve honestly, while
-headless Chrome quietly reports a different width than you asked for and every breakpoint
-reads wrong. The readout is the assertion: sideways scroll, header height against
-`--header-height`, and — on any page carrying a sheet — that a full-screen panel fills
-the viewport exactly, that a dialog above `48rem` still floats clear of both edges, that
-`.sheet__body` does not scroll sideways (its own `overflow-x: hidden` clips that, so the
-document-level check cannot see it), and that **Save clears a simulated keyboard**. The
-inset is a custom property, so the harness can set it directly: `visualViewport` cannot
-be faked but the thing it feeds can, which is the only way to see the state the sheet's
-whole geometry exists for.
-
-Three traps in the harness itself. It measures on `load`, so it sets `animation: none`
-on the panel first — otherwise every figure is the slide-up's first frame, reported as a
-panel 24px low and a Save button 24px under the keyboard, and at dialog widths as
-`sheet-zoom-in`'s 98% of the real height. The full panel's top edge is compared against
+`scripts/frames.html` is how they are viewed: one page per `<iframe>` per width, with the
+measurements printed underneath. Its own header comment carries the harness's reasoning —
+why an iframe rather than a resized window, why `--virtual-time-budget` has to outlast
+the backdrop's fade-in, why it disables the panel's animation before measuring. What is
+only here is **what the readout asserts**: sideways scroll, header height against
+`--header-height`, the add button against `--tap-target`, and — on any page carrying a
+sheet — that a full-screen panel fills the viewport exactly, that a dialog above `48rem`
+still floats clear of both edges, that `.sheet__body` does not scroll sideways (its own
+`overflow-x: hidden` clips that, so the document-level check cannot see it), and that
+**Save clears a simulated keyboard**. The full panel's top edge is compared against
 **zero, not `--safe-top`**, because it pads *into* that inset, so the inset is inside its
-border box. And **height is a parameter now that a panel can fill the screen**: pass
-`h=852` for an iPhone 15, `h=667` for an SE.
+border box.
 
 ```sh
 npx vite-node scripts/preview.jsx     # writes scripts/preview-*.html (gitignored)
 python3 -m http.server 8899           # iframes need an origin
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
-  --virtual-time-budget=3000 --screenshot=/tmp/shot.png --window-size=1220,1000 \
+  --virtual-time-budget=3000 --screenshot=/tmp/shot.png --window-size=1400,1000 \
   'http://127.0.0.1:8899/scripts/frames.html?page=preview-en-form&w=320,393&h=852'
 ```
 
 `page` is any generated file's name without `.html`; `w` is the iframe widths, `h` their
-height, `keyboard` the simulated inset (336 by default, the SE's decimal keypad). The
-widths worth walking are 320 (the floor), 393 (iPhone 15), 430, 768 and 1440.
-`--virtual-time-budget` has to outlast the backdrop's fade-in, which starts at
-`opacity: 0` — without it a screenshot catches a half-transparent scrim. The panel's own
-slide-up is not a factor, since the harness disables it before measuring.
+height (852 for an iPhone 15, 667 for an SE — height matters as much as width once a
+panel fills the screen), `keyboard` the simulated inset (336 by default, the SE's decimal
+keypad). The widths worth walking are 320 (the floor), 393 (iPhone 15), 430, 768 and 1440.
 
 ## Gotchas
 

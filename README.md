@@ -237,5 +237,5 @@ simulated keyboard. CLAUDE.md has the invocation.
 | `src/i18n/`, `src/components/`, `src/styles/` | engine and `en`/`ja` catalogs; one file per view with inline-SVG icons and chart; `tokens`/`base`/`primitives`/`app` in that order |
 | `test/`, `scripts/preview.jsx` | vitest specs; the static-HTML visual harness |
 | `scripts/frames.html` | views a preview page at several widths and heights, measuring each rather than eyeballing it |
-| `scripts/build-sw.js` | walks `dist/` and emits the service worker; importable, so its two silent failure modes are tested |
+| `scripts/build-sw.js` | walks `dist/` and emits the service worker; importable, so its silent failure modes are tested |
 | `.github/workflows/deploy.yml` | test, build, deploy to Pages |

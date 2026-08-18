@@ -9,10 +9,10 @@ import { useT } from '../i18n/index.js'
 /**
  * The whole signed-in surface: the header, the add action, and the two columns.
  *
- * Separate from `App` because two things render it — the app, and
- * `scripts/preview.jsx`, which is the only check that any of it LOOKS right. Written
- * twice, a layout change would silently leave the visual harness screenshotting a
- * tree the app no longer has.
+ * Separate from `App` because THREE things render it — the app,
+ * `scripts/preview.jsx`, which is the only check that any of it LOOKS right, and one
+ * static render in `test/render.test.jsx`. Written more than once, a layout change
+ * would silently leave both checks looking at a tree the app no longer has.
  *
  * Everything arrives as props: no ledger, no connection, no writes. `App` keeps the
  * gates, the sheets and the state; this is markup and one map over the notices.
