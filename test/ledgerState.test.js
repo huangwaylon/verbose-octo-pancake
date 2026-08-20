@@ -48,6 +48,53 @@ describe('mergeLoaded', () => {
     expect(mergeLoaded([entry('a')], loaded)).toBe(loaded)
   })
 
+  it('hands back the list already on screen when the read changed nothing', () => {
+    // The common case, not an edge: the app re-reads on every resume and most reads
+    // change nothing. A fresh array of equal rows re-runs every memo in
+    // `useLedgerView`, re-renders the whole month and re-serializes the snapshot to
+    // find out the bytes match, so `setEntries` has to be able to bail out.
+    const current = [entry('a'), entry('b')]
+    const loaded = [entry('a'), entry('b')]
+    expect(mergeLoaded(current, loaded)).toBe(current)
+  })
+
+  it('takes the server list when any single field differs', () => {
+    // The whole safety of returning `current` above rests on this being exact: a
+    // field the comparison misses is the other person's edit frozen off the screen,
+    // with nothing to report it. One case per field an entry carries.
+    const differences = {
+      type: 'settlement',
+      date: '2026-08-04',
+      payer: 'p2',
+      amountCents: 1251,
+      currency: 'USD',
+      category: 'Dining',
+      description: 'theirs',
+      payerShare: 1,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-07T00:00:00.000Z',
+      deletedAt: '2026-08-07T00:00:00.000Z',
+    }
+    // Every field but the id, which is what the two rows are matched BY.
+    expect(Object.keys(differences).length).toBe(Object.keys(entry('a')).length - 1)
+
+    for (const [field, value] of Object.entries(differences)) {
+      const loaded = [{ ...entry('a'), [field]: value }]
+      expect(mergeLoaded([entry('a')], loaded), field).toBe(loaded)
+    }
+  })
+
+  it('takes the server list when a row moved, gained one or lost one', () => {
+    const reordered = [entry('b'), entry('a')]
+    expect(mergeLoaded([entry('a'), entry('b')], reordered)).toBe(reordered)
+
+    const gained = [entry('a'), entry('b')]
+    expect(mergeLoaded([entry('a')], gained)).toBe(gained)
+
+    const lost = [entry('a')]
+    expect(mergeLoaded([entry('a'), entry('b')], lost)).toBe(lost)
+  })
+
   it('keeps a pending row the read has not caught up with yet', () => {
     // The append is still in flight, so the sheet does not mention it. Dropping it
     // here would also persist the truncated list, losing the row across a relaunch.

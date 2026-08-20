@@ -232,7 +232,8 @@ simulated keyboard. CLAUDE.md has the invocation.
 | `public/` | `manifest.webmanifest` and the PNG app icons, copied verbatim into `dist/` |
 | `src/schema.js` | the sheet contract: columns, ranges, row ↔ entry mapping |
 | `src/config.js` | build-time values, storage keys, defaults and their merge, `localStorage` wrappers |
-| `src/lib/sheets.js` | every Sheets API call, and the config-tab field list |
+| `src/lib/sheets.js` | every Sheets API call |
+| `src/lib/sheetConfig.js` | the `config` tab: the key map, one parser per kind, and what a fresh tab is seeded with |
 | `src/lib/money.js` | integer minor units: parse, format, split, ISO 4217 exponents |
 | `src/lib/balance.js` | who-owes-whom and the month aggregates; pure |
 | `src/lib/connection.js` | the app key, the minted token, and the failure taxonomy |

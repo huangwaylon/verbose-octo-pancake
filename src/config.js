@@ -65,7 +65,7 @@ export function writeStored(key, value) {
  * The two people's names are deliberately absent. A name defaulted here would
  * shadow `nameOf`'s localized fallback, so a Japanese device with no names in the
  * config tab would read "Person 1" instead of 「ひとり目」. What gets seeded INTO a
- * fresh sheet is `SEED_NAMES` in `sheets.js`, which must stay unlocalized.
+ * fresh sheet is `SEED_NAMES` in `lib/sheetConfig.js`, which must stay unlocalized.
  */
 export const DEFAULT_CONFIG = {
   currency: 'JPY',

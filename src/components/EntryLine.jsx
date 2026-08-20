@@ -28,27 +28,25 @@ export function EntryLine({
     entry.pending ? ' entry--pending' : ''
   }`
 
-  const main = onOpen ? (
-    <button type="button" className="entry__main" onClick={onOpen}>
+  const body = (
+    <>
       <span className="entry__desc">
         {icon}
         {description}
       </span>
       <span className="entry__meta">{meta}</span>
-    </button>
-  ) : (
-    <span className="entry__main">
-      <span className="entry__desc">
-        {icon}
-        {description}
-      </span>
-      <span className="entry__meta">{meta}</span>
-    </span>
+    </>
   )
 
   return (
     <li className={className}>
-      {main}
+      {onOpen ? (
+        <button type="button" className="entry__main" onClick={onOpen}>
+          {body}
+        </button>
+      ) : (
+        <span className="entry__main">{body}</span>
+      )}
       <EntryAmount entry={entry} currency={currency} />
       {children}
     </li>

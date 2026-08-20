@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { ENTRY_TYPE, EVEN_SHARE, otherPerson } from '../schema.js'
 import { useEntryTitle, useT } from '../i18n/index.js'
 import { EntryLine } from './EntryLine.jsx'
@@ -6,8 +7,15 @@ import { SwapIcon, TrashIcon } from './icons.jsx'
 /**
  * One row in the month's list. `label` arrives from the list rather than being
  * derived here, so a long month resolves the two names once instead of per row.
+ *
+ * Memoised because a row is the app's most repeated unit and none of its five props
+ * changes when the ledger does: adding one entry rebuilds the day's groups, and
+ * without this every other row in the month re-derives its title, its meta sentence
+ * and its `Intl` formatter for markup that is byte-identical. Both handlers are stable
+ * by construction — `onEdit` is a `useCallback` in `App` and `onDelete` is a setter —
+ * which is what makes the comparison worth making at all.
  */
-export function EntryRow({ entry, label, currency, onEdit, onDelete }) {
+function EntryRowInner({ entry, label, currency, onEdit, onDelete }) {
   const { t } = useT()
   const description = useEntryTitle(entry)
 
@@ -59,3 +67,5 @@ export function EntryRow({ entry, label, currency, onEdit, onDelete }) {
     </EntryLine>
   )
 }
+
+export const EntryRow = memo(EntryRowInner)

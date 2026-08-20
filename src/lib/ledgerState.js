@@ -62,6 +62,21 @@ function supersedes(entry, kept) {
 }
 
 /**
+ * Whether two entries are the same row, field for field.
+ *
+ * Every value an entry carries is a primitive — the sheet has no nested cells — so
+ * `===` per key is an exact comparison rather than an approximation. Deliberately
+ * key-driven rather than a hand-written field list: a field added to `rowToEntry`
+ * later is then covered by construction, where a list would silently start reporting
+ * two different rows as equal and freeze the newer one off the screen.
+ */
+function sameEntry(a, b) {
+  const keys = Object.keys(a)
+  if (keys.length !== Object.keys(b).length) return false
+  return keys.every((key) => a[key] === b[key])
+}
+
+/**
  * Fold a fresh server read into what is on screen, keeping every optimistic row the
  * server has not acknowledged yet.
  *
@@ -82,6 +97,13 @@ function supersedes(entry, kept) {
  * they leave. Order follows the sheet, with fresh appends last: they are the newest
  * thing this person did.
  *
+ * A read that changed nothing returns the list ALREADY ON SCREEN, not an equal copy of
+ * it. That is the common case rather than an edge: the app re-reads on every resume,
+ * two people entering groceries change nothing most of the time, and a fresh array
+ * would re-run every memo in `useLedgerView`, re-render the whole month, and re-
+ * serialize the snapshot to discover the bytes match. Returning `current` lets
+ * `setEntries` bail out instead. Safe only because the comparison above is exact.
+ *
  * @param {object[]} current what is on screen, including pending rows
  * @param {object[]} loaded what the sheet just said
  * @returns {object[]}
@@ -89,7 +111,12 @@ function supersedes(entry, kept) {
 export function mergeLoaded(current, loaded) {
   const pending = new Map()
   for (const entry of current) if (entry.pending) pending.set(entry.id, entry)
-  if (pending.size === 0) return loaded
+  if (pending.size === 0) {
+    const unchanged =
+      current.length === loaded.length &&
+      current.every((entry, index) => sameEntry(entry, loaded[index]))
+    return unchanged ? current : loaded
+  }
 
   const merged = loaded.map((entry) => pending.get(entry.id) ?? entry)
   const appended = [...pending.values()].filter(

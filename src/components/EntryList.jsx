@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { dayLabel } from '../lib/dates.js'
 import { EntryRow } from './EntryRow.jsx'
 import { useDayLabels, useMoney, usePeopleLabels, useT } from '../i18n/index.js'
@@ -13,8 +14,14 @@ import { WalletIcon } from './icons.jsx'
  * The day labels and the two people's names are resolved once here rather than
  * per row: a long month otherwise rebuilds the same three strings for every
  * entry.
+ *
+ * Memoised, and it is the memo that matters most in the app: `App` re-renders on
+ * every toast, every refresh and every month change, and this subtree is the only
+ * one whose size grows with the ledger. All six props are stable unless the month's
+ * data actually changed — `groups` comes from `useLedgerView`'s memo chain, `onEdit`
+ * from a `useCallback` in `App`, and `onDelete` is a setter.
  */
-export function EntryList({ groups, config, me, currency, onEdit, onDelete }) {
+function EntryListInner({ groups, config, me, currency, onEdit, onDelete }) {
   const { t, locale } = useT()
   const money = useMoney(currency)
   const labels = useDayLabels()
@@ -67,3 +74,5 @@ export function EntryList({ groups, config, me, currency, onEdit, onDelete }) {
     </div>
   )
 }
+
+export const EntryList = memo(EntryListInner)

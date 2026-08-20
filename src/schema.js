@@ -113,10 +113,17 @@ export function rowRange(person, rowNumber) {
   return `${expensesTab(person)}!A${rowNumber}:${LAST_COLUMN}${rowNumber}`
 }
 
+/**
+ * The column list keyed for lookup, built once. `rowToEntry` asks ten times per
+ * row and every read decodes both tabs in full, so a linear scan per field is
+ * ~110 string comparisons per row on the one path a focus refresh always walks.
+ */
+const COLUMN_INDEX = new Map(EXPENSE_COLUMNS.map((column, index) => [column, index]))
+
 /** 0-based position of a named column, e.g. columnIndex('deleted_at') -> 10. */
 export function columnIndex(field) {
-  const index = EXPENSE_COLUMNS.indexOf(field)
-  if (index < 0) throw new Error(`Unknown column: ${field}`)
+  const index = COLUMN_INDEX.get(field)
+  if (index == null) throw new Error(`Unknown column: ${field}`)
   return index
 }
 

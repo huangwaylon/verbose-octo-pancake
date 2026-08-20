@@ -60,6 +60,14 @@ export default function App() {
   const openAdd = () => setDraft({ mode: 'add', entry: newDraftEntry(me) })
 
   /**
+   * Stable so `EntryList`'s memo holds: it is one of the two handlers a row takes,
+   * and the other — `setPendingDelete` — is a setter, already stable. A fresh arrow
+   * here would defeat the memo on every toast and every refresh, which is exactly
+   * when the ledger must not be rebuilt.
+   */
+  const editDraft = useCallback((entry) => setDraft({ mode: 'edit', entry }), [])
+
+  /**
    * The four write paths that report to a toast. `useLedger` has already reverted
    * the optimistic change by the time the catch runs, so there is nothing to undo
    * here — only something to say.
@@ -158,7 +166,7 @@ export default function App() {
         onRefresh={ledger.refresh}
         onOpenSettings={() => setShowSettings(true)}
         onMonthChange={setMonthKey}
-        onEdit={(entry) => setDraft({ mode: 'edit', entry })}
+        onEdit={editDraft}
         onDelete={setPendingDelete}
         onRestore={restoreEntry}
         onAdd={openAdd}

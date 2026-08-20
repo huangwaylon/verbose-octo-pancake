@@ -70,6 +70,14 @@ its id — `mergeLoaded` says why both halves matter. Its corollary: `pending` m
 be left set with no write in flight, so `reverted` strips it. A stuck flag is permanent
 and blocks `compact` for the life of the install.
 
+**A read that changed nothing returns the array already on screen**, so `setEntries`
+bails out instead of re-running every memo, re-rendering the month and re-serializing
+the snapshot — the app re-reads on every resume and most reads change nothing. That
+rests entirely on `sameEntry` being EXACT: it compares by key rather than against a
+field list, because a field it misses is the other person's edit frozen off the screen
+with nothing to report it. Entry values are primitives by construction, which is what
+makes `===` per key an answer rather than an approximation.
+
 **Only the newest read may apply.** `loadGeneration` in `useLedger` drops any reply that
 is not the current one, and a read in flight when the key is forgotten must not
 repopulate state for the sheet just left.
@@ -202,7 +210,7 @@ whether month 13 is a month — and `monthParts` checks the SHAPE before the num
 because `split('-')` alone reads a full ISO day as a valid month and drops every entry
 out of it.
 
-**Config values are not all strings.** `CONFIG_FIELDS` in `src/lib/sheets.js` carries a
+**Config values are not all strings.** `CONFIG_FIELDS` in `src/lib/sheetConfig.js` carries a
 kind per key, and each parser in `PARSERS` answers null for a value it cannot use so the
 caller's defaults win: an empty list must never stand in for a default, or the category
 picker ends up empty, and a share must never yield NaN, because that reaches `splitCents`
@@ -294,10 +302,12 @@ the language gets changed.
 
 **The snapshot is validated per entry, and dropped whole if any row fails.** It is the
 one input never decoded through `rowToEntry`. **Bump `VERSION` whenever the persisted
-shape changes**; `v` is a drop marker, never a migration. Four more things in
+shape changes**; `v` is a drop marker, never a migration. Five more things in
 `snapshot.js` are easy to break and each says so where it lives: what a bad row costs
 during the first render, the silent stop past `MAX_CHARS`, storing the **pre-merge**
-config, and `clearSnapshot` having to reset the remembered payload.
+config, `clearSnapshot` having to reset the remembered payload, and a successful *read*
+seeding that payload — without which every cached launch re-serializes and rewrites the
+bytes it just restored, on the one frame somebody is waiting for.
 
 **The cache is written from the screen, only once nothing is pending.** An effect in
 `useLedger` owns that, so an unacknowledged optimistic row can never reach it — and a
@@ -375,6 +385,13 @@ existing sheet working".
   than once, a layout change silently leaves the only visual check screenshotting a tree
   the app no longer has. `App` keeps the gates, the sheets and the state;
   `useLedgerView` holds every derived figure.
+- **`EntryList`, `EntryRow` and `SummaryCard` are `memo`, and every handler they take
+  must stay stable.** `App` re-renders on each toast, each refresh and each month change,
+  and those three are the only subtrees whose cost grows with the ledger — so an inline
+  arrow passed to one of them turns the memo into dead weight that still pays for the
+  comparison. `editDraft` is in a `useCallback` for exactly that; `setPendingDelete` and
+  `setMonthKey` are setters and already stable. Nothing looks wrong when this breaks and
+  no test can see it — `renderToStaticMarkup` never re-renders.
 - **The entry form's field order is by how often each field is touched**, not by how the
   sheet reads: amount, note, category, who paid, date, split. `EntryFormSheet` says why.
   It is a decision, so `test/ui.test.jsx` asserts the order — nothing else can see it.

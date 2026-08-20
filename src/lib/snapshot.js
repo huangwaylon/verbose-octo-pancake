@@ -54,6 +54,25 @@ function isRestorable(entry) {
 }
 
 /**
+ * What storage is believed to hold, so an unchanged ledger does not pay for a
+ * second write. Comparing against storage instead would mean reading the whole
+ * string back, which is the cost we are trying to avoid. Set by a successful read
+ * as well as by a write — see `readSnapshot`.
+ */
+let lastPayload = null
+
+/**
+ * The exact list and config that produced it, by reference.
+ *
+ * `lastPayload` is the backstop for a refresh that returned equal content in a fresh
+ * array; this is for the cached launch, where the list on screen IS the one just
+ * restored. It catches that case BEFORE the serialize rather than after, which is the
+ * expensive half — a thousand-entry ledger is a quarter of a megabyte of JSON built to
+ * be thrown away, on the frame someone is waiting for.
+ */
+let lastSource = null
+
+/**
  * @param {string} spreadsheetId the sheet the caller is about to read
  * @returns {{entries: object[], config: object}|null}
  */
@@ -73,18 +92,22 @@ export function readSnapshot(spreadsheetId) {
     // All or nothing: a partially dropped list is a wrong balance on screen, which
     // is worse than the empty frame a re-fetch costs.
     if (!saved.entries.every(isRestorable)) return null
+    // What storage already holds, so the launch does not immediately rewrite it.
+    // `useLedger` persists whatever is on screen once nothing is pending, and on a
+    // cached launch that is this very list — so without this every launch pays a full
+    // serialize plus a synchronous `setItem` of bytes already there, on the one frame
+    // the person is waiting for. The reference pair is what skips the serialize; the
+    // string is the backstop, byte-identical by construction because it was produced
+    // by `writeSnapshot` from an equal list and `JSON.stringify` follows insertion
+    // order, which `JSON.parse` preserves. If it ever were not, the cost is one
+    // redundant write rather than a wrong cache.
+    lastPayload = raw
+    lastSource = { entries: saved.entries, config: saved.config }
     return { entries: saved.entries, config: saved.config }
   } catch {
     return null
   }
 }
-
-/**
- * The last payload written this session, so an unchanged refresh does not pay for
- * a second write. Comparing against storage instead would mean reading the whole
- * string back, which is the cost we are trying to avoid.
- */
-let lastPayload = null
 
 /**
  * @param {object[]} entries as returned by a successful read. Never the merged
@@ -94,6 +117,8 @@ let lastPayload = null
  */
 export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
   if (!spreadsheetId) return
+  // The same list and config as last time, unchanged since: nothing to serialize.
+  if (lastSource && entries === lastSource.entries && sheetConfig === lastSource.config) return
   const payload = JSON.stringify({
     v: VERSION,
     spreadsheetId,
@@ -102,6 +127,10 @@ export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
     // row that came back from the sheet is saved by definition.
     entries: entries.map(({ pending, ...entry }) => entry),
   })
+  // Remembered before the two refusals below, not after: whether the bytes turned out
+  // to be already stored or too large to store, this exact list has been considered
+  // and the answer will not change until one of the two references does.
+  lastSource = { entries, config: sheetConfig }
   if (payload === lastPayload) return
   if (payload.length > MAX_CHARS) return
   lastPayload = payload
@@ -110,5 +139,6 @@ export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
 
 export function clearSnapshot() {
   lastPayload = null
+  lastSource = null
   writeStored(STORAGE_KEYS.snapshot, null)
 }

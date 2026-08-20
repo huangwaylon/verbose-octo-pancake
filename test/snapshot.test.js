@@ -73,6 +73,35 @@ describe('round trip', () => {
     snapshot.writeSnapshot(SHEET, [entry()], {})
     expect(store.get('sf.snapshot')).toBe(first)
   })
+
+  it('does not rewrite what it just restored, which is every cached launch', async () => {
+    // `useLedger` persists whatever is on screen once nothing is pending, and on a
+    // cached launch that is the list this read just returned — so a read that does
+    // not remember what storage holds makes every launch pay a full serialize and a
+    // synchronous setItem of bytes already there, on the frame someone is waiting on.
+    // The payload is produced by `writeSnapshot` rather than hand-authored, so this
+    // asserts byte-identity through the real encoder.
+    const seeded = await load()
+    seeded.snapshot.writeSnapshot(SHEET, [entry()], { currency: 'USD' })
+    const payload = seeded.store.get('sf.snapshot')
+
+    // A fresh module, as a relaunch is: the remembered payload resets with it.
+    const { snapshot } = await load({ 'sf.snapshot': payload })
+    const restored = snapshot.readSnapshot(SHEET)
+    const writes = vi.spyOn(globalThis.localStorage, 'setItem')
+    // The serialize is the expensive half — a long ledger is a quarter of a megabyte
+    // of JSON built to be thrown away — so it has to be skipped, not just its write.
+    const serialize = vi.spyOn(JSON, 'stringify')
+
+    snapshot.writeSnapshot(SHEET, restored.entries, restored.config)
+    expect(writes).not.toHaveBeenCalled()
+    expect(serialize).not.toHaveBeenCalled()
+
+    // And not by going deaf: a changed ledger still reaches storage.
+    snapshot.writeSnapshot(SHEET, [entry({ amountCents: 99 })], restored.config)
+    expect(writes).toHaveBeenCalledTimes(1)
+    serialize.mockRestore()
+  })
 })
 
 describe('what gets ignored', () => {

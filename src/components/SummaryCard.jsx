@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { PEOPLE, PERSON } from '../schema.js'
 import { UNCATEGORIZED } from '../lib/balance.js'
 import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
@@ -10,8 +11,12 @@ import { DonutChart } from './DonutChart.jsx'
  * across many classes, so it gets the donut. "Who paid" is exactly two values,
  * and a two-slice pie is the canonical chart anti-pattern — the number is the
  * chart — so that gets a meter bar plus the two figures.
+ *
+ * Memoised for the same reason `EntryList` is: it takes no handlers and every
+ * figure it reads is one of `useLedgerView`'s memos, so a toast has no business
+ * re-laying-out a chart.
  */
-export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, currency }) {
+function SummaryCardInner({ monthSpend, byCategory, byPerson, config, me, currency }) {
   // Every hook runs before the early return below: hook order must not depend
   // on props.
   const { t } = useT()
@@ -90,3 +95,5 @@ export function SummaryCard({ monthSpend, byCategory, byPerson, config, me, curr
     </section>
   )
 }
+
+export const SummaryCard = memo(SummaryCardInner)
