@@ -76,7 +76,10 @@ the snapshot — the app re-reads on every resume and most reads change nothing.
 rests entirely on `sameEntry` being EXACT: it compares by key rather than against a
 field list, because a field it misses is the other person's edit frozen off the screen
 with nothing to report it. Entry values are primitives by construction, which is what
-makes `===` per key an answer rather than an approximation.
+makes `===` per key an answer rather than an approximation. `applyLoad` holds the merged
+**config**'s identity across such a read for the same reason, through `sameSheetConfig`
+— without it a resume that changed nothing still re-renders the whole ledger, because
+identity is what every `memo` keyed on the config compares.
 
 **Only the newest read may apply.** `loadGeneration` in `useLedger` drops any reply that
 is not the current one, and a read in flight when the key is forgotten must not

@@ -76,6 +76,39 @@ export function parseConfigRows(rows) {
 }
 
 /**
+ * Whether two partial configs say the same thing.
+ *
+ * `parseConfigRows` builds a fresh object per read, and `mergeConfig` a fresh merged
+ * one from it, so without this the config's IDENTITY changes on every refresh even
+ * though the tab almost never does — and identity is what every `memo` and `useMemo`
+ * keyed on the config compares. A resume would then re-render the whole ledger to
+ * arrive at the same screen.
+ *
+ * Arrays are compared element-wise because two of the four kinds are lists. Anything
+ * else falls through to `===`, so a kind added later that is neither a primitive nor a
+ * list reports "different" and merely loses the optimization.
+ */
+export function sameSheetConfig(a, b) {
+  const left = a ?? {}
+  const right = b ?? {}
+  const keys = Object.keys(left)
+  if (keys.length !== Object.keys(right).length) return false
+  return keys.every((key) => {
+    const one = left[key]
+    const two = right[key]
+    if (Array.isArray(one) || Array.isArray(two)) {
+      return (
+        Array.isArray(one) &&
+        Array.isArray(two) &&
+        one.length === two.length &&
+        one.every((item, index) => item === two[index])
+      )
+    }
+    return one === two
+  })
+}
+
+/**
  * What a freshly seeded `config` tab says the two people are called, and the only
  * place these strings exist. They are NOT in `DEFAULT_CONFIG`: a default there
  * would shadow the localized fallback `nameOf` applies when the sheet says

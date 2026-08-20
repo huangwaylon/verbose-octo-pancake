@@ -23,6 +23,7 @@ import {
   without,
 } from '../lib/ledgerState.js'
 import { readSnapshot, writeSnapshot } from '../lib/snapshot.js'
+import { sameSheetConfig } from '../lib/sheetConfig.js'
 
 /** Floor between focus-triggered refreshes. Window switching is constant. */
 const REFRESH_THROTTLE_MS = 30_000
@@ -114,8 +115,14 @@ export function useLedger(spreadsheetId) {
     // Config before amounts, always: the balance and the month totals format
     // at `config.currency`, so entries seeded against a stale currency render
     // at the wrong scale. Same ordering rule as `loadAll`.
+    //
+    // Kept as the SAME object when the tab said the same thing, because the config's
+    // identity is what every `memo` keyed on it compares — a fresh but equal one
+    // re-renders the whole ledger on a resume that changed nothing. `mergeConfig`
+    // clones, so this cannot alias the previous merge's arrays either.
+    const changed = !sameSheetConfig(sheetConfigRef.current, data.sheetConfig)
     sheetConfigRef.current = data.sheetConfig
-    setConfig(mergeConfig(data.sheetConfig))
+    if (changed) setConfig(mergeConfig(data.sheetConfig))
     setSheetExtras({
       supersededRows: data.supersededRows,
       undecodedRows: data.undecodedRows,

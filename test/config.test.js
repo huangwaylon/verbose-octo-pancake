@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { parseConfigRows } from '../src/lib/sheetConfig.js'
+import { parseConfigRows, sameSheetConfig } from '../src/lib/sheetConfig.js'
 import { DEFAULT_CONFIG, mergeConfig } from '../src/config.js'
 import { nameOf } from '../src/lib/identity.js'
 import { PERSON } from '../src/schema.js'
@@ -185,5 +185,63 @@ describe('the two people’s names', () => {
     const config = mergeConfig(parseConfigRows(rows([['person1_name', 'Waylon']])))
     expect(nameOf(config, PERSON.P1, { p1: 'ひとり目', p2: 'ふたり目' })).toBe('Waylon')
     expect(nameOf(config, PERSON.P2, { p1: 'ひとり目', p2: 'ふたり目' })).toBe('ふたり目')
+  })
+})
+
+describe('comparing two reads of the tab', () => {
+  /**
+   * `useLedger` keeps the SAME merged config object when this answers true, because a
+   * fresh but equal one re-renders the whole ledger on a resume that changed nothing.
+   * So a false positive is a config change the screen never shows.
+   */
+  const parsed = (pairs) => parseConfigRows(rows(pairs))
+
+  it('answers true for two reads of an identical tab', () => {
+    const pairs = [
+      ['person1_name', 'Waylon'],
+      ['currency', 'USD'],
+      ['categories', 'Groceries, Dining'],
+      ['default_split_p1', '80'],
+      ['note_presets', 'Ozeki'],
+    ]
+    expect(sameSheetConfig(parsed(pairs), parsed(pairs))).toBe(true)
+  })
+
+  it('answers true for two empty tabs, however they are spelled', () => {
+    // The disconnect path leaves the remembered config `undefined` and the next read
+    // parses `{}`; both mean "the sheet said nothing", and both merge to the defaults.
+    expect(sameSheetConfig(undefined, {})).toBe(true)
+    expect(sameSheetConfig({}, undefined)).toBe(true)
+  })
+
+  it('answers false when a value changed', () => {
+    expect(sameSheetConfig(parsed([['currency', 'USD']]), parsed([['currency', 'JPY']]))).toBe(
+      false,
+    )
+    expect(
+      sameSheetConfig(parsed([['default_split_p1', '80']]), parsed([['default_split_p1', '20']])),
+    ).toBe(false)
+  })
+
+  it('answers false when a key was added or removed', () => {
+    const one = parsed([['currency', 'USD']])
+    const two = parsed([
+      ['currency', 'USD'],
+      ['person2_name', 'Yuki'],
+    ])
+    expect(sameSheetConfig(one, two)).toBe(false)
+    expect(sameSheetConfig(two, one)).toBe(false)
+  })
+
+  it('compares lists by contents, not by reference', () => {
+    // Two parses of one tab are always different array objects, so a reference
+    // comparison would report every refresh as a change and buy nothing.
+    const a = parsed([['categories', 'Groceries, Dining']])
+    const b = parsed([['categories', 'Groceries, Dining']])
+    expect(a.categories).not.toBe(b.categories)
+    expect(sameSheetConfig(a, b)).toBe(true)
+
+    expect(sameSheetConfig(a, parsed([['categories', 'Dining, Groceries']]))).toBe(false)
+    expect(sameSheetConfig(a, parsed([['categories', 'Groceries']]))).toBe(false)
   })
 })
