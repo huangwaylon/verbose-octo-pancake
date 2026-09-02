@@ -52,6 +52,7 @@ export default {
   // --- month summary --------------------------------------------------------
   'summary.title': '今月',
   'summary.perPerson': 'ひとりあたり',
+  'summary.paidToggle': '支払い',
   'summary.byCategory': 'カテゴリー別',
   'summary.uncategorized': '未分類',
   'summary.other': 'その他',

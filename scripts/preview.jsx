@@ -41,6 +41,7 @@ import { LedgerScreen } from '../src/components/LedgerScreen.jsx'
 import { ConfirmDeleteSheet } from '../src/components/ConfirmDeleteSheet.jsx'
 import { EntryFormSheet } from '../src/components/EntryFormSheet.jsx'
 import { SettingsSheet } from '../src/components/SettingsSheet.jsx'
+import { summaryView } from '../src/components/SummaryCard.jsx'
 import { RecurringSheet } from '../src/components/RecurringSheet.jsx'
 import { TemplateFormSheet } from '../src/components/TemplateFormSheet.jsx'
 
@@ -409,4 +410,19 @@ for (const [variant, overlay, options] of [
   writeFileSync(new URL(`./${name}`, import.meta.url), markup)
   written.push(`scripts/${name}`)
 }
+/**
+ * The summary's other per-person view. A stored preference rather than component state, so the
+ * harness can flip it — which is the whole reason it is one.
+ */
+summaryView.set('paid')
+for (const [variant, options] of [
+  ['paid-view', {}],
+  ['stress-paid-view', stress],
+]) {
+  const name = `preview-en-${variant}.html`
+  writeFileSync(new URL(`./${name}`, import.meta.url), page(body(null, options), 'en', ACCENTS[0]))
+  written.push(`scripts/${name}`)
+}
+summaryView.set('share')
+
 console.log(`wrote ${written.join(', ')}`)

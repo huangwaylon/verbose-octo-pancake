@@ -26,6 +26,8 @@ export const STORAGE_KEYS = {
   identity: 'sf.identity',
   locale: 'sf.locale',
   accent: 'sf.accent',
+  /** Which of the summary's two per-person figures is on screen. */
+  summaryView: 'sf.summaryView',
 }
 
 /**

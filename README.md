@@ -246,7 +246,7 @@ Standalone changes what can go wrong: the keyboard covers a fixed footer without
 the viewport `dvh` reads, `:hover` latches after a tap, a flick from the top reloads the app
 out from under a half-typed entry, and safe-area insets are the app's problem because there is
 no browser chrome to absorb them. Those rules are in CLAUDE.md's Platform section. Layout is
-decided at 320px; `npx vite-node scripts/preview.jsx` writes twenty-four pages for checking it,
+decided at 320px; `npx vite-node scripts/preview.jsx` writes twenty-six pages for checking it,
 four of them deliberately pathological.
 
 ### Launch speed
@@ -293,7 +293,7 @@ exists in a build, so exercising it means `npm run build && npm run preview`, an
 registers a real worker on port 4173 — shared with every other Vite project on the machine.
 
 A green suite says nothing about whether the page looks right. `npx vite-node
-scripts/preview.jsx` writes twenty-four static pages with the real stylesheets, and
+scripts/preview.jsx` writes twenty-six static pages with the real stylesheets, and
 `scripts/frames.html` renders one at several widths at once with the measurements printed
 underneath — including, on a page carrying a sheet, whether Save clears a simulated keyboard.
 CLAUDE.md has the invocation.

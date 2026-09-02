@@ -345,6 +345,14 @@
   gap: var(--space-3);
 }
 
+/* A section heading and its one control on a line, like the day group's label. */
+.summary__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 /* Who-paid is two values, so it is a meter, not a pie. A 2-slice pie is the
    canonical chart anti-pattern: the number is the chart. */
 .summary__meter {

@@ -73,6 +73,9 @@ export default {
   // Covers both figures below it — cash out of pocket, and what that person owes once
   // every split is applied — where "Who paid" would only describe the first.
   'summary.perPerson': 'Per person',
+  // A toggle, not a heading: pressed means the paid figures are on screen, and the lines
+  // themselves say which of the two they are.
+  'summary.paidToggle': 'Paid',
   'summary.byCategory': 'By category',
   'summary.uncategorized': 'Uncategorized',
   'summary.other': 'Other',

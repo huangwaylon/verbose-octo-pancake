@@ -1,19 +1,37 @@
-import { Fragment, memo } from 'react'
+import { memo } from 'react'
 import { PEOPLE, PERSON } from '../schema.js'
+import { STORAGE_KEYS } from '../config.js'
+import { storedPreference } from '../lib/preference.js'
 import { UNCATEGORIZED } from '../lib/balance.js'
 import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { DonutChart } from './DonutChart.jsx'
 
 /**
- * The month's spending: a total, two figures per person, and a category breakdown.
+ * Which of the two per-person figures the card shows, as a per-device preference.
  *
- * The two per-person figures answer different questions and both matter: `byPerson` is cash out
- * of pocket, `byShare` is what that person actually owes once every `payer_share` is applied.
- * Their difference is what the month left owing, which the header's balance carries across all
- * months.
+ * Both matter — cash out of pocket, and what that person owes once every `payer_share` is
+ * applied — but only one fits: two lines per person is four rows of the card once the config tab
+ * holds real names rather than "You" and "Sam". So one is shown and the other is a tap away.
+ *
+ * A stored preference rather than component state, for the same reason the locale and the accent
+ * are: it is a standing choice about how this phone reads the card, so it should survive a reload
+ * and a month change — and a test can set it without a DOM, which internal state could not.
+ *
+ * Beside the one control that owns it, exactly as `useEntrySplit` sits beside `SplitField`.
+ */
+export const SUMMARY_VIEWS = ['share', 'paid']
+
+export const summaryView = storedPreference({
+  key: STORAGE_KEYS.summaryView,
+  values: SUMMARY_VIEWS,
+  fallback: SUMMARY_VIEWS[0],
+})
+
+/**
+ * The month's spending: a total, one figure per person, and a category breakdown.
  *
  * Two different forms on purpose. The category split is genuine part-to-whole
- * across many classes, so it gets the donut. "Who paid" is exactly two values,
+ * across many classes, so it gets the donut. "Per person" is exactly two values,
  * and a two-slice pie is the canonical chart anti-pattern — the number is the
  * chart — so that gets a meter bar plus the two figures.
  *
@@ -27,12 +45,18 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, m
   const { t } = useT()
   const money = useMoney()
   const { label, possessive } = usePeopleLabels(config, me)
+  const showPaid = summaryView.use() === 'paid'
 
   if (!monthSpend) return null
 
-  const paid1 = byPerson[PERSON.P1] ?? 0
-  const paid2 = byPerson[PERSON.P2] ?? 0
-  const paidTotal = paid1 + paid2
+  /**
+   * The meter follows the figures rather than always showing what was paid: a bar that split one
+   * way while the lines read another would be a second, silent claim about the same month.
+   * Either way it totals `monthSpend`, because `spendByPerson` and `shareByPerson` both do.
+   */
+  const totals = showPaid ? byPerson : byShare
+  const first = totals[PERSON.P1] ?? 0
+  const second = totals[PERSON.P2] ?? 0
 
   const items = byCategory.map((row) => ({
     key: row.category,
@@ -48,51 +72,56 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, m
       </div>
 
       <div className="summary__section">
-        <h2 className="eyebrow">{t('summary.perPerson')}</h2>
-        {paidTotal > 0 && (
+        <div className="summary__heading">
+          <h2 className="eyebrow">{t('summary.perPerson')}</h2>
+          {/* `aria-pressed` rather than a label that flips between the two views, which
+              would never say whether it names the figure on screen or the one a tap away.
+              Same idiom as the note field's preset chips. */}
+          <button
+            type="button"
+            className={`btn btn--sm ${showPaid ? 'btn--primary' : 'btn--ghost'}`}
+            aria-pressed={showPaid}
+            onClick={() => summaryView.set(showPaid ? 'share' : 'paid')}
+          >
+            {t('summary.paidToggle')}
+          </button>
+        </div>
+        {first + second > 0 && (
           <div
             className="summary__meter"
             role="img"
             aria-label={t('summary.meterLabel', {
               name1: label(PERSON.P1),
-              amount1: money(paid1),
+              amount1: money(first),
               name2: label(PERSON.P2),
-              amount2: money(paid2),
+              amount2: money(second),
             })}
           >
-            <span className="summary__meter-fill" style={{ flexGrow: paid1, flexBasis: 0 }} />
+            <span className="summary__meter-fill" style={{ flexGrow: first, flexBasis: 0 }} />
             <span
               className="summary__meter-fill summary__meter-fill--other"
-              style={{ flexGrow: paid2, flexBasis: 0 }}
+              style={{ flexGrow: second, flexBasis: 0 }}
             />
           </div>
         )}
-        {/* Two figures per person, each a SENTENCE rather than a column of a table: the
-            wrapping list needs no new layout, and a screen reader gets "Your share ¥16,290"
-            instead of a bare number under a header it cannot associate. Only the paid figure
-            carries a swatch — the swatch's job is to key the meter above it. */}
+        {/* One line per person, and a SENTENCE rather than a bare figure under the toggle:
+            read on its own it still says which of the two it is. */}
         <div className="summary__people">
           {PEOPLE.map((person) => (
-            <Fragment key={person}>
-              <span className="summary__person">
-                <span
-                  className={`summary__person-swatch${
-                    person === PERSON.P2 ? ' summary__person-swatch--other' : ''
-                  }`}
-                  aria-hidden="true"
-                />
-                <span className="summary__person-name">
-                  {t('common.paid', { name: label(person) })}
-                </span>
-                <span className="summary__person-amount tnum">{money(byPerson[person] ?? 0)}</span>
+            <span className="summary__person" key={person}>
+              <span
+                className={`summary__person-swatch${
+                  person === PERSON.P2 ? ' summary__person-swatch--other' : ''
+                }`}
+                aria-hidden="true"
+              />
+              <span className="summary__person-name">
+                {showPaid
+                  ? t('common.paid', { name: label(person) })
+                  : t('common.share', { owner: possessive(person) })}
               </span>
-              <span className="summary__person">
-                <span className="summary__person-name">
-                  {t('common.share', { owner: possessive(person) })}
-                </span>
-                <span className="summary__person-amount tnum">{money(byShare[person] ?? 0)}</span>
-              </span>
-            </Fragment>
+              <span className="summary__person-amount tnum">{money(totals[person] ?? 0)}</span>
+            </span>
           ))}
         </div>
       </div>

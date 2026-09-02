@@ -252,9 +252,10 @@ documents the columns.
   can be found in the statement by searching for what it says. A rule picks a category, a share
   and whether the row is a purchase; nothing else. Romaji and kana patterns both appear in
   RULES because the bank prints a shop both ways, which is matching, not translating.
-- **The locale, the accent and which person this device is are the three per-device values, and
-  none may reach the sheet.** The locale and accent share `lib/preference.js`; identity is
-  `lib/identity.js`, and nothing detects it (see Gotchas).
+- **The locale, the accent, which person this device is and which summary figure is on screen
+  are the four per-device values, and none may reach the sheet.** Three share
+  `lib/preference.js` — the summary's sits beside `SummaryCard`, the one control that owns it,
+  as `useEntrySplit` does; identity is `lib/identity.js`, and nothing detects it (see Gotchas).
 
 ## Telling the truth on screen
 
@@ -630,8 +631,8 @@ net to zero, with odd-unit amounts so rounding is genuinely exercised.
 
 **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the real
 `LedgerScreen` to static HTML with the real stylesheets, twenty-four pages: every accent, both
-languages, the six overlays, the settled balance, the empty add form, and four stress pages
-holding everything a 320px phone has no room for. The settlement form earns its own page because it is the sparsest
+languages, the six overlays, the settled balance, the empty add form, both per-person summary
+views, and four stress pages holding everything a 320px phone has no room for. The settlement form earns its own page because it is the sparsest
 thing the entry form renders and the only place its two `!isSettlement` blocks are visible. The
 stress pages' `SIDEWAYS` readout is what caught the recurring list squeezing its name column to
 60px behind an eight-figure amount, and before that the aside being sized by its longest name —

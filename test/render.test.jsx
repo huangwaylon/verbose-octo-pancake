@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { ENTRY_TYPE, PERSON, rowToTemplate } from '../src/schema.js'
@@ -15,7 +15,7 @@ import {
 import { currentMonthKey } from '../src/lib/dates.js'
 import { formatYen } from '../src/lib/money.js'
 import { LedgerScreen } from '../src/components/LedgerScreen.jsx'
-import { SummaryCard } from '../src/components/SummaryCard.jsx'
+import { SUMMARY_VIEWS, SummaryCard, summaryView } from '../src/components/SummaryCard.jsx'
 import { RecurringSheet } from '../src/components/RecurringSheet.jsx'
 import { TemplateFormSheet } from '../src/components/TemplateFormSheet.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
@@ -209,7 +209,11 @@ describe('the header carries the balance', () => {
 })
 
 describe('summary card renders', () => {
-  it('shows the month total, both payers, their shares, and the categories', () => {
+  // The view is a module singleton, so a case that sets it puts it back — the same rule the
+  // locale carries, and for the same reason: it would otherwise leak into every case below.
+  afterEach(() => summaryView.set(SUMMARY_VIEWS[0]))
+
+  it('shows the month total, each person’s share, and the categories', () => {
     const markup = renderToStaticMarkup(
       <SummaryCard
         monthSpend={totalSpend(entries)}
@@ -222,8 +226,8 @@ describe('summary card renders', () => {
     )
     expect(markup).toContain('Groceries')
     expect(markup).toContain('Dining')
-    expect(markup).toContain('Sam paid')
-    expect(markup).toContain('You paid')
+    expect(markup).toContain('Your share')
+    expect(markup).toContain('Sam’s share')
     // The settlement must not be counted as spending. Asserted as the total that
     // is right and the total that would be wrong: the fixture's settlement is
     // ¥1,000, so a "not ¥9,359" check has to name the settlement-inclusive figure.
@@ -232,34 +236,46 @@ describe('summary card renders', () => {
   })
 
   /**
-   * The two figures per person are the point of the section, and they are different questions:
-   * cash out of pocket, and what that person owes once every split is applied. The fixture's
-   * entry `c` is ¥1,799 at a share of 1 — p1 paid it and covers all of it — so a card that
-   * rendered `byPerson` twice would show ¥5,984 in both cells instead of ¥5,984 and ¥5,084.
+   * ONE figure per person, the other a tap away — two lines each is four rows of the card once
+   * the config tab holds real names. Which one is a stored preference, so the toggle survives a
+   * reload and a test can set it: internal state would leave the second view with no check at all.
    */
-  it('shows what each person paid AND what their share of it comes to', () => {
-    const markup = renderToStaticMarkup(
-      <SummaryCard
-        monthSpend={totalSpend(entries)}
-        byCategory={spendByCategory(entries)}
-        byPerson={spendByPerson(entries)}
-        byShare={shareByPerson(entries)}
-        config={config}
-        me={PERSON.P1}
-      />,
-    )
-    expect(markup).toContain('You paid')
-    expect(markup).toContain('Your share')
-    // Possessive, not the viewer-relative label: English does not inflect "You" to "You share".
-    expect(markup).not.toContain('You share')
-    expect(markup).toContain('Sam’s share')
-
+  it('shows one figure per person, and swaps which on the toggle', () => {
+    const render = () =>
+      renderToStaticMarkup(
+        <SummaryCard
+          monthSpend={totalSpend(entries)}
+          byCategory={spendByCategory(entries)}
+          byPerson={spendByPerson(entries)}
+          byShare={shareByPerson(entries)}
+          config={config}
+          me={PERSON.P1}
+        />,
+      )
     const paid = spendByPerson(entries)
     const share = shareByPerson(entries)
+    // The fixture's entry `c` is ¥1,799 at a share of 1 — p1 paid it and covers all of it — so
+    // the two views genuinely differ and a card rendering one twice would be visible here.
     expect(paid.p1).not.toBe(share.p1)
-    for (const yen of [paid.p1, paid.p2, share.p1, share.p2]) {
-      expect(markup, String(yen)).toContain(formatYen(yen))
-    }
+
+    const shares = render()
+    expect(shares).toContain('Your share')
+    // Possessive, not the viewer-relative label: English does not inflect "You" to "You share".
+    expect(shares).not.toContain('You share')
+    expect(shares).toContain('Sam’s share')
+    expect(shares).toContain(formatYen(share.p1))
+    expect(shares).not.toContain('paid')
+    expect(shares).not.toContain(formatYen(paid.p1))
+    expect(shares).toContain('aria-pressed="false"')
+
+    summaryView.set('paid')
+    const amounts = render()
+    expect(amounts).toContain('You paid')
+    expect(amounts).toContain('Sam paid')
+    expect(amounts).toContain(formatYen(paid.p1))
+    expect(amounts).not.toContain('share ')
+    expect(amounts).not.toContain(formatYen(share.p1))
+    expect(amounts).toContain('aria-pressed="true"')
   })
 
   it('renders nothing at all for a month with no spend', () => {
