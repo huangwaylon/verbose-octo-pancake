@@ -44,6 +44,9 @@ export default {
   // Shared by the list row's meta line and the summary's per-person figure:
   // one sentence, so a translator writes it once.
   'common.paid': '{name} paid',
+  // Shared by the split control and the summary's per-person figure, and possessive
+  // because English inflects: `label` would read "You share".
+  'common.share': '{owner} share',
   'common.whoPaid': 'Who paid',
   'common.notePresets': 'Frequent notes',
 
@@ -67,6 +70,9 @@ export default {
 
   // --- month summary --------------------------------------------------------
   'summary.title': 'This month',
+  // Covers both figures below it — cash out of pocket, and what that person owes once
+  // every split is applied — where "Who paid" would only describe the first.
+  'summary.perPerson': 'Per person',
   'summary.byCategory': 'By category',
   'summary.uncategorized': 'Uncategorized',
   'summary.other': 'Other',
@@ -200,7 +206,6 @@ export default {
   'form.splitCustom': 'Custom',
   'form.splitAll': 'All {name}',
   'form.splitHalf': 'Half',
-  'form.splitShare': '{owner} share',
   // The slider's spoken value. A range otherwise announces a bare "70", which
   // says nothing about whose share it is.
   'form.splitValue': '{owner} share, {percent}%',

@@ -102,7 +102,7 @@ export function SplitField({
             ))}
           </div>
           <label className="split-control__slider">
-            <span className="field__hint">{t('form.splitShare', { owner: payerPossessive })}</span>
+            <span className="field__hint">{t('common.share', { owner: payerPossessive })}</span>
             <input
               type="range"
               min="0"

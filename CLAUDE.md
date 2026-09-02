@@ -57,6 +57,12 @@ Desktop is a convenience. Every layout decision is made at 320px first.
   id → row through `resolveRow` immediately before writing. There is deliberately no
   `rowNumber` field.
 - **Never `USER_ENTERED`.** Every write passes `valueInputOption: RAW`.
+- **Every `:append` range is A-ANCHORED — `tab.dataRange`, never the bare tab title.**
+  `values.append` treats its range as a range to SEARCH for a logical table, so a bare sheet name
+  lets Google choose where that table starts, and a row written from column G puts every value
+  six fields to the right. `rowToEntry` then reports it as an unreadable AMOUNT, which names the
+  wrong cell entirely. `appendRow` carries the reasoning; `test/sheets.test.js` pins the literal
+  range per tab.
 - **A row carries no `created_at`/`updated_at`, and `makeEntry` reads no clock.** `deleted_at`
   both soft-deletes and breaks a tombstone-vs-tombstone tie in `supersedes` — which must never
   fall back to array order. That is why `updateEntry` stamps the payer-move tombstone from the

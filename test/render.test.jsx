@@ -7,11 +7,13 @@ import { newTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
+  shareByPerson,
   spendByCategory,
   spendByPerson,
   totalSpend,
 } from '../src/lib/balance.js'
 import { currentMonthKey } from '../src/lib/dates.js'
+import { formatYen } from '../src/lib/money.js'
 import { LedgerScreen } from '../src/components/LedgerScreen.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
 import { RecurringSheet } from '../src/components/RecurringSheet.jsx'
@@ -207,12 +209,13 @@ describe('the header carries the balance', () => {
 })
 
 describe('summary card renders', () => {
-  it('shows the month total, both payers, and the categories', () => {
+  it('shows the month total, both payers, their shares, and the categories', () => {
     const markup = renderToStaticMarkup(
       <SummaryCard
         monthSpend={totalSpend(entries)}
         byCategory={spendByCategory(entries)}
         byPerson={spendByPerson(entries)}
+        byShare={shareByPerson(entries)}
         config={config}
         me={PERSON.P1}
       />,
@@ -228,12 +231,44 @@ describe('summary card renders', () => {
     expect(markup).not.toContain('¥9,359')
   })
 
+  /**
+   * The two figures per person are the point of the section, and they are different questions:
+   * cash out of pocket, and what that person owes once every split is applied. The fixture's
+   * entry `c` is ¥1,799 at a share of 1 — p1 paid it and covers all of it — so a card that
+   * rendered `byPerson` twice would show ¥5,984 in both cells instead of ¥5,984 and ¥5,084.
+   */
+  it('shows what each person paid AND what their share of it comes to', () => {
+    const markup = renderToStaticMarkup(
+      <SummaryCard
+        monthSpend={totalSpend(entries)}
+        byCategory={spendByCategory(entries)}
+        byPerson={spendByPerson(entries)}
+        byShare={shareByPerson(entries)}
+        config={config}
+        me={PERSON.P1}
+      />,
+    )
+    expect(markup).toContain('You paid')
+    expect(markup).toContain('Your share')
+    // Possessive, not the viewer-relative label: English does not inflect "You" to "You share".
+    expect(markup).not.toContain('You share')
+    expect(markup).toContain('Sam’s share')
+
+    const paid = spendByPerson(entries)
+    const share = shareByPerson(entries)
+    expect(paid.p1).not.toBe(share.p1)
+    for (const yen of [paid.p1, paid.p2, share.p1, share.p2]) {
+      expect(markup, String(yen)).toContain(formatYen(yen))
+    }
+  })
+
   it('renders nothing at all for a month with no spend', () => {
     const markup = renderToStaticMarkup(
       <SummaryCard
         monthSpend={0}
         byCategory={[]}
         byPerson={{ p1: 0, p2: 0 }}
+        byShare={{ p1: 0, p2: 0 }}
         config={config}
         me={PERSON.P1}
       />,
@@ -488,6 +523,7 @@ describe('the signed-in surface renders', () => {
     monthSpend: totalSpend(entries),
     byCategory: spendByCategory(entries),
     byPerson: spendByPerson(entries),
+    byShare: shareByPerson(entries),
     groups: groupByDate(entries),
     deleted: [],
   }

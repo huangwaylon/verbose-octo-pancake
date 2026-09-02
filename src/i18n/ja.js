@@ -32,6 +32,7 @@ export default {
   'common.retry': 'もう一度試す',
   'common.optional': '任意',
   'common.paid': '{name}の支払い',
+  'common.share': '{owner}負担',
   'common.whoPaid': '支払った人',
   'common.notePresets': 'よく使うメモ',
 
@@ -50,6 +51,7 @@ export default {
 
   // --- month summary --------------------------------------------------------
   'summary.title': '今月',
+  'summary.perPerson': 'ひとりあたり',
   'summary.byCategory': 'カテゴリー別',
   'summary.uncategorized': '未分類',
   'summary.other': 'その他',
@@ -154,7 +156,6 @@ export default {
   'form.splitCustom': 'カスタム',
   'form.splitAll': '{name}が全額',
   'form.splitHalf': '半分',
-  'form.splitShare': '{owner}負担',
   'form.splitValue': '{owner}負担、{percent}%',
   'form.breakdown': '{payer}：{payerAmount}・{other}：{otherAmount}',
   'form.deleteEntry': 'この記録を削除',

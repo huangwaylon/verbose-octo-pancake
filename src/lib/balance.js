@@ -12,7 +12,7 @@
  *      with payerShare 0 — which is why nothing below special-cases the type.
  */
 
-import { PERSON, ENTRY_TYPE, isActive } from '../schema.js'
+import { PERSON, ENTRY_TYPE, isActive, otherPerson } from '../schema.js'
 import { splitYen, sumYen } from './money.js'
 import { isMonthKey } from './dates.js'
 
@@ -126,6 +126,31 @@ export function spendByPerson(entries) {
     if (!isExpense(entry)) continue
     if (entry.payer === PERSON.P2) totals[PERSON.P2] += entry.amountYen
     else totals[PERSON.P1] += entry.amountYen
+  }
+  return totals
+}
+
+/**
+ * What each person's share of the month actually comes to, once every `payer_share` is applied
+ * — the counterpart to `spendByPerson`, which is cash out of pocket.
+ *
+ * Through `splitYen`, so the two shares add back up to `totalSpend` EXACTLY: the payer covers
+ * `payerYen` of their own expense and the other person covers the remainder, and the remainder is
+ * what absorbs the rounding. A percentage of each amount computed independently per person would
+ * lose or invent a yen on every odd split.
+ *
+ * Expenses only, for the same reason as `totalSpend`: a settlement moves cash to square these
+ * two figures up, so counting one would charge the same money twice.
+ *
+ * @returns {{p1: number, p2: number}}
+ */
+export function shareByPerson(entries) {
+  const totals = { [PERSON.P1]: 0, [PERSON.P2]: 0 }
+  for (const entry of activeEntries(entries)) {
+    if (!isExpense(entry)) continue
+    const { payerYen, otherYen } = splitYen(entry.amountYen, entry.payerShare)
+    totals[entry.payer] += payerYen
+    totals[otherPerson(entry.payer)] += otherYen
   }
   return totals
 }

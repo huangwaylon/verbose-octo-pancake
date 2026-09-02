@@ -4,6 +4,7 @@ import {
   computeBalance,
   totalSpend,
   spendByCategory,
+  shareByPerson,
   spendByPerson,
   filterByMonth,
   monthKeysPresent,
@@ -429,6 +430,79 @@ describe('spendByPerson', () => {
     ]
     const { p1, p2 } = spendByPerson(entries)
     expect(p1 + p2).toBe(totalSpend(entries))
+  })
+})
+
+/**
+ * The other half of `spendByPerson`: not who handed over the cash, but who the cost belongs to
+ * once every `payer_share` is applied. The invariant that matters is that the two add up to the
+ * month exactly — a percentage taken per person independently would lose a yen on every odd
+ * split, and the loss would land in a figure nobody could check against anything.
+ */
+describe('shareByPerson', () => {
+  it('gives each person their own share of what either of them paid', () => {
+    const entries = [
+      // p1 paid 1000 and covers 30% of it, so p2 owes 700.
+      expense('a', 1000, { payer: PERSON.P1, payerShare: 0.3 }),
+      // p2 paid 500 and covers all of it.
+      expense('b', 500, { payer: PERSON.P2, payerShare: 1 }),
+    ]
+    expect(shareByPerson(entries)).toEqual({ p1: 300, p2: 1200 })
+  })
+
+  it('is the same figure as what was paid when everything is an even split', () => {
+    const entries = [
+      expense('a', 1000, { payer: PERSON.P1 }),
+      expense('b', 1000, { payer: PERSON.P2 }),
+    ]
+    expect(shareByPerson(entries)).toEqual(spendByPerson(entries))
+  })
+
+  it('charges the whole amount to the other person at a share of 0', () => {
+    // Bought FOR the other person: the payer's own share is nothing.
+    expect(shareByPerson([expense('a', 900, { payer: PERSON.P1, payerShare: 0 })])).toEqual({
+      p1: 0,
+      p2: 900,
+    })
+  })
+
+  it('conserves every yen, at shares that do not divide evenly', () => {
+    // The rounding has to land somewhere, and `splitYen` puts it on the non-payer — so the two
+    // shares add to the month rather than to the month plus or minus a yen per entry.
+    const entries = [
+      expense('a', 1001, { payer: PERSON.P1, payerShare: 1 / 3 }),
+      expense('b', 777, { payer: PERSON.P2, payerShare: 0.7 }),
+      expense('c', 3, { payer: PERSON.P1, payerShare: 0.5 }),
+    ]
+    const { p1, p2 } = shareByPerson(entries)
+    expect(p1 + p2).toBe(totalSpend(entries))
+  })
+
+  it('counts no settlement and no tombstone', () => {
+    // A settlement moves cash to square these two figures up; counting one charges the same
+    // money twice. A tombstone is out of every total by definition.
+    expect(shareByPerson([settlement('s', 9999)])).toEqual({ p1: 0, p2: 0 })
+    expect(shareByPerson([])).toEqual({ p1: 0, p2: 0 })
+    const live = expense('a', 1000, { payer: PERSON.P1, payerShare: 0.25 })
+    const dead = { ...expense('b', 5000, { payer: PERSON.P2 }), deletedAt: '2026-08-09T00:00:00Z' }
+    expect(shareByPerson([live, dead])).toEqual({ p1: 250, p2: 750 })
+  })
+
+  /**
+   * The pair of figures is the point of showing both: paid minus share IS what that person is
+   * owed for the month, and it has to agree with `computeBalance` over the same rows or the card
+   * and the header would tell two different stories.
+   */
+  it('differs from what was paid by exactly the balance those rows produce', () => {
+    const entries = [
+      expense('a', 4820, { payer: PERSON.P1, payerShare: 0.5 }),
+      expense('b', 1280, { payer: PERSON.P2, payerShare: 0.5 }),
+      expense('c', 3150, { payer: PERSON.P1, payerShare: 0 }),
+    ]
+    const paid = spendByPerson(entries)
+    const share = shareByPerson(entries)
+    expect(paid.p1 - share.p1).toBe(computeBalance(entries).netYen)
+    expect(paid.p2 - share.p2).toBe(-computeBalance(entries).netYen)
   })
 })
 

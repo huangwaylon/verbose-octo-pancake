@@ -32,6 +32,7 @@ import { newTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
+  shareByPerson,
   spendByCategory,
   spendByPerson,
   totalSpend,
@@ -126,6 +127,7 @@ const viewOf = (list, tombstones = []) => ({
   monthSpend: totalSpend(list),
   byCategory: spendByCategory(list),
   byPerson: spendByPerson(list),
+  byShare: shareByPerson(list),
   groups: groupByDate(list),
   deleted: tombstones,
 })

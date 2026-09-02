@@ -58,7 +58,9 @@ converges without a settle-up flow. Rows already there still read, display and e
 
 The ledger is **yen only**: the yen has no sub-unit, so an amount is an integer number of yen
 and there is no scale to get wrong. Every write is `valueInputOption: RAW`, so a note of
-`=SUM(A:A)` stays literal text and dates are never reformatted. A row the app cannot fully
+`=SUM(A:A)` stays literal text and dates are never reformatted, and every append names an
+explicit `A2:…` range rather than the tab — `values.append` picks its own starting column
+otherwise. A row the app cannot fully
 read — an unparseable amount, a date the spreadsheet stored in its own locale, a renamed
 `config` tab — is counted and reported on screen: a ledger quietly short one expense is worse
 than a notice.

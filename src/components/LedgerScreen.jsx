@@ -64,6 +64,7 @@ export function LedgerScreen({
             monthSpend={view.monthSpend}
             byCategory={view.byCategory}
             byPerson={view.byPerson}
+            byShare={view.byShare}
             config={config}
             me={me}
           />

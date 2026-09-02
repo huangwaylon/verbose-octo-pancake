@@ -1,11 +1,16 @@
-import { memo } from 'react'
+import { Fragment, memo } from 'react'
 import { PEOPLE, PERSON } from '../schema.js'
 import { UNCATEGORIZED } from '../lib/balance.js'
 import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { DonutChart } from './DonutChart.jsx'
 
 /**
- * The month's spending: a total, who paid how much, and a category breakdown.
+ * The month's spending: a total, two figures per person, and a category breakdown.
+ *
+ * The two per-person figures answer different questions and both matter: `byPerson` is cash out
+ * of pocket, `byShare` is what that person actually owes once every `payer_share` is applied.
+ * Their difference is what the month left owing, which the header's balance carries across all
+ * months.
  *
  * Two different forms on purpose. The category split is genuine part-to-whole
  * across many classes, so it gets the donut. "Who paid" is exactly two values,
@@ -16,12 +21,12 @@ import { DonutChart } from './DonutChart.jsx'
  * figure it reads is one of `useLedgerView`'s memos, so a toast has no business
  * re-laying-out a chart.
  */
-function SummaryCardInner({ monthSpend, byCategory, byPerson, config, me }) {
+function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, me }) {
   // Every hook runs before the early return below: hook order must not depend
   // on props.
   const { t } = useT()
   const money = useMoney()
-  const { label } = usePeopleLabels(config, me)
+  const { label, possessive } = usePeopleLabels(config, me)
 
   if (!monthSpend) return null
 
@@ -43,7 +48,7 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, config, me }) {
       </div>
 
       <div className="summary__section">
-        <h2 className="eyebrow">{t('common.whoPaid')}</h2>
+        <h2 className="eyebrow">{t('summary.perPerson')}</h2>
         {paidTotal > 0 && (
           <div
             className="summary__meter"
@@ -62,20 +67,32 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, config, me }) {
             />
           </div>
         )}
+        {/* Two figures per person, each a SENTENCE rather than a column of a table: the
+            wrapping list needs no new layout, and a screen reader gets "Your share ¥16,290"
+            instead of a bare number under a header it cannot associate. Only the paid figure
+            carries a swatch — the swatch's job is to key the meter above it. */}
         <div className="summary__people">
           {PEOPLE.map((person) => (
-            <span className="summary__person" key={person}>
-              <span
-                className={`summary__person-swatch${
-                  person === PERSON.P2 ? ' summary__person-swatch--other' : ''
-                }`}
-                aria-hidden="true"
-              />
-              <span className="summary__person-name">
-                {t('common.paid', { name: label(person) })}
+            <Fragment key={person}>
+              <span className="summary__person">
+                <span
+                  className={`summary__person-swatch${
+                    person === PERSON.P2 ? ' summary__person-swatch--other' : ''
+                  }`}
+                  aria-hidden="true"
+                />
+                <span className="summary__person-name">
+                  {t('common.paid', { name: label(person) })}
+                </span>
+                <span className="summary__person-amount tnum">{money(byPerson[person] ?? 0)}</span>
               </span>
-              <span className="summary__person-amount tnum">{money(byPerson[person] ?? 0)}</span>
-            </span>
+              <span className="summary__person">
+                <span className="summary__person-name">
+                  {t('common.share', { owner: possessive(person) })}
+                </span>
+                <span className="summary__person-amount tnum">{money(byShare[person] ?? 0)}</span>
+              </span>
+            </Fragment>
           ))}
         </div>
       </div>

@@ -10,6 +10,7 @@ import { newTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
+  shareByPerson,
   spendByCategory,
   spendByPerson,
   totalSpend,
@@ -532,6 +533,7 @@ describe('Japanese rendering', () => {
           monthSpend={totalSpend(entries)}
           byCategory={spendByCategory(entries)}
           byPerson={spendByPerson(entries)}
+          byShare={shareByPerson(entries)}
           config={config}
           me={PERSON.P1}
         />,
