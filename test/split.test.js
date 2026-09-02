@@ -95,3 +95,34 @@ describe('nextSplit', () => {
     expect(nextSplit('even', EVEN_SHARE)).toEqual({ mode: 'even', percent: 50, share: EVEN_SHARE })
   })
 })
+
+/**
+ * The third mode, which exists for the recurring tab's blank `payer_share`.
+ *
+ * A blank cell means "follow whoever pays, at whatever their default is, forever" — and it is
+ * ALSO what makes `postRecurring` leave a template for a human to confirm. So the mode has to
+ * keep saving null: resolving it to a number detaches the cost from `default_split_p*` and
+ * silently switches on unattended posting, at whatever the default happened to be that day.
+ */
+describe('following the default', () => {
+  it('reads a null share as its own mode, and keeps the share null', () => {
+    const split = toSplit(null, 0.8)
+    expect(split.mode).toBe('default')
+    expect(split.share).toBeNull()
+    // The slider still has a position to show, which is what the mode's hint names.
+    expect(split.percent).toBe(80)
+  })
+
+  it('goes back to null after Even, rather than saving the even share', () => {
+    // The transition the render tests cannot see: they only ever show the INITIAL mode, so
+    // tapping Even and back would otherwise pin 0.5 with nothing to catch it.
+    expect(nextSplit('even', 0.8).share).toBe(EVEN_SHARE)
+    expect(nextSplit('default', 0.8)).toEqual({ mode: 'default', percent: 80, share: null })
+  })
+
+  it('leaves a numeric share alone, whatever default is passed beside it', () => {
+    // The entry form passes a configured default too, and it must change nothing there.
+    expect(toSplit(EVEN_SHARE, 0.8)).toEqual({ mode: 'even', percent: 50, share: EVEN_SHARE })
+    expect(toSplit(0.3, 0.8)).toEqual({ mode: 'custom', percent: 30, share: 0.3 })
+  })
+})

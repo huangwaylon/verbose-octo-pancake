@@ -29,14 +29,23 @@ export function defaultSplitFor(config, person) {
  * A share as the two split controls see it. An even share drives the segmented control to
  * "Even" and hides the slider; anything else opens Custom on that number.
  *
+ * A NULL share is the recurring tab's blank `payer_share` cell, which is a durable
+ * declaration — "follow whoever pays, at whatever their default is, forever" — rather than
+ * an unfilled draft. It gets its own mode so the control can keep it blank; resolving it to
+ * a number would detach the cost from the config tab and, because a blank share is also
+ * what makes `postRecurring` leave a template alone, silently turn on unattended posting.
+ *
  * `share` is carried alongside `percent` and is the value that gets SAVED. The slider is
  * whole percents, so a stored 0.333 displays as 33 — saving `percent / 100` would rewrite
  * it as 0.33 and move money on an edit that only touched the note.
  *
- * @param {number} share fraction in [0,1]
- * @returns {{mode: 'even'|'custom', percent: number, share: number}}
+ * @param {number|null} share fraction in [0,1], or null for "follow the default"
+ * @returns {{mode: 'default'|'even'|'custom', percent: number, share: number|null}}
  */
-export function toSplit(share) {
+export function toSplit(share, configuredShare = EVEN_SHARE) {
+  if (share == null) {
+    return { mode: 'default', percent: Math.round(configuredShare * 100), share: null }
+  }
   return {
     mode: share === EVEN_SHARE ? 'even' : 'custom',
     percent: Math.round(share * 100),
@@ -45,14 +54,15 @@ export function toSplit(share) {
 }
 
 /**
- * The split after someone taps Even or Custom. Custom re-opens on the payer's configured
- * default rather than a hardcoded 50, so tapping Even and back does not mean dragging the
- * slider to where the sheet already says it is.
+ * The split after someone taps Default, Even or Custom. Custom re-opens on the payer's
+ * configured default rather than a hardcoded 50, so tapping Even and back does not mean
+ * dragging the slider to where the sheet already says it is.
  *
- * @param {'even'|'custom'} mode
+ * @param {'default'|'even'|'custom'} mode
  * @param {number} configuredShare the payer's default, from `defaultSplitFor`
  */
 export function nextSplit(mode, configuredShare) {
+  if (mode === 'default') return toSplit(null, configuredShare)
   if (mode === 'even') return toSplit(EVEN_SHARE)
   // Custom on exactly the even share still has to read as Custom, so this cannot route
   // through `toSplit`, which would answer 'even' for it.

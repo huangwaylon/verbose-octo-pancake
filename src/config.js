@@ -82,6 +82,15 @@ export const DEFAULT_CONFIG = {
   notePresets: [],
 }
 
+/**
+ * The spreadsheet's own URL, for the two places that link out to it. One home because it is
+ * assembled from a template, and two copies of a template is two chances to break a link
+ * nothing in the suite follows.
+ */
+export function sheetUrl(spreadsheetId) {
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}`
+}
+
 export function isConfigured() {
   return Boolean(SCRIPT_URL)
 }

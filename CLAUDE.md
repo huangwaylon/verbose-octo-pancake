@@ -39,6 +39,10 @@ Desktop is a convenience. Every layout decision is made at 320px first.
 - **`RECURRING.type` is null, and `rowToEntry`/`entryToRow` refuse a tab without one.** That is
   what makes "the recurring tab is not a data tab" enforced rather than documented: decoded as
   entries its rows all answer null, so the tab would just look permanently empty.
+- **`rowToTemplate`/`templateToRow` are the recurring tab's pair, and they must stay exact
+  inverses.** A null amount and a null share write BLANK, and blank is a value in both — a
+  variable bill, and "follow the payer's default". Writing `'0'` makes `rowToTemplate` refuse
+  the row, so the template vanishes from the page the app itself just wrote it to.
 - **Every column list is append-only.** Letters and ranges come from array *position*, and
   `ensureStructure` rewrites a mismatched header without touching data rows. The one reorder
   that happened (to match the bank CSV's 取引日 / 摘要 / 引出額, `id` last) shipped with a
@@ -87,8 +91,10 @@ Desktop is a convenience. Every layout decision is made at 320px first.
   `deleted_at` column, serializes its tab reads rather than batching them, and deletes in
   **descending** row order within each tab. All three protect row numbers derived from
   position.
-- **`compact` and `missingDataGid` cover `DATA_TABS`, not just the expenses tabs** — and not
-  the recurring tab, which holds no tombstones and whose rows nothing else references.
+- **`compact` and `missingDataGid` cover `DATA_TABS`, not just the expenses tabs** — and never
+  the recurring tab, which holds no tombstones and no row `compact` could recognise. Note that
+  a template's row IS referenced, by every instance it has posted, which is the whole reason
+  there is no delete: see Recurring costs.
 - **`compact` never runs while a write is in flight, and reports `busy` rather than
   `{removed: 0}`.** `compactRefusal` holds both refusals.
 - **Do not add conflict detection, and do not describe the app as if it had any.**
@@ -98,22 +104,64 @@ Desktop is a convenience. Every layout decision is made at 320px first.
 
 ## Recurring costs
 
-`recurring` is a tab of DECLARATIONS, hand-authored and read-only from the app. Everything the
-card decides is in `src/lib/recurring.js`; `README.md` documents the columns.
+`recurring` is a tab of DECLARATIONS. It is editable from the app through `RecurringSheet` and
+`TemplateFormSheet`, and still hand-authorable in the Sheet. Everything the page decides is in
+`src/lib/recurring.js`; `README.md` documents the columns.
 
 - **`${templateId}#${monthKey}` is the whole of "already recorded", and TWO writers derive
-  it** — the card and `postRecurring` in `apps-script/Code.gs`. That is what makes them safe to
-  coexist and a re-run a no-op. Never key it on category or description: both are fields a
-  person edits, so `Rent (Aug)` posts a second rent and two templates sharing a category and a
-  note collapse into one.
-- **`templatesDue` takes the RAW entry list, tombstones included**, and it is the one place in
+  it** — `RecurringSheet`'s Record control and `postRecurring` in `apps-script/Code.gs`. That
+  is what makes them safe to coexist and a re-run a no-op. Never key it on category or
+  description: both are fields a person edits, so `Rent (Aug)` posts a second rent and two
+  templates sharing a category and a note collapse into one.
+- **A template's id is minted once and NEVER changes, and there is NO delete.** Retiring sets
+  `active_to`; `retiredTemplate` carries the reason and it is not caution. The id is the only
+  link to the instances a template has already posted, so a deleted row orphans them —
+  re-create the cost under a new id and the month already paid reads as unrecorded, which is
+  enough for the unattended poster to append a second rent that night. Keeping the row also
+  makes stopping reversible, which is why nothing about it needs a confirmation dialog.
+- **`recurringRows` is the ONE derivation of "due", and it answers four states, not two.**
+  `recorded`, `due`, `scheduled` — rendered as two, rent-on-the-27th viewed on the 3rd is
+  indistinguishable from rent already paid, so every row says which it is in words. Do not add
+  a second predicate beside it.
+- **`recurringRows` takes the RAW entry list, tombstones included**, and it is the one place in
   the codebase where the deleted rows are the ones that count. A tombstone means the month is
-  handled — otherwise deleting a double-charged rent nags for the rest of the month. It is also
-  what makes a pending optimistic row close the double-tap hole for free.
+  recorded — otherwise deleting a double-charged rent nags for the rest of the month. It is
+  also what makes a pending optimistic row close the double-tap hole for free.
 - **Due is ONE comparison, `date <= today`, against the instance's own date.** That covers a
   past month, the current month's `day_of_month` gate and a future month with no branch.
   Offering the 27th's rent on the 1st has the balance claiming half of it owed for three weeks
   before the money moves.
+- **The recurring page is scoped to the month on SCREEN, not to today's month.** A month
+  missed while nobody was recording — away in October, back in November — has to stay
+  recordable, and `postRecurring` only ever posts the current one.
+- **`loadAll` keeps the FIRST template per id and counts the rest**, like `parseConfigRows`
+  does for a config key, and `saveTemplate` refuses to write to a duplicate at all. Two rows
+  under one id come from a Sheets copy-paste and from a retried append, and a write to a guess
+  puts one cost's values over another's.
+- **`sheets.saveTemplate` is the whole write surface, and it appends OR overwrites by id.** One
+  function rather than two is what makes a retried add idempotent: the id is minted when the
+  form opens, so an append whose response was lost gets retried under the same id, and a second
+  dedicated append would leave two rows — after which every edit to that cost is refused and it
+  can only be fixed in Sheets.
+- **Template writes are NOT optimistic.** `saveTemplate` writes and then `refresh()`, exactly
+  as `compact` does. That is what keeps templates out of the snapshot, out
+  of `mergeLoaded` and out of `hasPendingWrite` — and why `App`'s `setSafeToReload` predicate
+  has to name `recurring` itself, since nothing else can see a template write in flight.
+- **`useEntrySplit`'s `allowDefault` exists so a blank `payer_share` stays blank.** An entry's
+  null share is an unfilled draft the payer's default resolves; a template's is a durable
+  declaration. Resolving it would detach the cost from `default_split_p*` AND silently turn on
+  unattended posting, since a blank share is what makes `postRecurring` skip a row.
+- **The template form shows six of ten columns and writes all ten.** `months`, `active_from`
+  and `active_to` ride the draft untouched, or editing a quarterly cost silently makes it
+  monthly. Say so on screen, because nothing else would.
+- **`templateFormProblem` owns which field a submit refuses, and it is in `lib/` for a reason.**
+  A static-markup render cannot submit a form, so a refusal decided in the component is
+  untestable — and this one is the difference between a typo and a silent money change: a blank
+  amount is VALID, so a fumbled `22o000` falling through to blank saves a variable cost and
+  stops `postRecurring` posting rent, with nothing said.
+- **Retiring is dated from TODAY, never from the month on screen.** The page is scoped to the
+  month being looked at so a missed month stays recordable; "stop this cost" is a decision about
+  now, and dated from an August someone navigated back to it retires four extra months.
 - **A blank cell takes its documented default; a cell that was FILLED IN and cannot be read
   refuses the whole row**, and `loadAll` counts it. The deliberate opposite of `config`, where
   an unreadable value falls back quietly, because a default here either moves money
@@ -135,9 +183,12 @@ card decides is in `src/lib/recurring.js`; `README.md` documents the columns.
   BEFORE writing, or `2026-09-01` becomes a date serial that reads back in the spreadsheet's
   locale and `loadAll` reports as `undatedRows`. Every date there goes through
   `Utilities.formatDate` in the script's own zone, and the manifest pins that zone.
-- **The card never auto-posts, and it is not a notice.** A tap prefills `EntryFormSheet` as an
-  ADD, so validation, `splitYen`, `tabOf` and the toasts all apply unchanged. `noticeKeys`
-  means "the sheet holds something the app cannot show"; a missing rent row is the opposite.
+- **Nothing on the recurring page auto-posts.** Record prefills `EntryFormSheet` as an ADD, so
+  validation, `splitYen`, `tabOf` and the toasts all apply unchanged — and it CLOSES the
+  recurring sheet first, because exactly one `BottomSheet` may be mounted at a time.
+- **Nothing about recurring costs appears on the ledger** except the `undecodedTemplates`
+  notice, which is about rows the sheet holds and the app cannot use rather than a reminder.
+  That is a product decision: reminders live on the page.
 - **`bank_to_ledger.py` is untouched by any of this.** It knows the two entry column lists,
   not this one.
 
@@ -163,9 +214,10 @@ card decides is in `src/lib/recurring.js`; `README.md` documents the columns.
   environment and no renderer for hooks, so nothing a `use*.js` file decides for itself is
   reachable from a test. Every list transition, status decision and refusal lives in
   `ledgerState.js` (`reconcileById`, `looksUninitialized`, `entryFromInput`, `hasPendingWrite`,
-  `compactRefusal`, `newDraftEntry`, `shouldRefresh`, `noticeKeys`, `gateFor`), `balance.js`
-  (`initialMonthKey` and the aggregates), `split.js` (`toSplit`, `nextSplit`) or `recurring.js`
-  (`rowToTemplate`, `entryFromTemplate`, `templatesDue`). Put new logic there, or it cannot be
+  `compactRefusal`, `newDraftEntry`, `shouldRefresh`, `noticeKeys`, `gateFor`,
+  `templateFromInput`), `balance.js` (`initialMonthKey` and the aggregates), `split.js`
+  (`toSplit`, `nextSplit`) or `recurring.js` (`rowToTemplate`, `templateToRow`,
+  `entryFromTemplate`, `recurringRows`, `templateFormProblem`). Put new logic there, or it cannot be
   tested at all. Hooks are not confined to `src/state/`: `useEntrySplit` sits beside the one
   control that holds its state.
 
@@ -325,7 +377,9 @@ card decides is in `src/lib/recurring.js`; `README.md` documents the columns.
   `possessive`, which exists because English inflects: `label` in `'{name}’s share'` reads
   "You’s share" for whoever is holding the phone.
 - **A control that appears twice is a component**: `Field` (the one home of the
-  `<label htmlFor>` vs `<span>` decision), `Segmented`, `EntryLine`, `NoteField`, `SplitField`.
+  `<label htmlFor>` vs `<span>` decision), `Segmented`, `EntryLine`, `NoteField`, `SplitField`,
+  `CategoryField` — which is the one home of the `<select>`-whose-value-matches-no-option trap,
+  and both forms that pick a category go through it.
   The two radio groups — `Segmented` and the accent swatches — each carry their own
   `role="radiogroup"`. A wrapper with no job of its own is not on the list; inline it.
 - **`LedgerScreen` is the signed-in surface, and THREE things render it**: `App`,
@@ -397,6 +451,12 @@ strings with inline markup (`nodes.jsx`).
   direction line below it is. Never move the name onto the `<p>` — `role="paragraph"` prohibits
   naming, so it would announce nothing at all.
 - **`BottomSheet` reads `onClose` through a ref**, so no effect depends on its identity.
+- **Exactly ONE `BottomSheet` is mounted at a time, and that has to be structural.** It puts a
+  keydown listener on the document, traps Tab against its own panel and mounts
+  `useKeyboardInset` — so two at once means Escape closes both, two traps fight over Tab, and
+  the inner one's cleanup clears `--keyboard-inset` while the outer still has the keyboard up,
+  putting Save back behind a keypad with no Done key. `App`'s `recurring` is ONE value for that
+  reason, and every handler that opens a different sheet closes its own first.
 - **Cancel comes first in the DOM in `ConfirmDeleteSheet`**, because `BottomSheet` focuses the
   first control it finds and on a destructive dialog that must be the way out.
 - **Identity is never communicated by colour alone.** The chart legend always carries name,
@@ -584,12 +644,13 @@ that matters most is end-to-end: a settlement of exactly the outstanding balance
 net to zero, with odd-unit amounts so rounding is genuinely exercised.
 
 **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the real
-`LedgerScreen` to static HTML with the real stylesheets, eighteen pages: every accent, both
-languages, the four overlays, the settled balance, and three stress pages holding everything a
-320px phone has no room for. The settlement form earns its own page because it is the sparsest
+`LedgerScreen` to static HTML with the real stylesheets, twenty-four pages: every accent, both
+languages, the six overlays, the settled balance, the empty add form, and four stress pages
+holding everything a 320px phone has no room for. The settlement form earns its own page because it is the sparsest
 thing the entry form renders and the only place its two `!isSettlement` blocks are visible. The
-stress page's `SIDEWAYS` readout is what caught the recurring card sizing the whole aside by its
-longest name — no assertion in the suite could see it.
+stress pages' `SIDEWAYS` readout is what caught the recurring list squeezing its name column to
+60px behind an eight-figure amount, and before that the aside being sized by its longest name —
+no assertion in the suite could see either.
 
 ```sh
 npx vite-node scripts/preview.jsx     # writes scripts/preview-*.html (gitignored)

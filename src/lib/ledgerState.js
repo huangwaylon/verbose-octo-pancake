@@ -21,6 +21,7 @@ import {
   validateEntryCodes,
 } from '../schema.js'
 import { todayIso } from './dates.js'
+import { makeTemplate, validateTemplateCodes } from './recurring.js'
 import { i18nError } from '../i18n/index.js'
 
 /**
@@ -307,6 +308,18 @@ export function entryFromInput(input) {
   const problems = validateEntryCodes(entry)
   if (problems.length) throw i18nError(`error.${problems[0]}`)
   return entry
+}
+
+/**
+ * The same for a recurring declaration, and here rather than in `recurring.js` for the same
+ * reason `entryFromInput` is here rather than in `schema.js`: the pure layer answers with
+ * CODES, and turning one into something a person reads is what needs the catalog.
+ */
+export function templateFromInput(input) {
+  const template = makeTemplate(input)
+  const problems = validateTemplateCodes(template)
+  if (problems.length) throw i18nError(`error.${problems[0]}`)
+  return template
 }
 
 /**

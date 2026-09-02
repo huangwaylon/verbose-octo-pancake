@@ -180,10 +180,11 @@
   flex-direction: column;
   gap: var(--space-4);
   /* Same guard as `.layout__main` below, and for the same reason: a grid item's
-     automatic minimum is its MIN-CONTENT width, so one non-wrapping descendant sizes
-     the whole column and the page scrolls sideways at 320px. The recurring card's names
-     are that descendant — they truncate like the ledger's rows do, and truncation is
-     what stops working when this is missing, rather than anything looking wrong here. */
+     automatic minimum is its MIN-CONTENT width, so ONE non-wrapping descendant sizes the
+     whole column and the page scrolls sideways at 320px. Nothing in the aside relies on
+     it today — the hero figure and the chart legend truncate on their own — which is
+     exactly why it has to stay stated: the next thing added here would find out the hard
+     way, and only the `preview-en-stress*` SIDEWAYS readout would show it. */
   min-width: 0;
 }
 
@@ -242,73 +243,90 @@
 }
 
 /* =========================================================================
-   Expected this month
+   Recurring costs
    =========================================================================
-   Recurring costs the month has no row for yet. Rows rather than chips: the
-   amount is half of what makes one recognisable, and it belongs at the trailing
-   edge where every amount in the ledger already sits. */
+   The rows on the recurring page. Inside a SHEET, not a card on the ledger, and
+   that changes one rule: the name WRAPS rather than truncating. This is where a
+   household's fixed costs are managed, so a name has to be readable in full, and
+   `.sheet__body`'s `overflow-x: hidden` would clip a truncation rather than
+   report it. `min-width: 0` plus `overflow-wrap` is what CLAUDE.md requires of
+   anything holding sheet-authored text. */
 
-.expected {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.expected__list {
+.recurring__list {
   display: flex;
   flex-direction: column;
 }
 
 /* Inset divider, full-bleed press: the hairline stops at the text like the entry
-   list's does, while the row below spills into the card's padding so a finger's
-   worth of the highlight is not a stripe narrower than the tap it answers. */
-.expected__row + .expected__row {
+   list's does, while the row below spills into the sheet's padding so a finger's
+   worth of highlight is not a stripe narrower than the tap it answers. */
+.recurring__row + .recurring__row {
   border-top: 1px solid var(--line);
 }
 
-.expected__item {
+.recurring__row {
+  display: grid;
+  /* Two tracks, not three. The amount rides the meta line instead of taking one of its
+     own: at 320px a name, an eight-figure figure and the Record button leave the name
+     about 60px, and `overflow-wrap` then breaks words mid-glyph. */
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.recurring__main {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-3);
-  width: 100%;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
   min-height: var(--tap-target);
-  margin-inline: calc(var(--space-2) * -1);
+  justify-content: center;
+  margin-inline-start: calc(var(--space-2) * -1);
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   text-align: left;
 }
 
-.expected__item:active {
+/* A row is a row, not text: the same rules `button.entry__main` carries, and for the same
+   reason — a long press on an edit affordance must not raise iOS's selection magnifier. Unlike
+   there, this class is only ever a button, so it needs no element qualifier. */
+.recurring__main {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.recurring__main:active {
   background-color: var(--sunken);
 }
 
 @media (hover: hover) {
-  .expected__item:hover {
+  .recurring__main:hover {
     background-color: var(--sunken);
   }
 }
 
-/* Truncates rather than wraps, so one long note cannot make this card taller than
-   the summary below it. A block box overflowing with inline content is what
-   text-overflow needs; `min-width: 0` is what lets the flex item get there. */
-.expected__name {
+.recurring__name {
   min-width: 0;
-  overflow: hidden;
   color: var(--ink);
   font-size: var(--fs-label);
   font-weight: 500;
   line-height: var(--lh-tight);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
-.expected__amount {
-  flex: none;
-  color: var(--ink-2);
-  font-size: var(--fs-label);
-  font-weight: 600;
+.recurring__meta {
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: var(--fs-caption);
   line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+
+.recurring__amount {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 /* =========================================================================

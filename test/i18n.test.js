@@ -13,6 +13,7 @@ import {
   translate,
 } from '../src/i18n/index.js'
 import { ENTRY_ERROR } from '../src/schema.js'
+import { TEMPLATE_ERROR } from '../src/lib/recurring.js'
 import { CONNECTION_ERROR } from '../src/lib/connection.js'
 import { ACCENTS } from '../src/lib/theme.js'
 
@@ -191,6 +192,19 @@ describe('catalog usage', () => {
     // the bare string "badAmount".
     const untranslated = []
     for (const code of Object.values(ENTRY_ERROR)) {
+      for (const tag of SUPPORTED) {
+        if (!(`error.${code}` in CATALOGS[tag])) untranslated.push(`${tag}: error.${code}`)
+      }
+    }
+    expect(untranslated).toEqual([])
+  })
+
+  it('translates every template validation code, in every locale', () => {
+    // Its own test for the same reason `ENTRY_ERROR` has one: `error.<code>` is built at
+    // runtime, the `error.` prefix is exempt from the dead-key scan above, and a code with
+    // no catalog entry reaches a person as the bare string "badTemplateAmount".
+    const untranslated = []
+    for (const code of Object.values(TEMPLATE_ERROR)) {
       for (const tag of SUPPORTED) {
         if (!(`error.${code}` in CATALOGS[tag])) untranslated.push(`${tag}: error.${code}`)
       }

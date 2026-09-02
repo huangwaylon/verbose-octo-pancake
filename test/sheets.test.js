@@ -785,6 +785,30 @@ describe('loadAll', () => {
         expect(undecodedTemplates).toBe(3)
       })
 
+      /**
+       * Two rows under one id, which a Sheets copy-paste produces. The FIRST wins, exactly as
+       * `parseConfigRows` takes the first usable value for a config key — the same
+       * hand-authored-tab problem. Unreconciled they would render two identical rows under one
+       * React key and `recurringRows` would emit two drafts nothing could tell apart.
+       */
+      it('keeps the FIRST row per id and counts the rest', async () => {
+        installSheets(() =>
+          ranges5({
+            recurring: values([
+              recurringRow({ id: 'rent', description: 'Rent', amount: '220000', payer: 'p1' }),
+              recurringRow({ id: 'rent', description: 'Parking', amount: '30000', payer: 'p2' }),
+              recurringRow({ id: 'gym', description: 'Gym', amount: '8000', payer: 'p2' }),
+            ]),
+          }),
+        )
+
+        const { templates, undecodedTemplates } = await sheets.loadAll(SHEET)
+
+        expect(templates.map((template) => template.description)).toEqual(['Rent', 'Gym'])
+        // Counted, not dropped silently: only the sheet can fix it, and the notice says so.
+        expect(undecodedTemplates).toBe(1)
+      })
+
       it('reports no templates for a sheet whose tab is empty', async () => {
         installSheets(() => EMPTY_RANGES)
 
@@ -794,6 +818,161 @@ describe('loadAll', () => {
         })
       })
     })
+  })
+})
+
+/**
+ * The `recurring` tab's writes. Everything here is a write into a tab a person authored by
+ * hand, and the two failures that matter are silent: a blank that should have stayed blank —
+ * a variable amount, or a share that means "follow the payer's default" — and a write landing
+ * on the wrong row when two rows share an id.
+ */
+describe('template writes', () => {
+  const recurringRow = (fields) => RECURRING.columns.map((column) => fields[column] ?? '')
+
+  const RENT = {
+    id: 'rent',
+    description: 'Rent',
+    amountYen: 220000,
+    category: 'Rent',
+    payer: PERSON.P1,
+    payerShare: 0.8,
+    months: null,
+    dayOfMonth: 27,
+    activeFrom: null,
+    activeTo: null,
+  }
+
+  /** The appended or updated row as a field map, so an assertion names its column. */
+  const sentRow = (call) =>
+    Object.fromEntries(RECURRING.columns.map((column, at) => [column, call.body.values[0][at]]))
+
+  it('appends when the tab has no row for that id, RAW, at the schema’s column order', async () => {
+    const calls = installSheets(() => ({}))
+
+    await sheets.saveTemplate(SHEET, RENT)
+
+    const write = writes(calls)[0]
+    expect(write.url).toContain('recurring:append')
+    expect(write.url).toContain('valueInputOption=RAW')
+    expect(sentRow(write)).toEqual({
+      description: 'Rent',
+      amount: '220000',
+      category: 'Rent',
+      payer: PERSON.P1,
+      payer_share: '0.8',
+      months: '',
+      day_of_month: '27',
+      active_from: '',
+      active_to: '',
+      id: 'rent',
+    })
+  })
+
+  /**
+   * The row a variable cost needs. A blank amount means "the figure changes every month" and
+   * a blank share means "follow whoever pays, at their configured default" — the second of
+   * which is ALSO what makes `postRecurring` leave the row for a human. Written as '0' both
+   * would be lies, and `rowToTemplate` refuses an amount of 0 outright, so the template
+   * would vanish from the page the app itself just wrote it to.
+   */
+  it('writes a blank amount and a blank share, never a zero', async () => {
+    const calls = installSheets(() => ({}))
+
+    await sheets.saveTemplate(SHEET, { ...RENT, amountYen: null, payerShare: null })
+
+    const row = sentRow(writes(calls)[0])
+    expect(row.amount).toBe('')
+    expect(row.payer_share).toBe('')
+  })
+
+  it('overwrites the row the sheet says holds that id, not a cached position', async () => {
+    // The id sits third, so the write must land on row 4 (header + 2).
+    const calls = installSheets((call) =>
+      call.url.includes(RECURRING.dataRange)
+        ? values([
+            recurringRow({ id: 'other', payer: 'p1' }),
+            recurringRow({ id: 'another', payer: 'p2' }),
+            recurringRow({ id: 'rent', payer: 'p1' }),
+          ])
+        : {},
+    )
+
+    await sheets.saveTemplate(SHEET, RENT)
+
+    const [read, write] = calls
+    expect(read.method).toBe('GET')
+    expect(read.url).toContain('recurring!A2:J')
+    expect(write.method).toBe('PUT')
+    // The literal range: ten columns is what `A4:J4` spells, and deriving it from the
+    // module under test would assert its arithmetic against a copy of itself.
+    expect(write.url).toContain('recurring!A4:J4')
+    expect(write.url).toContain('valueInputOption=RAW')
+  })
+
+  /**
+   * ONE function decides append-versus-overwrite, and that is what makes a retried add
+   * idempotent: a template's id is minted when the form opens, so an append whose response was
+   * lost gets retried under the SAME id. Two dedicated appends would leave two rows, and from
+   * then on every edit to that cost is refused — unmaintainable from the app for good.
+   */
+  it('overwrites rather than duplicating when the same add is retried', async () => {
+    let appended = null
+    const calls = installSheets((call) => {
+      if (call.url.includes(RECURRING.dataRange)) {
+        return values(appended ? [appended] : [])
+      }
+      if (call.url.includes(':append')) appended = call.body.values[0]
+      return {}
+    })
+
+    await sheets.saveTemplate(SHEET, RENT)
+    await sheets.saveTemplate(SHEET, RENT)
+
+    const mutating = writes(calls)
+    expect(mutating).toHaveLength(2)
+    expect(mutating[0].url).toContain(':append')
+    // The second lands on the row the first created, not beside it.
+    expect(mutating[1].method).toBe('PUT')
+    expect(mutating[1].url).toContain('recurring!A2:J2')
+  })
+
+  /**
+   * Two rows under one id, which a Sheets-UI copy-paste and a retried append both produce.
+   * `loadAll` shows only the first, so writing to a GUESS would put one cost's values over
+   * another's — and the row on screen would be the one that did not change. Refused, and the
+   * message names the fix, because only the sheet can make it.
+   */
+  it('refuses a duplicate id rather than writing to one of them', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes(RECURRING.dataRange)
+        ? values([
+            recurringRow({ id: 'rent', payer: 'p1' }),
+            recurringRow({ id: 'rent', payer: 'p2' }),
+          ])
+        : {},
+    )
+
+    await expect(sheets.saveTemplate(SHEET, RENT)).rejects.toMatchObject({
+      i18nKey: 'error.duplicateTemplate',
+    })
+    expect(writes(calls)).toHaveLength(0)
+  })
+
+  /** Retiring is an ordinary update with `active_to` set — there is no delete path at all. */
+  it('retires through active_to, and never deletes a row', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes(RECURRING.dataRange)
+        ? values([recurringRow({ id: 'rent', payer: 'p1' })])
+        : {},
+    )
+
+    await sheets.saveTemplate(SHEET, { ...RENT, activeTo: '2026-08' })
+
+    expect(sentRow(writes(calls)[0]).active_to).toBe('2026-08')
+    // A deleted row would orphan every instance this template has posted, and the poster
+    // would re-post the current month under a re-created id.
+    expect(calls.some((call) => call.body?.requests)).toBe(false)
   })
 })
 

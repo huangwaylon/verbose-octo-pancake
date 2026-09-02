@@ -80,6 +80,19 @@ export function CloseIcon(props) {
   )
 }
 
+/**
+ * Retire / restore a recurring cost: a clock. Not a trash can — nothing is destroyed and the
+ * same control brings it back, so a destructive glyph would promise the wrong thing.
+ */
+export function RetireIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </svg>
+  )
+}
+
 export function SwapIcon(props) {
   return (
     <svg {...base} {...props}>

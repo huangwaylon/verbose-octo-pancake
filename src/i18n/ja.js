@@ -76,10 +76,41 @@ export default {
   'entry.delete': '{description}を削除',
   'entry.metaSeparator': '・',
 
-  // --- expected this month --------------------------------------------------
-  'expected.title': '今月の予定',
-  'expected.hint': 'recurring タブにあって、今月まだ記録していないものです。タップして入力します。',
-  'expected.amountVaries': '金額は変動',
+  // --- recurring costs ------------------------------------------------------
+  'recurring.title': '定期の支出',
+  'recurring.settingsHint': '家賃やジムなど、毎月かかって金額が分かっているもの。',
+  'recurring.manageCount': {
+    other: '{count}件を管理',
+  },
+  'recurring.manageEmpty': '設定する',
+  'recurring.hint': '{month}を表示しています。タップすると編集できます。',
+  'recurring.empty': 'まだありません。家賃など、毎月かかるものを追加しましょう。',
+  'recurring.notLoaded': 'まだ読み込めていません。シートを読み込んでからお試しください。',
+  'recurring.add': '定期の支出を追加',
+  'recurring.amountVaries': '金額は変動',
+  'recurring.schedule': '{day}日',
+  'recurring.recorded': '記録ずみ',
+  'recurring.notYetDue': '{day}日に予定',
+  'recurring.notThisMonth': '今月は対象外',
+  'recurring.record': '記録',
+  'recurring.recordName': '{name}を記録',
+
+  'recurring.addTitle': '定期の支出を追加',
+  'recurring.editTitle': '定期の支出を編集',
+  'recurring.name': '名前',
+  'recurring.namePlaceholder': '家賃',
+  'recurring.nameError': '見分けられるように名前を入力してください。',
+  'recurring.amountHint': '毎月変わる場合は空のままにしてください。',
+  'recurring.day': '毎月の日付',
+  'recurring.dayHint': 'この日より前には記録されません。31日は短い月の末日になります。',
+  'recurring.splitDefault': '既定',
+  'recurring.splitDefaultHint': '{owner}既定の分担に従います。現在は{percent}%です。',
+  'recurring.sheetOnlyHint':
+    '四半期ごと・年ごとの設定はシートの recurring タブにあり、この画面では変更されません。',
+  'recurring.editScopeHint': 'すでに記録した月は、記録した時点の金額のままです。',
+  'recurring.retire': 'この支出を止める',
+  'recurring.restore': 'この支出を再開する',
+  'recurring.saveError': '保存できませんでした。',
 
   // --- deleted entries ------------------------------------------------------
   'deleted.title': {
@@ -182,6 +213,7 @@ export default {
   'toast.deleted': '削除しました',
   'toast.deleteFailed': '削除できませんでした。',
   'toast.restored': '元に戻しました',
+  'toast.retired': '止めました',
   'toast.restoreFailed': '元に戻せませんでした。',
   'error.readSheet': 'シートを読み込めませんでした。',
   'error.sheetRequest': 'シートが応答しませんでした。少し待ってからもう一度お試しください。',
@@ -207,6 +239,11 @@ export default {
   'error.badPayer': '支払った人はふたりのどちらかを選んでください。',
   'error.badShare': '分担は 0〜100% の範囲で指定してください。',
   'error.missingCategory': 'カテゴリーを選んでください。',
+  'error.missingDescription': '「家賃」のように名前を入力してください。',
+  'error.badTemplateAmount': '金額は円単位の整数、または変動する場合は空にしてください。',
+  'error.badDay': '毎月の日付は 1〜31 で指定してください。',
+  'error.duplicateTemplate':
+    'recurring タブの2行が同じ ID を使っているため、安全に保存できません。シートでどちらかの ID を変更してください。',
   'warning.staleData': '保存したデータを表示しています。シートにつながりませんでした。',
   // `Intl.PluralRules('ja')` reports only `other`, so a single branch is correct.
   'warning.configMissing':
@@ -221,6 +258,6 @@ export default {
     other: '支払った人を読み取れない精算が {count} 件あるため、残高に含まれていません。',
   },
   'warning.undecodedTemplates': {
-    other: 'recurring タブに読み取れない行が {count} 行あるため、上には表示されません。',
+    other: 'recurring タブの{count}行が使えないため、「定期の支出」に表示されません。',
   },
 }

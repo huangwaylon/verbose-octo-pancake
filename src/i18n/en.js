@@ -94,13 +94,57 @@ export default {
   'entry.delete': 'Delete {description}',
   'entry.metaSeparator': ' · ',
 
-  // --- expected this month --------------------------------------------------
-  // The recurring-cost card. "Expected" rather than "Due": the list is what the
-  // month should hold, and the app never posts one on its own.
-  'expected.title': 'Expected this month',
-  'expected.hint': 'From the recurring tab, and not in this month yet. Tap one to fill it in.',
-  // A template with a blank amount is recurring-but-variable, like a utility bill.
-  'expected.amountVaries': 'Varies',
+  // --- recurring costs ------------------------------------------------------
+  // The page behind Settings. "Recurring costs" rather than "Subscriptions":
+  // rent is the reason this exists and it is nobody's subscription.
+  'recurring.title': 'Recurring costs',
+  // Deliberately does not promise the daily poster: the Apps Script trigger is optional,
+  // and SETUP.md step 9 is where it gets set up.
+  'recurring.settingsHint':
+    'Rent, the gym, anything that comes round every month with an amount you already know.',
+  'recurring.manageCount': {
+    one: 'Manage {count} cost',
+    other: 'Manage {count} costs',
+  },
+  'recurring.manageEmpty': 'Set one up',
+  'recurring.hint': 'Showing {month}. Tap a cost to edit it.',
+  'recurring.empty': 'Nothing set up yet. Add rent, or anything else that comes round every month.',
+  // A cached launch has an empty list for a completely different reason, and
+  // "none yet" there invites a second copy of a cost that already exists.
+  'recurring.notLoaded': 'Not loaded yet — pull the sheet in and come back.',
+  'recurring.add': 'Add a recurring cost',
+  'recurring.amountVaries': 'Varies',
+  // The row's own state, in words. Never by colour, and never by the absence of
+  // the Record button: not-yet-due and already-paid look identical without these.
+  'recurring.schedule': 'day {day}',
+  'recurring.recorded': 'recorded',
+  'recurring.notYetDue': 'due on the {day}',
+  'recurring.notThisMonth': 'not this month',
+  'recurring.record': 'Record',
+  // Several identical "Record" buttons in a column say nothing about which cost
+  // each one belongs to.
+  'recurring.recordName': 'Record {name}',
+
+  'recurring.addTitle': 'Add a recurring cost',
+  'recurring.editTitle': 'Edit recurring cost',
+  'recurring.name': 'Name',
+  'recurring.namePlaceholder': 'Rent',
+  'recurring.nameError': 'Give it a name, so you can tell it apart.',
+  // Blank is a real answer here, and the one a utility bill needs.
+  'recurring.amountHint': 'Leave it empty if the amount changes every month.',
+  'recurring.day': 'Day of the month',
+  'recurring.dayHint':
+    'Nothing is recorded before this day. A 31 lands on the last day of short months.',
+  // Names the person and the number, because the mode saves a BLANK cell: the
+  // figure shown is the config tab's and moves when that does.
+  'recurring.splitDefault': 'Default',
+  'recurring.splitDefaultHint': 'Follows {owner} default split, {percent}% today.',
+  'recurring.sheetOnlyHint':
+    'Quarterly and annual schedules live in the recurring tab of your sheet, and this form keeps them.',
+  'recurring.editScopeHint': 'Months already recorded keep the figures they were recorded with.',
+  'recurring.retire': 'Stop this cost',
+  'recurring.restore': 'Start this cost again',
+  'recurring.saveError': 'Could not save that.',
 
   // --- deleted entries ------------------------------------------------------
   // The count is in the summary line because the section is collapsed: closed,
@@ -216,6 +260,7 @@ export default {
   'toast.deleted': 'Deleted',
   'toast.deleteFailed': 'Could not delete that.',
   'toast.restored': 'Restored',
+  'toast.retired': 'Stopped',
   'toast.restoreFailed': 'Could not restore that.',
   'error.readSheet': 'Could not read the sheet.',
   // Every failed Sheets request lands here. The API's own English text stays on
@@ -248,6 +293,15 @@ export default {
   'error.badPayer': 'Payer must be one of the two people.',
   'error.badShare': 'Split must be between 0 and 100%.',
   'error.missingCategory': 'Pick a category.',
+  // Template validation. `badPayer` and `badShare` are shared with an entry: the same
+  // cell means the same thing, so a second sentence would be a second translation.
+  'error.missingDescription': 'Give it a name, like Rent.',
+  'error.badTemplateAmount': 'Amount must be a whole number of yen, or empty if it varies.',
+  'error.badDay': 'Day of the month must be between 1 and 31.',
+  // Two rows carrying one id: writing to either would put one cost's values over the
+  // other's, so the fix has to happen in the sheet.
+  'error.duplicateTemplate':
+    'Two rows in the recurring tab share one id, so this cannot be saved safely. Give one of them a different id in the sheet.',
   'warning.staleData': 'Showing saved data — could not reach the sheet.',
   // The config tab is gone or renamed, so every value falls back to a default —
   // including each person's default split, which decides how every expense divides.
@@ -274,10 +328,14 @@ export default {
     other: '{count} settlements name nobody who paid, so they are left out of the balance.',
   },
   // Nothing on screen is wrong because of one of these — which is why it is the last
-  // notice — but a recurring cost that stops being offered is exactly the forgetting
-  // the recurring tab exists to prevent, so it cannot be silent either.
+  // notice — but a recurring cost that stops being offered is exactly the forgetting the
+  // recurring tab exists to prevent, so it cannot be silent either. "Cannot be used" rather
+  // than "cannot be read": the count also covers a row whose id another row already has,
+  // which reads perfectly well. And it names the page, not "above" — nothing about recurring
+  // costs is on the ledger.
   'warning.undecodedTemplates': {
-    one: '{count} row in the recurring tab cannot be read, so it is not offered above.',
-    other: '{count} rows in the recurring tab cannot be read, so they are not offered above.',
+    one: '{count} row in the recurring tab cannot be used, so it is missing from Recurring costs.',
+    other:
+      '{count} rows in the recurring tab cannot be used, so they are missing from Recurring costs.',
   },
 }

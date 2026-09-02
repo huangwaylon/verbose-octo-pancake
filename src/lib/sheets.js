@@ -15,6 +15,7 @@ import {
   CONFIG_TAB,
   DATA_TABS,
   FIRST_DATA_ROW,
+  RECURRING,
   SHEET_TABS,
   cellText,
   entryToRow,
@@ -26,7 +27,7 @@ import {
 import { reconcileById, tombstoneCount } from './ledgerState.js'
 import { parseAmountToYen } from './money.js'
 import { getAccessToken, refreshToken } from './connection.js'
-import { rowToTemplate } from './recurring.js'
+import { rowToTemplate, templateToRow } from './recurring.js'
 import { defaultConfigRows, parseConfigRows } from './sheetConfig.js'
 import { i18nError } from '../i18n/index.js'
 
@@ -176,10 +177,11 @@ function updateValues(spreadsheetId, range, values) {
  * Reported rather than repaired: seeding a fresh tab would write this build's defaults
  * into a sheet whose real values are unknown, and take the notice away with them.
  *
- * `undecodedTemplates` — `recurring` rows somebody filled in that `rowToTemplate` refused.
- * Nothing on screen is wrong because of one, which is why it is the least urgent notice;
- * what it costs is a recurring cost silently never offered, which is the one thing that
- * feature exists to prevent.
+ * `undecodedTemplates` — `recurring` rows somebody filled in that this cannot use: refused
+ * by `rowToTemplate`, or carrying an id an earlier row already had. Nothing on screen is
+ * wrong because of one, which is why it is the least urgent notice; what it costs is a
+ * recurring cost silently never offered, which is the one thing that feature exists to
+ * prevent.
  *
  * @returns {Promise<{entries: object[], templates: object[], config: object,
  *   sheetConfig: object, supersededRows: number, undecodedRows: number, undatedRows: number,
@@ -248,11 +250,22 @@ export async function loadAll(spreadsheetId) {
   // index is derived rather than a literal for the same reason the config one is.
   let undecodedTemplates = 0
   const templates = []
+  const templateIds = new Set()
   for (const row of valueRanges[DATA_TABS.length]?.values ?? []) {
     const template = rowToTemplate(row)
-    if (template) templates.push(template)
-    // A row somebody filled in and `rowToTemplate` refused. A wholly blank one says
-    // nothing — the range runs to the bottom of the tab, so most of them are blank.
+    // The FIRST row per id wins, exactly as `parseConfigRows` takes the first usable value
+    // for a config key — the same hand-authored-tab problem. A duplicate is reachable by
+    // copying the rent row to add parking and forgetting to change `id`, and by retrying an
+    // append whose response was lost. Kept unreconciled it would render two identical rows
+    // under one React key, and `recurringRows` would emit two drafts nothing could tell
+    // apart. Counted rather than dropped silently, and `saveTemplate` refuses to write to a
+    // duplicate at all, so the row on screen is always the row an edit lands on.
+    if (template && !templateIds.has(template.id)) {
+      templateIds.add(template.id)
+      templates.push(template)
+    }
+    // Anything somebody filled in that this cannot use. A wholly blank row says nothing —
+    // the range runs to the bottom of the tab, so most of them are blank.
     else if ((row ?? []).some((_, index) => cellText(row, index))) undecodedTemplates += 1
   }
 
@@ -374,6 +387,78 @@ export async function updateEntry(spreadsheetId, entry, previousPayer) {
 export async function setDeletedAt(spreadsheetId, tab, id, deletedAtIso) {
   const rowNumber = await resolveRow(spreadsheetId, tab, id)
   await updateValues(spreadsheetId, tab.cellRange(rowNumber, 'deleted_at'), [[deletedAtIso ?? '']])
+}
+
+/**
+ * ---------------------------------------------------------------------------
+ * The `recurring` tab's own writes.
+ * ---------------------------------------------------------------------------
+ *
+ * Separate from the entry paths above rather than generalised with them, because almost
+ * nothing is shared: a template has no `deleted_at` and no payer-driven tab, so there is no
+ * soft delete, no row to move between tabs and no `tabOf` decision. There is no HARD delete
+ * either — `retiredTemplate` says why the row has to stay — so ONE function is the whole write
+ * surface, and it never shifts a row.
+ *
+ * What IS shared is the rule that matters: a row number is never cached, and the write
+ * re-resolves id -> row against a fresh read immediately beforehand.
+ */
+
+/**
+ * The row a template's id sits on, or null if the tab does not hold it yet.
+ *
+ * REFUSES a duplicate rather than picking one, which is the opposite of `resolveRow` — and
+ * deliberately. `resolveRow` prefers the last match because `updateEntry` leaves a same-id
+ * tombstone behind; nothing in this tab does, so two rows under one id is a mistake rather
+ * than a state. It is reachable by copying the rent row in the Sheets UI to add parking and
+ * forgetting to change `id`, and writing to a guess would put one cost's values over
+ * another's. `loadAll` shows only the first of them and counts the rest, so a person can see
+ * that something is wrong; only the sheet can put it right.
+ */
+async function findTemplateRow(spreadsheetId, id) {
+  const data = await getValues(spreadsheetId, RECURRING.dataRange)
+  const rows = data.values ?? []
+
+  const matches = []
+  rows.forEach((row, index) => {
+    if (cellText(row, RECURRING.index('id')) === id) matches.push(FIRST_DATA_ROW + index)
+  })
+
+  // Reaches the screen through the form's own error line, so it is translated. Only the sheet
+  // can fix it, and the sentence says so.
+  if (matches.length > 1) throw i18nError('error.duplicateTemplate')
+  return matches[0] ?? null
+}
+
+/**
+ * Write a template, wherever it belongs: append when the tab has no row for its id, overwrite
+ * when it does.
+ *
+ * ONE function for add and edit rather than two, and that is what makes it idempotent. A
+ * template's id is minted when the form OPENS, so an append whose response was lost —
+ * committed, but reported as failed — gets retried under the SAME id; two calls to a dedicated
+ * append would leave two rows, and from then on `findTemplateRow` refuses every edit and the
+ * cost is unmaintainable from the app until somebody opens Sheets.
+ *
+ * The WHOLE row either way, never the edited cells: `templateToRow` writes a blank for a null
+ * amount or share, and those blanks are values — variable, and "follow the payer's default". A
+ * partial write could not clear one. Retiring is this same call with `active_to` set, which is
+ * why there is no third function and no delete.
+ */
+export async function saveTemplate(spreadsheetId, template) {
+  const rowNumber = await findTemplateRow(spreadsheetId, template.id)
+  if (rowNumber == null) {
+    await request(
+      `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(RECURRING.title)}:append`,
+      {
+        method: 'POST',
+        params: { valueInputOption: RAW, insertDataOption: 'INSERT_ROWS' },
+        body: { values: [templateToRow(template)] },
+      },
+    )
+    return
+  }
+  await updateValues(spreadsheetId, RECURRING.rowRange(rowNumber), [templateToRow(template)])
 }
 
 /**

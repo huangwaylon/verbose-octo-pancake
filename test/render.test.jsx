@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { DEFAULT_CONFIG } from '../src/config.js'
 import { ENTRY_TYPE, PERSON, RECURRING } from '../src/schema.js'
 import { expense } from './support/entries.js'
-import { entryFromTemplate, rowToTemplate } from '../src/lib/recurring.js'
+import { newTemplate, rowToTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
@@ -15,7 +15,8 @@ import {
 import { currentMonthKey } from '../src/lib/dates.js'
 import { LedgerScreen } from '../src/components/LedgerScreen.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
-import { RecurringCard } from '../src/components/RecurringCard.jsx'
+import { RecurringSheet } from '../src/components/RecurringSheet.jsx'
+import { TemplateFormSheet } from '../src/components/TemplateFormSheet.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
 import { Header } from '../src/components/Header.jsx'
 import { MonthNav } from '../src/components/MonthNav.jsx'
@@ -296,44 +297,166 @@ describe('entry list renders', () => {
 })
 
 /**
- * The recurring-cost card. Every figure it shows comes from the app's own decoder, so a
- * page built from a `recurring` row is the same path a real sheet takes.
+ * The recurring page and its form. Between them these are the app's only write path into
+ * the `recurring` tab, and the whole reason the page exists is to say something a list of
+ * names cannot: which costs this month is still missing, and which it is not.
  */
-describe('the expected-this-month card renders', () => {
+describe('the recurring page renders', () => {
   const template = (fields) =>
-    rowToTemplate(RECURRING.columns.map((column) => ({ payer: 'p1', ...fields })[column] ?? ''))
+    rowToTemplate(
+      RECURRING.columns.map(
+        (column) => ({ payer: 'p1', day_of_month: '27', ...fields })[column] ?? '',
+      ),
+    )
 
-  const render = (expected) =>
-    renderToStaticMarkup(<RecurringCard expected={expected} onPick={noop} />)
+  const RENT = template({ id: 'rent', description: 'Rent', amount: '220000', category: 'Rent' })
+  const GAS = template({ id: 'gas', description: 'Gas', day_of_month: '10' })
 
-  const rent = entryFromTemplate(
-    template({ id: 'rent', description: 'Rent', amount: '220000', category: 'Rent' }),
-    '2026-08',
-  )
+  const render = (props) =>
+    renderToStaticMarkup(
+      <RecurringSheet
+        templates={[RENT]}
+        entries={[]}
+        config={config}
+        me={PERSON.P1}
+        monthKey="2026-08"
+        loaded
+        undecodedTemplates={0}
+        spreadsheetId="sheet-abc"
+        onAdd={noop}
+        onEdit={noop}
+        onRecord={noop}
+        onClose={noop}
+        {...props}
+      />,
+    )
 
-  it('names each cost and its amount, as one tappable row', () => {
-    const markup = render([rent])
-    expect(markup).toContain('Expected this month')
+  it('names each cost, its amount and the month being answered', () => {
+    const markup = render()
+    expect(markup).toContain('Recurring costs')
     expect(markup).toContain('Rent')
     expect(markup).toContain('¥220,000')
-    expect(markup.match(/<button/g)).toHaveLength(1)
+    // Which month the page is acting on, because it is not necessarily this one: a month
+    // missed while nobody was recording has to stay recordable.
+    expect(markup).toContain('August')
   })
 
-  /**
-   * A blank amount is recurring-but-variable, and "¥0" would read as a bill for nothing
-   * — so the assertion is the absent symbol, not merely the present word: with the
-   * branch lost, the word is gone and `¥0` is what renders.
-   */
   it('says the amount varies rather than printing a zero', () => {
-    const variable = entryFromTemplate(template({ id: 'gas', description: 'Gas' }), '2026-08')
-    const markup = render([variable])
+    // "¥0" would read as a bill for nothing. The absent symbol is the assertion rather than
+    // the present word, because a blank amount is NULL here — `money(null)` throws in
+    // `assertYen` — so losing the branch is a white screen rather than a wrong figure, and
+    // only checking for the symbol distinguishes "said Varies" from "said nothing".
+    const markup = render({ templates: [GAS] })
     expect(markup).toContain('Varies')
     expect(markup).not.toContain('¥')
   })
 
-  it('renders nothing at all when the month is not missing anything', () => {
-    // The common case by far: the card must not leave an empty heading on the screen.
-    expect(render([])).toBe('')
+  /**
+   * The four states are the point of the page. Rendered as two, rent-on-the-27th viewed on
+   * the 3rd is indistinguishable from rent already paid — so each says which it is, in
+   * words rather than by the absence of a control.
+   */
+  it('offers Record only for a month it is missing, and explains every other row', () => {
+    // August is over, so a 27th is due and Record is offered.
+    expect(render()).toContain('Record')
+
+    // Already in the ledger — including as a tombstone, which is what a deliberately
+    // removed double charge leaves.
+    const recorded = render({ entries: [expense({ id: 'rent#2026-08' })] })
+    expect(recorded).toContain('recorded')
+    expect(recorded).not.toContain('>Record<')
+
+    // Retired through `active_to`: still listed, so it can be restored.
+    const retired = render({
+      templates: [template({ id: 'rent', description: 'Rent', active_to: '2026-07' })],
+    })
+    expect(retired).toContain('Rent')
+    expect(retired).toContain('not this month')
+    expect(retired).not.toContain('>Record<')
+  })
+
+  it('distinguishes "not loaded" from "none", so nobody adds a second copy', () => {
+    expect(render({ templates: [], loaded: true })).toContain('Nothing set up yet')
+    expect(render({ templates: [], loaded: false })).toContain('Not loaded yet')
+  })
+
+  it('reports rows the sheet holds that it cannot use, where the person is standing', () => {
+    // The ledger carries the same count as a notice; here it comes with the way to fix it.
+    const markup = render({ undecodedTemplates: 2 })
+    expect(markup).toContain('2 rows in the recurring tab')
+    expect(markup).toContain('https://docs.google.com/spreadsheets/d/sheet-abc')
+  })
+
+  it('gives each Record button a name that says which cost it records', () => {
+    // Several identical "Record" buttons is all VoiceOver would otherwise read out.
+    expect(render()).toContain('aria-label="Record Rent"')
+  })
+})
+
+describe('the recurring form renders', () => {
+  const render = (props) =>
+    renderToStaticMarkup(
+      <TemplateFormSheet
+        draft={{ mode: 'add', template: newTemplate(PERSON.P1) }}
+        config={config}
+        me={PERSON.P1}
+        onSubmit={noop}
+        onRetire={noop}
+        onRestore={noop}
+        onClose={noop}
+        {...props}
+      />,
+    )
+
+  it('renders an add form with no retire control', () => {
+    const markup = render()
+    expect(markup).toContain('Add a recurring cost')
+    expect(markup).toContain('id="template-name"')
+    expect(markup).not.toContain('Stop this cost')
+  })
+
+  /**
+   * A blank `payer_share` is a DURABLE declaration — follow the payer's default, forever —
+   * and also the marker that makes `postRecurring` leave a row alone. So a new template
+   * opens on the Default mode and says what that resolves to; resolving it to a number
+   * would detach the cost from the config tab silently.
+   */
+  it('opens a blank share on Default, and names whose default at what percent', () => {
+    const markup = render({ config: { ...config, defaultSplitP1: 0.8 } })
+    // The element, not two separate substring checks: `checked` on a different radio in
+    // the same group is exactly the failure this is for.
+    expect(markup).toContain('name="split" checked="" value="default"')
+    // The whole sentence, because the trap is the POSSESSIVE: English inflects, so
+    // interpolating the viewer-relative label produces "Follows You’s default split". The
+    // fixture's `me` is p1 and p1 is the payer, so that is exactly the case rendered here.
+    expect(markup).toContain('Follows Your default split, 80% today.')
+    expect(markup).not.toContain('You’s')
+  })
+
+  it('opens a stored share on its own number rather than the default', () => {
+    const pinned = { ...newTemplate(PERSON.P1), payerShare: 0.3 }
+    const markup = render({ draft: { mode: 'edit', template: pinned } })
+    expect(markup).toContain('name="split" checked="" value="custom"')
+    expect(markup).toContain('value="30"')
+  })
+
+  it('offers to stop a live cost and to restart a retired one, from one control', () => {
+    const live = { ...newTemplate(PERSON.P1), description: 'Rent' }
+    expect(render({ draft: { mode: 'edit', template: live } })).toContain('Stop this cost')
+    expect(
+      render({ draft: { mode: 'edit', template: { ...live, activeTo: '2026-07' } } }),
+    ).toContain('Start this cost again')
+  })
+
+  /**
+   * The three columns this form does not show have to be MENTIONED, because it writes the
+   * whole row: a quarterly cost edited here keeps its schedule, and nothing on screen would
+   * otherwise say so.
+   */
+  it('says where the schedule columns live, and what an edit does not change', () => {
+    const markup = render({ draft: { mode: 'edit', template: newTemplate(PERSON.P1) } })
+    expect(markup).toContain('recurring tab of your sheet')
+    expect(markup).toContain('keep the figures they were recorded with')
   })
 })
 
@@ -350,7 +473,6 @@ describe('the signed-in surface renders', () => {
     byPerson: spendByPerson(entries),
     groups: groupByDate(entries),
     deleted: [],
-    expected: [],
   }
 
   const markup = renderToStaticMarkup(
@@ -368,7 +490,6 @@ describe('the signed-in surface renders', () => {
       onDelete={noop}
       onRestore={noop}
       onAdd={noop}
-      onAddExpected={noop}
     />,
   )
 

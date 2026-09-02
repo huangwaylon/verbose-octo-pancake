@@ -21,7 +21,7 @@ import { DEFAULT_CONFIG } from '../src/config.js'
 import { setLocale, t } from '../src/i18n/index.js'
 import { ENTRY_TYPE, EVEN_SHARE, PERSON, RECURRING, makeEntry } from '../src/schema.js'
 import { ACCENTS } from '../src/lib/theme.js'
-import { rowToTemplate, templatesDue } from '../src/lib/recurring.js'
+import { newTemplate, rowToTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
@@ -33,6 +33,8 @@ import { LedgerScreen } from '../src/components/LedgerScreen.jsx'
 import { ConfirmDeleteSheet } from '../src/components/ConfirmDeleteSheet.jsx'
 import { EntryFormSheet } from '../src/components/EntryFormSheet.jsx'
 import { SettingsSheet } from '../src/components/SettingsSheet.jsx'
+import { RecurringSheet } from '../src/components/RecurringSheet.jsx'
+import { TemplateFormSheet } from '../src/components/TemplateFormSheet.jsx'
 
 const config = {
   ...DEFAULT_CONFIG,
@@ -85,27 +87,26 @@ const deleted = [
 const noop = () => {}
 
 /**
- * Two recurring costs the previewed month has no row for: one with a figure and one
- * variable, which are the card's two shapes. Built from `recurring` rows through the app's
- * own decoder, so the card is rendering what a real tab produces — including the ¥220,000
- * that makes it the widest thing in the aside.
- *
- * `templatesDue` needs a day, and it must be one where both are already due: these pages
- * are a fixed month, so the clock is pinned rather than read.
+ * Four recurring costs covering every state the page's rows can be in: due now, already
+ * recorded, not yet due, and retired. Built from `recurring` rows through the app's own
+ * decoder, so the page is rendering what a real tab produces — including the ¥220,000 that
+ * makes rent the widest thing on the row.
  */
-const recurringRows = [
-  ['rent', 'Rent', '220000', 'Rent', 'p1', '80', '27'],
-  ['gas', 'ガス', '', '日用品', 'p2', '', '10'],
-].map(([id, description, amount, category, payer, payer_share, day_of_month]) =>
+const templates = [
+  ['rent', '家賃', '220000', 'Rent', 'p1', '80', '27'],
+  ['gas', 'ガス・水道', '', '日用品', 'p2', '', '10'],
+  ['gym', 'ジムの会費', '8000', '娯楽', 'p2', '50', '1'],
+  ['old', '前のアパートの家賃', '180000', 'Rent', 'p1', '80', '27', '2026-05'],
+].map(([id, description, amount, category, payer, payer_share, day_of_month, active_to]) =>
   rowToTemplate(
     RECURRING.columns.map(
       (column) =>
-        ({ id, description, amount, category, payer, payer_share, day_of_month })[column] ?? '',
+        ({ id, description, amount, category, payer, payer_share, day_of_month, active_to })[
+          column
+        ] ?? '',
     ),
   ),
 )
-
-const expected = templatesDue(recurringRows, [], '2026-08', '2026-08-31')
 
 /**
  * The same shape `useLedgerView` hands the screen. Built here rather than by calling
@@ -113,14 +114,13 @@ const expected = templatesDue(recurringRows, [], '2026-08', '2026-08-31')
  * they are the app's own arithmetic and not a fixture pretending to be it. One
  * builder, so a new page cannot forget a field.
  */
-const viewOf = (list, tombstones = [], due = expected) => ({
+const viewOf = (list, tombstones = []) => ({
   balance: computeBalance(list),
   monthSpend: totalSpend(list),
   byCategory: spendByCategory(list),
   byPerson: spendByPerson(list),
   groups: groupByDate(list),
   deleted: tombstones,
-  expected: due,
 })
 
 const baseView = viewOf(entries, deleted)
@@ -147,7 +147,6 @@ function body(overlay, { view = baseView, config: pageConfig = config } = {}) {
         onDelete={noop}
         onRestore={noop}
         onAdd={noop}
-        onAddExpected={noop}
       />
       {overlay}
     </div>,
@@ -212,34 +211,7 @@ const stressEntries = [
   }),
 ]
 
-/**
- * The recurring card under the same stress: a description with no break opportunity and
- * an eight-figure amount, in a card whose whole job is to keep a name and a figure on one
- * line. `.sheet__body`'s clipping does not apply here — the aside would simply scroll
- * sideways — so this is the page that says whether the ellipsis actually lands.
- */
-const stressExpected = templatesDue(
-  [
-    rowToTemplate(
-      RECURRING.columns.map(
-        (column) =>
-          ({
-            id: 'stress',
-            description: 'Groceries and household supplies for the whole month, split evenly',
-            amount: '123456789',
-            category: 'Groceries and household supplies',
-            payer: 'p1',
-            payer_share: '70',
-          })[column] ?? '',
-      ),
-    ),
-  ],
-  [],
-  '2026-08',
-  '2026-08-31',
-)
-
-const stressView = viewOf(stressEntries, [], stressExpected)
+const stressView = viewOf(stressEntries)
 
 /**
  * One builder per sheet, so a stress page cannot drift from the page it stresses:
@@ -275,6 +247,48 @@ const settingsSheet = (pageConfig) => (
  * controls, which sit either side of the payer and date controls, so it is the one page
  * where getting the form's two conditional blocks wrong is visible.
  */
+const recurringSheet = (pageConfig, props) => (
+  <RecurringSheet
+    templates={templates}
+    /* One month already recorded, so the "recorded" row is the app's own reading of an
+       instance id rather than a hand-set flag. */
+    entries={[
+      makeEntry({
+        id: 'gym#2026-08',
+        type: ENTRY_TYPE.EXPENSE,
+        date: '2026-08-01',
+        payer: PERSON.P2,
+        amountYen: 8000,
+        category: '娯楽',
+        payerShare: EVEN_SHARE,
+      }),
+    ]}
+    config={pageConfig}
+    me={PERSON.P1}
+    monthKey="2026-08"
+    loaded
+    undecodedTemplates={1}
+    spreadsheetId="preview-sheet-id"
+    onAdd={noop}
+    onEdit={noop}
+    onRecord={noop}
+    onClose={noop}
+    {...props}
+  />
+)
+
+const templateForm = (template, pageConfig, mode = 'edit') => (
+  <TemplateFormSheet
+    draft={{ mode, template }}
+    config={pageConfig}
+    me={PERSON.P1}
+    onSubmit={noop}
+    onRetire={noop}
+    onRestore={noop}
+    onClose={noop}
+  />
+)
+
 const OVERLAYS = {
   confirm: <ConfirmDeleteSheet entry={entries[0]} onConfirm={noop} onClose={noop} />,
   form: entryForm(
@@ -286,6 +300,10 @@ const OVERLAYS = {
   ),
   settlement: entryForm({ ...entries[0], type: ENTRY_TYPE.SETTLEMENT, payerShare: 0 }, config),
   settings: settingsSheet(config),
+  /* The page that manages the recurring tab, and its form — the two densest new surfaces,
+     and the only place the four row states are visible at once. */
+  recurring: recurringSheet(config),
+  template: templateForm(templates[0], config),
 }
 
 /**
@@ -298,6 +316,31 @@ const OVERLAYS = {
  */
 const STRESS_FORM = entryForm({ ...stressEntries[0], payerShare: 0.7 }, stressConfig)
 const STRESS_SETTINGS = settingsSheet(stressConfig)
+/**
+ * The recurring page holding what a hand-authored tab can: a name with no break
+ * opportunity and an eight-figure amount, in a row whose name is the one thing that must
+ * stay readable in full. `.sheet__body`'s `overflow-x: hidden` CLIPS rather than reports,
+ * so the harness measures that element's own scroll width.
+ */
+const STRESS_RECURRING = recurringSheet(stressConfig, {
+  templates: [
+    rowToTemplate(
+      RECURRING.columns.map(
+        (column) =>
+          ({
+            id: 'stress',
+            description: 'Groceries and household supplies for the whole month, split evenly',
+            amount: '123456789',
+            category: 'Groceries and household supplies',
+            payer: 'p1',
+            payer_share: '70',
+            day_of_month: '1',
+          })[column] ?? '',
+      ),
+    ),
+  ],
+  entries: [],
+})
 
 function page(markup, lang, accent) {
   return `<!doctype html>
@@ -347,6 +390,8 @@ for (const [variant, overlay, options] of [
   ['stress', null, stress],
   ['stress-settings', STRESS_SETTINGS, stress],
   ['stress-form', STRESS_FORM, stress],
+  ['stress-recurring', STRESS_RECURRING, stress],
+  ['recurring-add', templateForm(newTemplate(PERSON.P1), config, 'add'), {}],
   ['settled', null, { view: settledView }],
 ]) {
   const name = `preview-en-${variant}.html`

@@ -5,11 +5,11 @@ import { useT } from '../i18n/index.js'
 import { Segmented } from './Segmented.jsx'
 
 /**
- * The payer's own share of an entry, as the form holds it.
+ * The payer's own share of an entry or of a recurring declaration, as the form holds it.
  *
- * `null` means "follow the payer's configured default", which is what a new entry starts
- * as: switching the payer control then re-derives the split, because the default is a
- * property of the person, not of the form.
+ * For an ENTRY, `null` means "follow the payer's configured default", which is what a new
+ * entry starts as: switching the payer control then re-derives the split, because the
+ * default is a property of the person, not of the form.
  *
  * An entry being edited carries an explicit share instead, so it opens on the number
  * actually stored and changing its payer leaves that number alone: a saved row records a
@@ -17,11 +17,19 @@ import { Segmented } from './Segmented.jsx'
  * 100` for the same reason — a stored 0.333 must not be quantized to 0.33 by an edit that
  * never touched it.
  *
+ * For a TEMPLATE, `allowDefault` makes null a durable answer rather than an unfilled one:
+ * the control opens on its own "Default" mode and keeps saving null until somebody picks
+ * another mode. Resolving it to a number would detach the cost from `default_split_p*`, and
+ * — because a blank share is what makes `postRecurring` skip a row — would silently turn on
+ * unattended posting for it.
+ *
  * Every transition is in `lib/split.js`; this holds only the one piece of state.
  */
-export function useEntrySplit(entry, config, payer) {
+export function useEntrySplit(entry, config, payer, { allowDefault = false } = {}) {
   const stored = Number.isFinite(entry.payerShare) ? entry.payerShare : null
-  const [override, setOverride] = useState(stored == null ? null : toSplit(stored))
+  const [override, setOverride] = useState(() =>
+    stored == null && !allowDefault ? null : toSplit(stored, defaultSplitFor(config, payer)),
+  )
 
   const configuredShare = defaultSplitFor(config, payer)
   const { mode, percent, share } = override ?? toSplit(configuredShare)
@@ -39,8 +47,20 @@ export function useEntrySplit(entry, config, payer) {
 /**
  * Who covers how much. The presets are the three answers anyone actually wants;
  * the slider is for the rest.
+ *
+ * `defaultLabel` opts in the third mode, and it is a LABEL rather than a boolean because
+ * the option has to name the person and the percentage it would follow — "Default" alone
+ * says nothing about what would be saved.
  */
-export function SplitField({ split, payerLabel, payerPossessive, otherLabel, breakdown }) {
+export function SplitField({
+  split,
+  payerLabel,
+  payerPossessive,
+  otherLabel,
+  breakdown,
+  defaultLabel,
+  defaultHint,
+}) {
   const { t } = useT()
 
   return (
@@ -49,11 +69,22 @@ export function SplitField({ split, payerLabel, payerPossessive, otherLabel, bre
       label={t('form.split')}
       value={split.mode}
       options={[
+        ...(defaultLabel ? [['default', defaultLabel]] : []),
         ['even', t('form.splitEven')],
         ['custom', t('form.splitCustom')],
       ]}
       onChange={split.setMode}
     >
+      {/* What "Default" actually resolves to today, in words: the mode saves a BLANK cell,
+          so the number shown is the config tab's and will move if that does. */}
+      {split.mode === 'default' && defaultHint ? (
+        /* `role="status"` for the same reason the breakdown below it has one: it appears and
+           its percentage changes with the payer control, without a page change. */
+        <p className="field__hint" role="status">
+          {defaultHint}
+        </p>
+      ) : null}
+
       {split.mode === 'custom' && (
         <div className="split-control">
           <div className="split-control__presets">

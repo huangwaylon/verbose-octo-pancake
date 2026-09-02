@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
+import { sheetUrl } from '../config.js'
 import { defaultSplitFor } from '../lib/split.js'
 import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
@@ -14,8 +15,10 @@ export function SettingsSheet({
   me,
   spreadsheetId,
   tombstoneCount,
+  templateCount,
   onSetMe,
   onCompact,
+  onOpenRecurring,
   onForget,
   onClose,
 }) {
@@ -30,7 +33,6 @@ export function SettingsSheet({
    * built in while the control that changed it is three rows above.
    */
   const [outcome, setOutcome] = useState(null)
-  const sheetUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}`
 
   async function handleCompact() {
     setBusy(true)
@@ -117,12 +119,25 @@ export function SettingsSheet({
           <div className="row">
             <a
               className="btn btn--ghost btn--sm"
-              href={sheetUrl}
+              href={sheetUrl(spreadsheetId)}
               target="_blank"
               rel="noreferrer noopener"
             >
               {t('settings.openSheet')}
             </a>
+          </div>
+        </Field>
+
+        {/* The one way into the recurring page. Here rather than on the ledger because it
+            is somewhere you go to set something up, and a count rather than a reminder
+            because a reminder over the balance is the thing that surface must not carry. */}
+        <Field label={t('recurring.title')} description={t('recurring.settingsHint')}>
+          <div className="row">
+            <button type="button" className="btn btn--ghost btn--sm" onClick={onOpenRecurring}>
+              {templateCount
+                ? t('recurring.manageCount', { count: templateCount })
+                : t('recurring.manageEmpty')}
+            </button>
           </div>
         </Field>
 

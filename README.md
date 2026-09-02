@@ -83,8 +83,10 @@ every month at once.
 
 Rent, the gym, a subscription: costs whose amount and split are known in advance, where the
 only real failure mode is forgetting to type them. The tab is a **declaration** of what
-recurs, not a log of what happened — it holds no date and no `deleted_at`, and nothing in the
-app writes to it. Author a row by hand; delete the row to retire it.
+recurs, not a log of what happened — it holds no date and no `deleted_at`.
+
+**Settings → Recurring costs** is the interface: add, edit, and stop or restart a cost. Rows
+can still be authored by hand, and three of the ten columns only can be.
 
 | Col | Field | Example | Notes |
 | --- | --- | --- | --- |
@@ -97,12 +99,17 @@ app writes to it. Author a row by hand; delete the row to retire it.
 | G | `day_of_month` | `27` | Nothing is offered before its day, and 31 is clamped to the month's last day. Blank means the 1st |
 | H | `active_from` | `2026-04` | Month keys, so an ended lease stops nagging without deleting what it cost. Both blank means always |
 | I | `active_to` | `2027-03` | as above |
-| J | `id` | `rent` | Yours to invent, and it has to be stable — see below |
+| J | `id` | `rent` | Minted by the app; yours to invent by hand. It has to be stable — see below |
+
+Columns F, H and I are the sheet-only three: quarterly and annual schedules are rare enough
+that three more controls would earn their place on nobody's phone. The form **keeps** them, so
+editing a quarterly cost does not silently make it monthly.
 
 A blank cell takes its default; a cell that was **filled in and cannot be read refuses the
-whole row**, and the count is reported on screen. That is the opposite of the `config` tab,
-where an unreadable value quietly falls back, because a default here either moves money or
-stops a cost being offered at all.
+whole row**, and so does a second row carrying an id an earlier row already used. Both are
+counted and reported on screen. That is the opposite of the `config` tab, where an unreadable
+value quietly falls back, because a default here either moves money or stops a cost being
+offered at all.
 
 A month's instance of a template gets the deterministic id `<template id>#<YYYY-MM>` — so
 `rent#2026-09`. That id, present in either expenses tab, **live or tombstoned**, is the whole
@@ -114,9 +121,12 @@ collapse into one.
 
 Two writers use that id and neither can post a month twice:
 
-- **The app** shows an *Expected this month* card of whatever the month on screen is missing.
-  A tap prefills the ordinary entry form, so a person confirms the figure and Save is the same
-  optimistic write as any other. Nothing auto-posts here.
+- **The app**, on the recurring page: every cost is listed with what the month on screen says
+  about it — recorded, due now, not yet due, or not scheduled — and a **Record** button
+  wherever there is something to record. A tap prefills the ordinary entry form, so a person
+  confirms the figure and Save is the same optimistic write as any other. Nothing auto-posts
+  here. The page is scoped to the month the ledger is showing, so a month missed while nobody
+  was recording stays recordable.
 - **`postRecurring`** in the Apps Script project runs on a daily trigger, so rent lands even if
   nobody opens the app for a month. It is deliberately stricter: it only posts a template that
   spells out **both** its amount and its share, because anything left blank is a figure a
@@ -124,8 +134,15 @@ Two writers use that id and neither can post a month twice:
 
 Daily rather than on the 1st: Google can delay or skip a scheduled run, and this trigger's
 documented failure mode — the consent screen lapsing — is silent, so a monthly trigger that
-misses its one run does nothing for 30 days. The card is also what tells you the poster has
-died, since a row it should have written shows up there.
+misses its one run does nothing for 30 days. The recurring page is also what tells you the
+poster has died, since a row it should have written still shows a Record button there.
+
+**Stopping a cost sets `active_to`; it does not delete the row**, and that is correctness
+rather than caution. The instance id is the only link between a declaration and the rows it
+has already posted, so a deleted row orphans them: re-create the cost under a new id and the
+month already paid reads as unrecorded, which is enough for the trigger to append a second
+rent that night. Keeping the row keeps every month it has handled handled — and makes
+stopping reversible. Removing a row for good is a Sheets action.
 
 ### `config` tab
 

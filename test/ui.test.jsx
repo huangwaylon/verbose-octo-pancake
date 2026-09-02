@@ -7,6 +7,7 @@ import { DEFAULT_LOCALE } from '../src/i18n/catalogs.js'
 import { setLocale } from '../src/i18n/index.js'
 import { ENTRY_TYPE, EVEN_SHARE, PERSON } from '../src/schema.js'
 import { expense, tombstone } from './support/entries.js'
+import { newTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
@@ -19,6 +20,7 @@ import { Header } from '../src/components/Header.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
 import { EntryFormSheet } from '../src/components/EntryFormSheet.jsx'
+import { TemplateFormSheet } from '../src/components/TemplateFormSheet.jsx'
 import { ConfirmDeleteSheet } from '../src/components/ConfirmDeleteSheet.jsx'
 import { DeletedList } from '../src/components/DeletedList.jsx'
 
@@ -312,6 +314,77 @@ describe('entry form', () => {
     const markup = render({})
     expect(markup).toContain('<form id="entry-form"')
     expect(markup).toContain('type="submit" form="entry-form"')
+  })
+})
+
+/**
+ * The recurring form's field order, which is a DECISION and a different one from the entry
+ * form's: a template is filled in once and then read in a list, so the name leads because it
+ * is the only thing naming the row on screen, where the entry form leads with the amount
+ * because that is what gets typed every single time.
+ */
+describe('recurring form', () => {
+  const render = (props) =>
+    renderToStaticMarkup(
+      <TemplateFormSheet
+        draft={{ mode: 'add', template: newTemplate(PERSON.P1) }}
+        config={config}
+        me={PERSON.P1}
+        onSubmit={noop}
+        onRetire={noop}
+        onRestore={noop}
+        onClose={noop}
+        {...props}
+      />,
+    )
+
+  it('orders the fields by what identifies the cost', () => {
+    const markup = render()
+    const MARKERS = {
+      name: 'id="template-name"',
+      amount: 'id="template-amount"',
+      category: 'id="template-category"',
+      payer: 'name="template-payer"',
+      day: 'id="template-day"',
+      split: 'name="split"',
+    }
+    const expected = Object.keys(MARKERS)
+    for (const [field, marker] of Object.entries(MARKERS)) {
+      expect(markup, `${field} is missing`).toContain(marker)
+    }
+    // Sorted by where each actually appears, so a failure names the fields that swapped.
+    const rendered = [...expected].sort(
+      (a, b) => markup.indexOf(MARKERS[a]) - markup.indexOf(MARKERS[b]),
+    )
+    expect(rendered).toEqual(expected)
+  })
+
+  it('takes the whole screen, like the entry form', () => {
+    expect(render()).toContain('sheet__panel--full')
+  })
+
+  it('keeps the day inside the 1-31 a month can name', () => {
+    // The validator refuses the rest; a native min/max is what stops it being typed.
+    const markup = render()
+    expect(markup).toContain('min="1"')
+    expect(markup).toContain('max="31"')
+  })
+
+  it('is a modal dialog named by its own title', () => {
+    const markup = render()
+    expect(markup).toMatch(
+      /class="sheet__panel[^"]*"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="([^"]+)"/,
+    )
+    const labelledBy = markup.match(/aria-labelledby="([^"]+)"/)[1]
+    expect(markup).toContain(`<h2 class="sheet__title" id="${labelledBy}">`)
+  })
+
+  it('always offers the stored category, even when the config tab dropped it', () => {
+    // The same money bug `CategoryField` exists to hold in ONE place: a `<select>` whose
+    // value matches no option renders blank and then saves the invisible old value.
+    const stale = { ...newTemplate(PERSON.P1), category: 'Renamed' }
+    const markup = render({ draft: { mode: 'edit', template: stale } })
+    expect(markup).toContain('<option value="Renamed" selected="">Renamed</option>')
   })
 })
 

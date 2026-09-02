@@ -1,7 +1,6 @@
 import { Header } from './Header.jsx'
 import { MonthNav } from './MonthNav.jsx'
 import { SummaryCard } from './SummaryCard.jsx'
-import { RecurringCard } from './RecurringCard.jsx'
 import { EntryList } from './EntryList.jsx'
 import { DeletedList } from './DeletedList.jsx'
 import { PlusIcon } from './icons.jsx'
@@ -31,7 +30,6 @@ export function LedgerScreen({
   onDelete,
   onRestore,
   onAdd,
-  onAddExpected,
 }) {
   const { t } = useT()
 
@@ -61,11 +59,6 @@ export function LedgerScreen({
               {text}
             </p>
           ))}
-
-          {/* Below the notices, not above: those are ordered worst-first and this is a
-              prompt rather than a problem. Both sit under the add button, which is the
-              one control whose position must not move with the connection. */}
-          <RecurringCard expected={view.expected} onPick={onAddExpected} />
 
           <SummaryCard
             monthSpend={view.monthSpend}

@@ -8,10 +8,13 @@ import { currentMonthKey } from './lib/dates.js'
 import { useT, errorMessage } from './i18n/index.js'
 import { readStoredIdentity, storeIdentity } from './lib/identity.js'
 import { reconsiderUpdate, setSafeToReload } from './lib/serviceWorker.js'
+import { newTemplate, restoredTemplate, retiredTemplate } from './lib/recurring.js'
 import { LedgerScreen } from './components/LedgerScreen.jsx'
 import { EntryFormSheet } from './components/EntryFormSheet.jsx'
 import { ConfirmDeleteSheet } from './components/ConfirmDeleteSheet.jsx'
 import { SettingsSheet } from './components/SettingsSheet.jsx'
+import { RecurringSheet } from './components/RecurringSheet.jsx'
+import { TemplateFormSheet } from './components/TemplateFormSheet.jsx'
 import { Toasts } from './components/Toasts.jsx'
 import {
   ErrorGate,
@@ -35,9 +38,21 @@ export default function App() {
   /** The entry the confirmation dialog is asking about, if it is open. */
   const [pendingDelete, setPendingDelete] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
+  /**
+   * The recurring surface, as ONE value rather than a flag per sheet: `null`, `'list'`, or
+   * a `{mode, template}` draft.
+   *
+   * Exactly one sheet is open at a time and that has to be structural, not arbitrated.
+   * `BottomSheet` puts a keydown listener on the document, traps Tab against its own panel
+   * and mounts `useKeyboardInset` — so two of them at once means Escape closes both, two
+   * traps fight over Tab, and the inner one's cleanup clears `--keyboard-inset` while the
+   * outer still has the keyboard up, putting Save back behind a keypad that has no Done
+   * key. A single value cannot express "both".
+   */
+  const [recurring, setRecurring] = useState(null)
 
   const config = ledger.config
-  const view = useLedgerView(ledger.entries, monthKey, ledger.templates)
+  const view = useLedgerView(ledger.entries, monthKey)
   useInitialMonth(ledger.status, view.active, setMonthKey)
 
   const setMe = useCallback((person) => {
@@ -49,10 +64,13 @@ export default function App() {
   // entry is half-typed or a write has not reached the sheet. Nudging after the
   // predicate changes is the other half: a worker refused while the form was open gets
   // no `focus` event to ask again, because nobody left the app.
+  // `recurring` counts as well as `draft`: a half-typed recurring cost is as much a form
+  // mid-entry as an expense is, and a template write is invisible to `hasPendingWrite`
+  // because templates carry no optimistic flag.
   useEffect(() => {
-    setSafeToReload(() => !draft && !hasPendingWrite(ledger.entries))
+    setSafeToReload(() => !draft && !recurring && !hasPendingWrite(ledger.entries))
     reconsiderUpdate()
-  }, [draft, ledger.entries])
+  }, [draft, recurring, ledger.entries])
 
   const openAdd = () => setDraft({ mode: 'add', entry: newDraftEntry(me) })
 
@@ -65,12 +83,45 @@ export default function App() {
   const editDraft = useCallback((entry) => setDraft({ mode: 'edit', entry }), [])
 
   /**
-   * A recurring cost tapped on the "expected this month" card: an ordinary ADD, prefilled
-   * from the `recurring` tab. Nothing auto-posts here, so the draft's deterministic id is
-   * the only thing standing between two taps and two rent rows — and it is enough, because
-   * the optimistic row carries that id and `templatesDue` drops the card row for it.
+   * Record tapped on the recurring page: an ordinary ADD, prefilled from the `recurring`
+   * tab. The recurring sheet CLOSES first, which is what keeps one sheet on screen — and
+   * the draft's deterministic id is the only thing standing between two taps and two rent
+   * rows, which is enough because the optimistic row carries that id and `recurringRows`
+   * reads it as recorded.
    */
-  const addExpected = useCallback((entry) => setDraft({ mode: 'add', entry }), [])
+  const recordTemplate = (entry) => {
+    setRecurring(null)
+    setDraft({ mode: 'add', entry })
+  }
+
+  const openRecurring = () => {
+    setShowSettings(false)
+    setRecurring('list')
+  }
+
+  /**
+   * The three recurring writes, which are one write with three sentences attached. Each returns
+   * to the list because `TemplateFormSheet`'s own `onClose` does that — these only own the
+   * toast — and each RETHROWS, unlike the ledger's toast paths: the form stays open on a
+   * failure and shows the reason against its own Save button.
+   *
+   * Retiring is dated from TODAY, never from `monthKey`. The page is scoped to the month on
+   * screen so a missed month stays recordable, but "stop this cost" is a decision about now —
+   * dated from an August anyone had navigated back to, it would silently retire September
+   * through December as well.
+   */
+  const saveTemplate = async (input, okKey) => {
+    await ledger.saveTemplate(input)
+    toasts.push(t(okKey))
+  }
+
+  const submitTemplate = (input) =>
+    saveTemplate(input, recurring?.mode === 'add' ? 'toast.added' : 'toast.saved')
+
+  const retireTemplate = (input) =>
+    saveTemplate(retiredTemplate(input, currentMonthKey()), 'toast.retired')
+
+  const restoreTemplate = (input) => saveTemplate(restoredTemplate(input), 'toast.restored')
 
   /**
    * The write paths that report to a toast. `useLedger` has already reverted the
@@ -168,7 +219,6 @@ export default function App() {
         onDelete={setPendingDelete}
         onRestore={restoreEntry}
         onAdd={openAdd}
-        onAddExpected={addExpected}
       />
 
       {draft && (
@@ -198,12 +248,43 @@ export default function App() {
           me={me}
           spreadsheetId={connection.spreadsheetId}
           tombstoneCount={ledger.tombstoneCount}
+          templateCount={ledger.templates.length}
           onSetMe={setMe}
           onCompact={ledger.compact}
+          onOpenRecurring={openRecurring}
           onForget={forgetKey}
           onClose={() => setShowSettings(false)}
         />
       )}
+
+      {/* One ternary, not two independent guards: the list and the form are two views of
+          one surface and must never both be mounted. See `recurring`'s own comment. */}
+      {recurring === 'list' ? (
+        <RecurringSheet
+          templates={ledger.templates}
+          entries={ledger.entries}
+          config={config}
+          me={me}
+          monthKey={monthKey}
+          loaded={ledger.status === 'ready' || ledger.status === 'refreshing'}
+          undecodedTemplates={ledger.sheetExtras.undecodedTemplates}
+          spreadsheetId={connection.spreadsheetId}
+          onAdd={() => setRecurring({ mode: 'add', template: newTemplate(me) })}
+          onEdit={(template) => setRecurring({ mode: 'edit', template })}
+          onRecord={recordTemplate}
+          onClose={() => setRecurring(null)}
+        />
+      ) : recurring ? (
+        <TemplateFormSheet
+          draft={recurring}
+          config={config}
+          me={me}
+          onSubmit={submitTemplate}
+          onRetire={retireTemplate}
+          onRestore={restoreTemplate}
+          onClose={() => setRecurring('list')}
+        />
+      ) : null}
 
       <Toasts toasts={toasts.toasts} />
     </div>

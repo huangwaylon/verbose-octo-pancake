@@ -4,6 +4,7 @@ import { parseAmountToYen, splitYen, yenToSheetString } from '../lib/money.js'
 import { ENTRY_TYPE, PEOPLE, PERSON, otherPerson } from '../schema.js'
 import { errorMessage, usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { Field, FieldError } from './Field.jsx'
+import { CategoryField } from './CategoryField.jsx'
 import { NoteField } from './NoteField.jsx'
 import { Segmented } from './Segmented.jsx'
 import { SplitField, useEntrySplit } from './SplitField.jsx'
@@ -54,16 +55,6 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
    */
   const amountError =
     rejected != null && amount === rejected ? t('form.amountError', { example: '1250' }) : null
-
-  /**
-   * The stored category first, even if the config tab no longer lists it. A
-   * `<select>` whose value matches no option renders blank and then silently saves
-   * the invisible old value — so editing a row whose category has since been
-   * renamed would quietly rewrite it.
-   */
-  const categories = config.categories.includes(category)
-    ? config.categories
-    : [category, ...config.categories].filter(Boolean)
 
   const { label, possessive } = usePeopleLabels(config, me)
   const payerLabel = label(payer)
@@ -203,20 +194,12 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
           <>
             <NoteField value={description} presets={config.notePresets} onChange={setDescription} />
 
-            <Field htmlFor="entry-category" label={t('form.category')}>
-              <select
-                id="entry-category"
-                className="select"
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-              >
-                {categories.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            <CategoryField
+              id="entry-category"
+              value={category}
+              categories={config.categories}
+              onChange={setCategory}
+            />
           </>
         )}
 

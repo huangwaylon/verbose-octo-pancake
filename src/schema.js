@@ -74,17 +74,17 @@ export const EXPENSE_COLUMNS = [
 export const SETTLEMENT_COLUMNS = ['date', 'description', 'amount', 'payer', 'deleted_at', 'id']
 
 /**
- * The `recurring` tab: what recurs, not what happened. Authored by hand in the Sheet like
- * `config` is, and read-only from the app.
+ * The `recurring` tab: what recurs, not what happened. Editable from the app through
+ * `RecurringSheet`, and hand-authorable in the Sheet like `config` is.
  *
  * Deliberately NOT a data tab. It holds declarations rather than entries — no date, no
  * `deleted_at`, no id that any row in the ledger shares — so `compact` must not walk it
  * and `rowToEntry` must refuse it outright. `lib/recurring.js` is the only reader.
  *
  * It carries its own `payer` column for the same reason the settlements tab does: one tab
- * cannot say who pays. There is no `deleted_at` because nothing references a template, so
- * deleting the row is the retire path — and `active_to` is how a lease ends without
- * losing the history of what it cost.
+ * cannot say who pays. There is no `deleted_at` and no delete path at all: `active_to`
+ * retires a cost, because the row's id is the only link to the instances it has already
+ * posted. `retiredTemplate` says what removing it would cost.
  */
 export const RECURRING_COLUMNS = [
   'description',

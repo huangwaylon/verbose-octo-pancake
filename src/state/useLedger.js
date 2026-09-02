@@ -17,6 +17,7 @@ import {
   shouldRefresh,
   statusOnLoadFailure,
   statusOnLoadStart,
+  templateFromInput,
   tombstoneCount,
   withPending,
   withPendingDeletedAt,
@@ -69,7 +70,7 @@ export function useLedger(spreadsheetId) {
   const [status, setStatus] = useState(() => (seed ? 'stale' : 'idle'))
   const [error, setError] = useState(null)
   /**
-   * The `recurring` tab as read, for the card that says what this month is still missing.
+   * The `recurring` tab as read, for the page that manages it.
    *
    * Deliberately NOT in the launch snapshot, unlike the entries and the config. It would
    * need a validator of its own — the snapshot is the one input never decoded through a
@@ -342,6 +343,27 @@ export function useLedger(spreadsheetId) {
   const removeEntry = useCallback((id) => setDeleted(id, new Date().toISOString()), [setDeleted])
   const restoreEntry = useCallback((id) => setDeleted(id, null), [setDeleted])
 
+  /**
+   * The `recurring` tab's ONE write, and deliberately NOT optimistic.
+   *
+   * A template is written a handful of times a year, from a sheet the person is looking at, and
+   * the whole `mergeLoaded`/`pending`/`reverted` apparatus exists for a ~400ms round trip on a
+   * row someone is watching the balance for. So this does what `compact` does: write, then
+   * re-read, and let the sheet be the truth. The cost is a spinner on Save; what it buys is
+   * that templates need no place in the snapshot, no `pending` field and no revert path.
+   *
+   * Add, edit and retire are all this one call — `sheets.saveTemplate` appends or overwrites by
+   * id, which is what makes a retried add idempotent, and `retiredTemplate` is just an
+   * `active_to` on the way in.
+   */
+  const saveTemplate = useCallback(
+    async (input) => {
+      await sheets.saveTemplate(spreadsheetId, templateFromInput(input))
+      await refresh()
+    },
+    [spreadsheetId, refresh],
+  )
+
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
   const compact = useCallback(async () => {
     // Both refusals — a write in flight, and nothing to remove — live in `lib` where a
@@ -377,7 +399,7 @@ export function useLedger(spreadsheetId) {
   return {
     entries,
     config,
-    /** The `recurring` tab's declarations. `templatesDue` is what turns them into a card. */
+    /** The `recurring` tab's declarations. `recurringRows` is what the page reads them with. */
     templates,
     status,
     error,
@@ -389,6 +411,7 @@ export function useLedger(spreadsheetId) {
     editEntry,
     removeEntry,
     restoreEntry,
+    saveTemplate,
     compact,
   }
 }

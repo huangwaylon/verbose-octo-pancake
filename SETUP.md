@@ -163,11 +163,14 @@ you.
 ## 9. The recurring-cost trigger (optional)
 
 Only needed if you want rent to land in the sheet without anyone opening the app.
-Without this step the app still shows an **Expected this month** card for every
-`recurring` row the month is missing, and a tap fills in the form — which is the whole
-feature for anyone happy to confirm the figure. [README.md](README.md#recurring-tab)
-describes the tab; fill in at least one row before setting this up, or there is nothing
-to see.
+Without this step **Settings → Recurring costs** still lists every recurring cost with a
+**Record** button wherever the month is missing one, and a tap fills in the form — which
+is the whole feature for anyone happy to confirm the figure.
+[README.md](README.md#recurring-tab) describes the tab.
+
+Set up at least one cost first, or a run has nothing to do. Note that the poster only
+posts a cost whose **amount and split are both filled in**: anything left blank is a
+figure a person is meant to confirm, so it stays on the page.
 
 Same script project as the token minter: it already holds `SHEET_ID` and the
 `spreadsheets` authorization, and `postRecurring` is already in the `Code.gs` from step 3.

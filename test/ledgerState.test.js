@@ -20,6 +20,7 @@ import {
   shouldRefresh,
   statusOnLoadFailure,
   statusOnLoadStart,
+  templateFromInput,
   tombstoneCount,
   withPending,
   withPendingDeletedAt,
@@ -510,6 +511,56 @@ describe('the gids compact needs', () => {
  * on screen are incomplete or suspect, and every one of them is otherwise silent —
  * which is the whole reason they exist rather than being left to a console.
  */
+/**
+ * The template half of `entryFromInput`, and the one place a validation CODE becomes a
+ * sentence. The blank cases are what matter: a blank amount and a blank share are both real
+ * answers, and refusing either would make a variable utility bill unsavable.
+ */
+describe('templateFromInput', () => {
+  const input = { description: 'Rent', payer: PERSON.P1, dayOfMonth: 27, amountYen: 220000 }
+
+  it('mints an id and returns a complete template', () => {
+    const template = templateFromInput(input)
+    expect(template.id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(template).toMatchObject({ description: 'Rent', amountYen: 220000, dayOfMonth: 27 })
+  })
+
+  it('keeps an id it was given, because changing one re-posts every month', () => {
+    expect(templateFromInput({ ...input, id: 'rent' }).id).toBe('rent')
+  })
+
+  it('accepts a blank amount and a blank share, which both mean something', () => {
+    const template = templateFromInput({ ...input, amountYen: null, payerShare: null })
+    expect(template.amountYen).toBeNull()
+    expect(template.payerShare).toBeNull()
+  })
+
+  it('throws a translated key rather than an English sentence', () => {
+    expect(() => templateFromInput({ ...input, description: '  ' })).toThrow()
+    expect(() => templateFromInput({ ...input, description: '  ' })).toThrowError(
+      expect.objectContaining({ i18nKey: 'error.missingDescription' }),
+    )
+    expect(() => templateFromInput({ ...input, payer: 'p3' })).toThrowError(
+      expect.objectContaining({ i18nKey: 'error.badPayer' }),
+    )
+    expect(() => templateFromInput({ ...input, dayOfMonth: 99 })).toThrowError(
+      expect.objectContaining({ i18nKey: 'error.badDay' }),
+    )
+  })
+
+  it('reports the problem the FORM shows first, which is the name', () => {
+    // Not "one of several": a single key is all the thrown error can carry, so nothing about
+    // that is assertable here. What is assertable is WHICH one, and it has to be the field
+    // nearest the top of the form — `validateTemplateCodes`' order is the form's order.
+    expect(() => templateFromInput({ description: '', payer: 'p3', dayOfMonth: 0 })).toThrowError(
+      expect.objectContaining({ i18nKey: 'error.missingDescription' }),
+    )
+    expect(() =>
+      templateFromInput({ description: 'Rent', payer: 'p3', dayOfMonth: 0 }),
+    ).toThrowError(expect.objectContaining({ i18nKey: 'error.badPayer' }))
+  })
+})
+
 describe('noticeKeys', () => {
   const keysFor = (state) => noticeKeys(state).map((notice) => notice.key)
 
