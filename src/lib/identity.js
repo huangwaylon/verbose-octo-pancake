@@ -1,11 +1,10 @@
 /**
- * Working out which of the two people is using the app right now.
+ * Which of the two people is using the app right now.
  *
- * There is nothing to detect: the access token belongs to the account that owns
- * the spreadsheet, not to either person, so this is purely a per-device choice
- * made once on the identity gate. That is why it lives in `localStorage` next to
- * the locale and the accent rather than in the sheet — it changes how this phone
- * labels things and must not follow the data to the other person's phone.
+ * There is nothing to detect: the access token belongs to the account that owns the
+ * spreadsheet, not to either person, so this is a per-device choice made once on the
+ * identity gate. That is why it lives in `localStorage` next to the locale and the accent —
+ * it changes how this phone labels things and must not follow the data to the other phone.
  */
 
 import { PERSON } from '../schema.js'
@@ -21,8 +20,8 @@ export function storeIdentity(person) {
 }
 
 /**
- * The two people's display names. `fallbacks` arrives as a parameter rather than
- * a catalog lookup, so this module stays pure and independently testable.
+ * The two people's display names. `fallbacks` arrives as a parameter rather than a catalog
+ * lookup, so this module stays pure and independently testable.
  */
 export function nameOf(config, person, fallbacks = { p1: 'Person 1', p2: 'Person 2' }) {
   if (person === PERSON.P2) return config?.person2Name || fallbacks.p2

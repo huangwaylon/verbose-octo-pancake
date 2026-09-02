@@ -1,11 +1,10 @@
 /**
  * Build-time configuration, app-wide constants, and the localStorage wrappers.
  *
- * Nothing here is secret, and one value needs saying plainly: `SCRIPT_URL` is
- * PUBLIC. Vite inlines it into the shipped bundle, so anyone can read it, and
- * the app key — which is never a build-time value and only ever lives on a
- * device — is the sole access control. Nothing about this design may depend on
- * the endpoint URL being hard to guess. See SETUP.md.
+ * One value needs saying plainly: `SCRIPT_URL` is PUBLIC. Vite inlines it into the shipped
+ * bundle, so anyone can read it, and the app key — which is never a build-time value and
+ * only ever lives on a device — is the sole access control. Nothing about this design may
+ * depend on the endpoint URL being hard to guess. See SETUP.md.
  */
 
 export const SCRIPT_URL = import.meta.env.VITE_SCRIPT_URL ?? ''
@@ -15,10 +14,9 @@ export const STORAGE_KEYS = {
    * The app key, exchanged at SCRIPT_URL for a short-lived Google token. Typed once per
    * device and never written to the sheet or the bundle.
    *
-   * NOTE: localStorage is scoped to the ORIGIN, not the path, so every site published
-   * from this GitHub Pages account can read this key. That is an accepted trade-off, and
-   * the reason nothing untrusted may be published from this origin — see README's
-   * Security model.
+   * localStorage is scoped to the ORIGIN, not the path, so every site published from this
+   * GitHub Pages account can read it. Accepted, and the reason nothing untrusted may be
+   * published from this origin — see README's Security model.
    */
   appKey: 'sf.appKey',
   token: 'sf.token',
@@ -31,9 +29,9 @@ export const STORAGE_KEYS = {
 }
 
 /**
- * Every localStorage touch in the app goes through these two, because every one
- * of them can throw: Safari in private browsing rejects writes outright. A
- * failure is never fatal — the value just does not survive a reload.
+ * Every localStorage touch in the app goes through these two, because every one of them
+ * can throw: Safari in private browsing rejects writes outright. A failure is never fatal
+ * — the value just does not survive a reload.
  */
 export function readStored(key) {
   try {
@@ -55,9 +53,9 @@ export function writeStored(key, value) {
 /**
  * Used when the sheet has no `config` tab yet, or a key is missing from it.
  *
- * These values are WRITTEN to the shared spreadsheet, so none of them is localized: two
- * people sharing one sheet may read the UI in different languages, and the stored data
- * must not depend on whose device seeded it.
+ * These values are WRITTEN to the shared spreadsheet, so none is localized: two people
+ * sharing one sheet may read the UI in different languages, and the stored data must not
+ * depend on whose device seeded it.
  *
  * The two people's names are deliberately absent. A name defaulted here would shadow
  * `nameOf`'s localized fallback, so a Japanese device with no names in the config tab
@@ -66,17 +64,17 @@ export function writeStored(key, value) {
  */
 export const DEFAULT_CONFIG = {
   /**
-   * Deliberately short, and the same list `CATEGORIES` in `scripts/bank_to_ledger.py`
-   * classifies into — one vocabulary, or an imported row lands on a category the picker
-   * does not offer. `test/schema.test.js` pins the two together. Groceries is first
-   * because `config.categories[0]` is what a new entry starts on.
+   * The same list `CATEGORIES` in `scripts/bank_to_ledger.py` classifies into — one
+   * vocabulary, or an imported row lands on a category the picker does not offer.
+   * `test/schema.test.js` pins the two together. Groceries is first because
+   * `config.categories[0]` is what a new entry starts on.
    */
   categories: ['Groceries', 'Dining', 'Household', 'Travel', 'Rent', 'Gym', 'Wedding', 'Other'],
   /**
-   * The share each person covers on a new expense they paid for. Per-person rather than
-   * one universal number: a couple splitting 80/20 wants p1 to bear 80% of an expense
-   * *either* of them paid for, and a single default would invert that every time the
-   * other one paid. The pair need not sum to 1 — only the payer's is ever read.
+   * The share each person covers on a new expense they paid for. Per-person rather than one
+   * universal number: a couple splitting 80/20 wants p1 to bear 80% of an expense *either*
+   * of them paid for, and a single default would invert that every time the other one paid.
+   * The pair need not sum to 1 — only the payer's is ever read.
    */
   defaultSplitP1: 0.5,
   defaultSplitP2: 0.5,

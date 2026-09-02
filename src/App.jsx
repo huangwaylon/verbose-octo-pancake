@@ -27,18 +27,16 @@ export default function App() {
   const toasts = useToasts()
   const ledger = useLedger(connection.spreadsheetId)
 
-  const [identityChoice, setIdentityChoice] = useState(readStoredIdentity)
+  // Nothing can detect who is signed in — the token belongs to the account that owns
+  // the sheet, not to either person — so identity is this device's own choice.
+  const [me, setIdentityChoice] = useState(readStoredIdentity)
   const [monthKey, setMonthKey] = useState(currentMonthKey)
   const [draft, setDraft] = useState(null)
   /** The entry the confirmation dialog is asking about, if it is open. */
   const [pendingDelete, setPendingDelete] = useState(null)
   const [showSettings, setShowSettings] = useState(false)
 
-  // Nothing can tell us who is signed in — the token belongs to the account that
-  // owns the sheet, not to either person — so identity is this device's own choice.
-  const me = identityChoice
   const config = ledger.config
-
   const view = useLedgerView(ledger.entries, monthKey)
   useInitialMonth(ledger.status, view.active, setMonthKey)
 
@@ -47,10 +45,10 @@ export default function App() {
     setIdentityChoice(person)
   }, [])
 
-  // A service worker update activates by reloading, so it must never land while
-  // an entry is half-typed or a write has not reached the sheet. Nudging after the
-  // predicate changes is the other half: a worker refused while the form was open
-  // gets no `focus` event to ask again, because nobody left the app.
+  // A service worker update activates by reloading, so it must never land while an
+  // entry is half-typed or a write has not reached the sheet. Nudging after the
+  // predicate changes is the other half: a worker refused while the form was open gets
+  // no `focus` event to ask again, because nobody left the app.
   useEffect(() => {
     setSafeToReload(() => !draft && !hasPendingWrite(ledger.entries))
     reconsiderUpdate()
@@ -59,40 +57,37 @@ export default function App() {
   const openAdd = () => setDraft({ mode: 'add', entry: newDraftEntry(me) })
 
   /**
-   * Stable so `EntryList`'s memo holds: it is one of the two handlers a row takes,
-   * and the other — `setPendingDelete` — is a setter, already stable. A fresh arrow
-   * here would defeat the memo on every toast and every refresh, which is exactly
-   * when the ledger must not be rebuilt.
+   * Stable so `EntryList`'s memo holds: it is one of the two handlers a row takes, and
+   * the other — `setPendingDelete` — is a setter, already stable. A fresh arrow here
+   * would defeat the memo on every toast and every refresh, which is exactly when the
+   * ledger must not be rebuilt.
    */
   const editDraft = useCallback((entry) => setDraft({ mode: 'edit', entry }), [])
 
   /**
-   * The four write paths that report to a toast. `useLedger` has already reverted
-   * the optimistic change by the time the catch runs, so there is nothing to undo
-   * here — only something to say.
+   * The write paths that report to a toast. `useLedger` has already reverted the
+   * optimistic change by the time the catch runs, so there is nothing to undo here.
    *
    * Saying it is not decoration: the balance in the header deliberately carries no
    * `role="status"`, on the grounds that every write already speaks through a toast.
-   * A save that announced nothing would leave a VoiceOver user with a closed sheet
-   * and a figure that changed silently.
    */
   const report = async (write, okKey, failKey) => {
     try {
       await write()
-      toasts.push({ message: t(okKey) })
+      toasts.push(t(okKey))
     } catch (cause) {
       toasts.error(errorMessage(cause, failKey))
     }
   }
 
   /**
-   * Rethrown, unlike the other three: the form stays open on a failure and shows the
+   * Rethrown, unlike the other paths: the form stays open on a failure and shows the
    * reason against its own Save button, so the toast is the SUCCESS half only.
    */
   const submitDraft = async (input) => {
     const edit = draft.mode === 'edit'
     const entry = await (edit ? ledger.editEntry(input) : ledger.addEntry(input))
-    toasts.push({ message: t(edit ? 'toast.saved' : 'toast.added') })
+    toasts.push(t(edit ? 'toast.saved' : 'toast.added'))
     return entry
   }
 
@@ -178,8 +173,8 @@ export default function App() {
         />
       )}
 
-      {/* Opened from the row's trash control or the edit form's, and the only
-          path to a delete: nothing calls removeEntry without going through it. */}
+      {/* Opened from the row's trash control or the edit form's, and the only path to a
+          delete: nothing calls removeEntry without going through it. */}
       {pendingDelete && (
         <ConfirmDeleteSheet
           entry={pendingDelete}

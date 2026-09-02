@@ -49,36 +49,35 @@ definition:
 | E | `deleted_at` | *(empty)* | as above |
 | F | `id` | `4ee5…` | as above |
 
-In memory a settlement is still just an entry with a `payer_share` of `0` — the payer is
-owed all of it — so the balance is one sum over every row and the arithmetic has no
-settlement branch; settlements never count toward spend totals or category breakdowns.
-Nothing in the interface writes one: we settle by wire transfer, which lands on a card
-statement and comes back in as ordinary spend, so the balance converges without a
-settle-up flow. Rows already there still read, display and edit correctly.
+In memory a settlement is just an entry with a `payer_share` of `0` — the payer is owed all
+of it — so the balance is one sum over every row and the arithmetic has no settlement branch.
+Settlements never count toward spend totals or category breakdowns. Nothing in the interface
+writes one: we settle by wire transfer, which comes back in as ordinary spend, so the balance
+converges without a settle-up flow. Rows already there still read, display and edit.
 
-The ledger is **yen only**: the yen has no sub-unit, so an amount is simply an integer
-number of yen and there is no scale anywhere to get wrong. Every write is
-`valueInputOption: RAW`, so a note of `=SUM(A:A)` stays literal text and dates are never
-reformatted. A row the app cannot fully read — an unparseable amount, a date the
-spreadsheet stored in its own locale, a renamed `config` tab — is counted and reported on
-screen, because a ledger quietly short one expense is worse than a notice.
+The ledger is **yen only**: the yen has no sub-unit, so an amount is an integer number of yen
+and there is no scale to get wrong. Every write is `valueInputOption: RAW`, so a note of
+`=SUM(A:A)` stays literal text and dates are never reformatted. A row the app cannot fully
+read — an unparseable amount, a date the spreadsheet stored in its own locale, a renamed
+`config` tab — is counted and reported on screen: a ledger quietly short one expense is worse
+than a notice.
 
-A row records no `created_at` or `updated_at`; the transaction date is the fact worth
-keeping. The only timestamp is `deleted_at`, which doubles as the tie-break when a payer
-move has left two tombstones under one id. Within a day the list orders by id: arbitrary,
-but stable, and independent of which tab the rows arrived from.
+A row records no `created_at` or `updated_at`; the transaction date is the fact worth keeping.
+The only timestamp is `deleted_at`, which doubles as the tie-break when a payer move has left
+two tombstones under one id. Within a day the list orders by id — arbitrary, but stable, and
+independent of which tab the rows arrived from.
 
-Both people are full Editors of one sheet, and edits are **last-write-wins**: an entry
-saved from two devices at once keeps whichever write landed second, with no conflict
-prompt. Deliberate for two people who can just ask each other, and the reason every write
-re-resolves its row by id first.
+Both people are full Editors of one sheet, and edits are **last-write-wins**: an entry saved
+from two devices at once keeps whichever write landed second, with no conflict prompt.
+Deliberate for two people who can ask each other, and the reason every write re-resolves its
+row by id first.
 
-Deletes are soft — `deleted_at` is stamped and the row filtered out client-side — because
-the Sheets API addresses rows by index, so a hard delete would shift every row below it
-out from under the other person's cached positions. Deleting therefore asks for
-confirmation first and is then one cell write, reversible from the collapsed **Deleted**
-section at the bottom of the month being viewed; the manual **compact** action is the only
-hard delete, and the only thing that spans every month at once.
+Deletes are soft — `deleted_at` is stamped and the row filtered out client-side — because the
+Sheets API addresses rows by index, so a hard delete would shift every row below it out from
+under the other person's cached positions. Deleting asks for confirmation and is then one cell
+write, reversible from the collapsed **Deleted** section at the bottom of the month being
+viewed. The manual **compact** action is the only hard delete, and the only thing that spans
+every month at once.
 
 ### `config` tab
 
@@ -106,12 +105,10 @@ than to either person.
 ## Security model
 
 A shared app key instead of browser OAuth is what makes the session never expire, which is
-the whole point. The trade is real: the credential on each device is *permanent* rather
-than hour-limited, the token reaches every spreadsheet the dedicated account can see rather
-than one picked file, there is no remote revocation, and in return no third-party script
-loads on the page at all. Roughly neutral, and acceptable only because of what follows —
-three standing conditions, one accepted risk, and the properties of the build that make
-them survivable.
+the whole point. The trade is real: the credential on each device is *permanent* rather than
+hour-limited, the token reaches every spreadsheet the dedicated account can see rather than
+one picked file, and there is no remote revocation — in return no third-party script loads on
+the page at all. Roughly neutral, and acceptable only because of what follows.
 
 **The dedicated account must own exactly one spreadsheet, forever.** The minted token
 carries `spreadsheets`, so confinement is not enforced by the scope — it is enforced by
@@ -119,14 +116,13 @@ that account having nothing else to reach. Sharing a second sheet with it silent
 the blast radius and nothing in this repository will notice.
 
 **The app key is the only access control, and the endpoint URL is not a secret.**
-`VITE_SCRIPT_URL` is inlined into the public bundle, so assume the endpoint is known.
-Brute force is not a concern — 256 bits against a ~30 requests/second ceiling — but
-**quota exhaustion is, and it is unfixable here.** Anonymous traffic bills the owner's
-Apps Script quota before any of our code runs, and Apps Script exposes no client IP, so no
-in-script throttle can help. The impact is availability only: writes fail, the endpoint
-returns HTML instead of JSON, the app falls back to cached data, and it self-heals when the
-quota resets. Accepted rather than engineered against; recorded because the symptom is
-otherwise indistinguishable from a bug.
+`VITE_SCRIPT_URL` is inlined into the public bundle, so assume the endpoint is known. Brute
+force is not a concern — 256 bits against a ~30 requests/second ceiling — but **quota
+exhaustion is, and it is unfixable here.** Anonymous traffic bills the owner's Apps Script
+quota before any of our code runs, and Apps Script exposes no client IP, so no in-script
+throttle can help. The impact is availability only: writes fail, the endpoint returns HTML
+instead of JSON, the app falls back to cached data, and it self-heals when the quota resets.
+Recorded because the symptom is otherwise indistinguishable from a bug.
 
 **Key rotation is the only incident response, and it is a documented minute.** See the end
 of [SETUP.md](SETUP.md). It stops new tokens at once; one already issued lives out its
@@ -138,12 +134,11 @@ nothing untrusted — in particular nothing loading third-party scripts — may 
 from that GitHub Pages account.
 
 **The CSP is strict enough that no third-party JavaScript runs at all.**
-`script-src 'self'`, `frame-src 'none'`, and `connect-src` naming only `'self'`, the
-Sheets API and the two Apps Script hosts. `script.googleusercontent.com` looks redundant next to
-`script.google.com` and is not: `/exec` answers with a 302 to it. One caveat worth knowing
-— a `<meta>` CSP does not cover a service worker's own execution context, and Pages sends
-no CSP header, which is exactly why the service worker never intercepts a cross-origin
-request.
+`script-src 'self'`, `frame-src 'none'`, and `connect-src` naming only `'self'`, the Sheets API
+and the two Apps Script hosts. `script.googleusercontent.com` looks redundant next to
+`script.google.com` and is not: `/exec` answers with a 302 to it. One caveat — a `<meta>` CSP
+does not cover a service worker's own execution context, and Pages sends no CSP header, which
+is why the service worker never intercepts a cross-origin request.
 
 **Access control on the sheet is Google's.** Owned by the dedicated account, shared
 with the two people as Editors, general access **Restricted**.
@@ -177,12 +172,12 @@ The only target. The install is **Share → Add to Home Screen**:
 `viewport-fit=cover`, the `apple-touch-icon` link and the `apple-mobile-web-app-*` meta
 tags Safari still reads.
 
-Standalone changes what can go wrong — the keyboard covers a fixed footer without shrinking
+Standalone changes what can go wrong: the keyboard covers a fixed footer without shrinking
 the viewport `dvh` reads, `:hover` latches after a tap, a flick from the top reloads the app
-out from under a half-typed entry, and safe-area insets are the app's problem because there
-is no browser chrome to absorb them. The rules that follow are in CLAUDE.md's Platform
-section. Layout is decided at 320px; `npx vite-node scripts/preview.jsx` writes eighteen
-pages for checking it, three of them deliberately pathological.
+out from under a half-typed entry, and safe-area insets are the app's problem because there is
+no browser chrome to absorb them. Those rules are in CLAUDE.md's Platform section. Layout is
+decided at 320px; `npx vite-node scripts/preview.jsx` writes eighteen pages for checking it,
+three of them deliberately pathological.
 
 ### Launch speed
 
@@ -204,8 +199,8 @@ wait — and that paint grows with the cached ledger.
 Updates activate by reloading, which `src/lib/serviceWorker.js` only does when no entry is
 half-typed and no write is in flight. It also calls `registration.update()` when the app
 returns to the foreground: an installed iOS web app resumed from the app switcher never
-navigates, so without that a new version could wait unactivated for weeks. An update
-refused because a form was open is reconsidered the moment that form closes.
+navigates, so without that a new version could wait unactivated for weeks. An update refused
+because a form was open is reconsidered the moment it closes.
 
 ## Development
 
@@ -230,8 +225,8 @@ registers a real worker on port 4173 — shared with every other Vite project on
 A green suite says nothing about whether the page looks right. `npx vite-node
 scripts/preview.jsx` writes eighteen static pages with the real stylesheets, and
 `scripts/frames.html` renders one at several widths at once with the measurements printed
-underneath — including, on a page carrying a sheet, whether Save still clears a simulated
-keyboard. CLAUDE.md has the invocation.
+underneath — including, on a page carrying a sheet, whether Save clears a simulated keyboard.
+CLAUDE.md has the invocation.
 
 ## Layout
 
@@ -252,6 +247,7 @@ keyboard. CLAUDE.md has the invocation.
 | `src/lib/snapshot.js` | the launch cache: last successful read, kept on the device |
 | `src/lib/serviceWorker.js` | registration, and when it is safe to activate an update |
 | `src/lib/viewport.js` | how much of the layout viewport the software keyboard covers |
+| `src/lib/preference.js` | the per-device store the locale and the accent share |
 | `src/lib/{identity,dates,theme}.js` | which person this device is; ISO date helpers; accent presets |
 | `src/state/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts`, `useKeyboardInset` |
 | `src/components/LedgerScreen.jsx` | the whole signed-in surface; `App`, the visual harness and one render test are its three callers |

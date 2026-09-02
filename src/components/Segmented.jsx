@@ -12,12 +12,9 @@ import { Field } from './Field.jsx'
  *
  * @param {object} props
  * @param {string} props.name form-control name, unique per group on the page
- * @param {string} props.label visible label text, also the group's accessible name
- * @param {string} props.value the selected option's value
  * @param {Array<[string, string]>} props.options `[value, label]` pairs
- * @param {(value: string) => void} props.onChange
- * @param {import('react').ReactNode} [props.children] further controls belonging to
- *   the same field, e.g. the slider the split's Custom option reveals
+ * @param {import('react').ReactNode} [props.children] further controls belonging to the
+ *   same field, e.g. the slider the split's Custom option reveals
  * @param {import('react').ReactNode} [props.hint] shown last, under the control
  */
 export function Segmented({ name, label, value, options, onChange, children, hint }) {

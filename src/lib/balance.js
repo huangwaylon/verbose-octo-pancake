@@ -1,18 +1,15 @@
 /**
  * Pure aggregation over entries. No I/O, no Date construction, no React.
  *
- * Two conventions run through this whole file:
+ * Two conventions run through the whole file:
  *
- *   1. Soft deletes are real deletes as far as every aggregate is concerned.
- *      Rows are never removed from the sheet (row numbers would shift under
- *      concurrent edits), so `deletedAt` is the only truth — everything filters
- *      through `isActive`.
+ *   1. Soft deletes are real deletes as far as every aggregate is concerned. Rows are
+ *      never removed from the sheet (row numbers would shift under concurrent edits),
+ *      so `deletedAt` is the only truth and everything filters through `isActive`.
  *
- *   2. `payerShare` is the fraction of an entry the payer is responsible for
- *      themselves, so the non-payer owes `amountYen * (1 - payerShare)`.
- *      A settlement is simply an entry with payerShare 0: the payer handed
- *      over money and the other person is 100% responsible for it. That is why
- *      settlements need no special-case balance math anywhere below.
+ *   2. `payerShare` is the fraction of an entry the payer covers themselves, so the
+ *      non-payer owes `amountYen * (1 - payerShare)`. A settlement is simply an entry
+ *      with payerShare 0 — which is why nothing below special-cases the type.
  */
 
 import { PERSON, ENTRY_TYPE, isActive } from '../schema.js'
@@ -21,6 +18,15 @@ import { isMonthKey } from './dates.js'
 
 /** Where a blank category lands. Exported so the UI labels exactly this bucket. */
 export const UNCATEGORIZED = 'Uncategorized'
+
+/**
+ * Newest-first for anything whose keys sort lexicographically the same way they sort
+ * chronologically — ISO days, 'YYYY-MM' keys, ISO delete stamps. The one comparator, so
+ * no list can end up ordered the other way by a typo.
+ */
+function descending(a, b) {
+  return a < b ? 1 : a > b ? -1 : 0
+}
 
 function activeEntries(entries) {
   return Array.isArray(entries) ? entries.filter(isActive) : []
@@ -36,18 +42,14 @@ function hasDate(entry) {
 }
 
 /**
- * What the non-payer owes the payer for a single entry, in yen.
+ * What the non-payer owes the payer for a single entry, in yen. Routed through
+ * `splitYen` so the two portions always add back up to `amountYen` exactly.
  *
- * Routed through splitYen so the payer's and the other person's portions always add back
- * up to amountYen exactly.
- *
- * @param {object} entry
- * @returns {number} whole yen (0 when the payer covered their own share)
+ * The share is coerced because `makeEntry` is the only thing that normalises a form's
+ * '0.5' into a number, and this also runs over rows straight from the sheet. A genuinely
+ * non-numeric share still throws in `splitYen` rather than becoming 0 and moving money.
  */
 export function owedToPayerYen(entry) {
-  // Coerced because `makeEntry` is the only thing that normalises a form's '0.5' into a
-  // number, and this runs over rows straight from the sheet too. Genuinely non-numeric
-  // shares still throw in splitYen rather than silently becoming 0 and moving money.
   return splitYen(entry.amountYen, Number(entry.payerShare)).otherYen
 }
 
@@ -55,10 +57,9 @@ export function owedToPayerYen(entry) {
  * The single number the whole app exists to show.
  *
  * `netYen` is signed from p1's perspective: positive means p2 owes p1. Expenses and
- * settlements both flow through the same formula, so recording a settlement for exactly
- * the outstanding amount drives netYen to 0.
+ * settlements flow through the same formula, so recording a settlement for exactly the
+ * outstanding amount drives netYen to 0.
  *
- * @param {object[]} entries
  * @returns {{netYen: number, debtor: string|null, creditor: string|null, amountYen: number}}
  */
 export function computeBalance(entries) {
@@ -82,13 +83,9 @@ export function computeBalance(entries) {
 /**
  * Total money that actually left the household, in yen.
  *
- * Settlements are transfers BETWEEN the two people, not spending, so they never appear in
- * spend totals or category breakdowns — counting them would double-count money already
- * counted as the original expense. Per-payer and per-category figures come from
- * `spendByPerson` and `spendByCategory`, which is why this takes no filters.
- *
- * @param {object[]} entries
- * @returns {number} whole yen
+ * Settlements are transfers BETWEEN the two people, not spending, so they appear in no
+ * spend total and no category breakdown — counting them would double-count money already
+ * counted as the original expense.
  */
 export function totalSpend(entries) {
   const expenses = activeEntries(entries).filter(isExpense)
@@ -96,10 +93,9 @@ export function totalSpend(entries) {
 }
 
 /**
- * Spend per category, biggest first. Expenses only (see totalSpend); entries
- * with no category are grouped under 'Uncategorized'.
+ * Spend per category, biggest first. Expenses only (see `totalSpend`); a blank category
+ * lands under 'Uncategorized'.
  *
- * @param {object[]} entries
  * @returns {{category: string, totalYen: number}[]}
  */
 export function spendByCategory(entries) {
@@ -118,10 +114,9 @@ export function spendByCategory(entries) {
 }
 
 /**
- * What each person actually paid out of pocket — the cash-flow view, not the
- * fair-share view. Expenses only, for the same reason as totalSpend.
+ * What each person actually paid out of pocket — the cash-flow view, not the fair-share
+ * one. Expenses only, for the same reason as `totalSpend`.
  *
- * @param {object[]} entries
  * @returns {{p1: number, p2: number}}
  */
 export function spendByPerson(entries) {
@@ -137,36 +132,27 @@ export function spendByPerson(entries) {
 /**
  * Whether an entry's ISO date falls inside a 'YYYY-MM' key.
  *
- * Deliberately a string prefix comparison. Constructing a Date from 'YYYY-MM-DD' parses
- * as UTC midnight and then shifts under the local timezone, which silently moves the 1st
- * and the last day of every month into the neighbouring one for anyone west of UTC. A
- * blank date is in no month rather than guessed at.
+ * A string prefix comparison, deliberately: constructing a Date from 'YYYY-MM-DD' parses
+ * as UTC midnight and then shifts under the local timezone, silently moving the 1st and
+ * the last day of every month into the neighbouring one for anyone west of UTC.
+ *
+ * `isMonthKey`, not a second regex: a local one accepted month 13 while `shiftMonth`
+ * rejected it, so the two disagreed about what a month even is.
  */
 function inMonth(entry, monthKey) {
-  // `isMonthKey`, not a second regex: a local one accepted month 13 while `shiftMonth`
-  // rejected it, so the two disagreed about what a month even is.
   if (!isMonthKey(monthKey)) return false
   return hasDate(entry) && entry.date.slice(0, 7) === monthKey
 }
 
-/**
- * Entries whose date falls inside a 'YYYY-MM' month.
- *
- * @param {object[]} entries
- * @param {string} monthKey 'YYYY-MM'
- * @returns {object[]}
- */
 export function filterByMonth(entries, monthKey) {
   return activeEntries(entries).filter((entry) => inMonth(entry, monthKey))
 }
 
 /**
- * Every month present in the data, newest first. 'YYYY-MM' strings sort
- * lexicographically the same way they sort chronologically, so no date parsing is needed
- * here either. `initialMonthKey` is the only caller in the app; it stays exported because
- * its ordering and de-duplication are what `balance.test.js` pins directly.
+ * Every month present in the data, newest first. `initialMonthKey` is the only caller in
+ * the app; it stays exported because its ordering and de-duplication are what
+ * `balance.test.js` pins directly.
  *
- * @param {object[]} entries
  * @returns {string[]}
  */
 export function monthKeysPresent(entries) {
@@ -174,17 +160,14 @@ export function monthKeysPresent(entries) {
   for (const entry of activeEntries(entries)) {
     if (hasDate(entry)) keys.add(entry.date.slice(0, 7))
   }
-  return [...keys].sort((a, b) => (a < b ? 1 : a > b ? -1 : 0))
+  return [...keys].sort(descending)
 }
 
 /**
- * Which month to open on: the newest one that actually has data, so a sheet whose
- * last entry was a while ago does not open on an empty screen. `null` means stay
- * where you are, which is the answer whenever the current month has data of its
- * own — moving off it would be surprising.
+ * Which month to open on: the newest one that actually has data, so a sheet whose last
+ * entry was a while ago does not open on an empty screen. `null` means stay where you
+ * are, which is the answer whenever the current month has data of its own.
  *
- * @param {object[]} entries
- * @param {string} currentKey 'YYYY-MM' for today
  * @returns {string|null}
  */
 export function initialMonthKey(entries, currentKey) {
@@ -195,23 +178,16 @@ export function initialMonthKey(entries, currentKey) {
 
 /**
  * One month's soft-deleted entries, most recently deleted first — the restore surface,
- * and the one view in the app that wants exactly the rows everything else filters out.
+ * and the one view that wants exactly the rows everything else filters out.
  *
  * Month-scoped for the same reason the list above it is: it sits under a month switcher,
- * so a tombstone from another month showing there reads as belonging to the month on
- * screen. Sheet-wide is what `compact` is for, and its count in settings is deliberately
- * not this number.
- *
- * @param {object[]} entries
- * @param {string} monthKey 'YYYY-MM'
- * @returns {object[]}
+ * so a tombstone from another month reads as belonging to the month on screen.
+ * Sheet-wide is what `compact` is for, and its count in settings is a different number.
  */
 export function deletedEntries(entries, monthKey) {
-  const tombstoned = (Array.isArray(entries) ? entries : []).filter(
-    (entry) => entry?.deletedAt && inMonth(entry, monthKey),
-  )
-  // ISO timestamps sort lexicographically the same way they sort in time.
-  return tombstoned.sort((a, b) => String(b.deletedAt).localeCompare(String(a.deletedAt)))
+  return (Array.isArray(entries) ? entries : [])
+    .filter((entry) => entry?.deletedAt && inMonth(entry, monthKey))
+    .sort((a, b) => descending(String(a.deletedAt), String(b.deletedAt)))
 }
 
 /**
@@ -219,16 +195,15 @@ export function deletedEntries(entries, monthKey) {
  * arbitrary order within a day.
  *
  * Within-day order is by id — arbitrary, but STABLE, and immune to the order the tabs
- * were read in. Leaving the rows in arrival order would sort every one of p1's expenses
- * above every one of p2's on the same day, and an optimistic row is appended so it would
- * sit at the bottom of its day and then visibly jump on the next refresh.
+ * were read in. Arrival order would sort every one of p1's expenses above every one of
+ * p2's on the same day, and an optimistic row is appended, so it would sit at the bottom
+ * of its day and then visibly jump on the next refresh.
  *
- * `totalYen` is the day's SPEND, so settlements are excluded from it — but the settlement
- * entries themselves are still listed, because the list is a ledger the user needs to see
- * and be able to tap. Entries with a blank date are kept under a '' date and sort last, so
- * a malformed row is visible and fixable rather than invisible.
+ * `totalYen` comes from `totalSpend`, not a copy of it, so the rule that a day's total is
+ * SPEND — and therefore excludes settlements — holds by construction. The settlement rows
+ * themselves are still listed: the list is a ledger someone needs to see and tap. A blank
+ * date is kept under '' and sorts last, so a malformed row is visible and fixable.
  *
- * @param {object[]} entries
  * @returns {{date: string, entries: object[], totalYen: number}[]}
  */
 export function groupByDate(entries) {
@@ -242,10 +217,8 @@ export function groupByDate(entries) {
   return [...byDate.entries()]
     .map(([date, dayEntries]) => ({
       date,
-      entries: [...dayEntries].sort((a, b) => String(b.id ?? '').localeCompare(String(a.id ?? ''))),
-      // `totalSpend`, not a copy of it: the rule that a day's total is spend — and so
-      // excludes settlements — then holds by construction rather than by agreement.
+      entries: [...dayEntries].sort((a, b) => descending(String(a.id ?? ''), String(b.id ?? ''))),
       totalYen: totalSpend(dayEntries),
     }))
-    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .sort((a, b) => descending(a.date, b.date))
 }

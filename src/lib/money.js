@@ -1,17 +1,16 @@
 /**
  * Money as whole yen.
  *
- * The ledger is JPY only and the yen has no sub-unit, so an amount *is* an integer
- * number of yen. Nothing here takes a currency: with one currency there is no scale to
- * guess and no 100x error to make. Nothing in this app does floating-point arithmetic
- * on money.
+ * The ledger is JPY only and the yen has no sub-unit, so an amount *is* an integer number
+ * of yen. Nothing here takes a currency: with one currency there is no scale to guess and
+ * no 100x error to make. Nothing in this app does floating-point arithmetic on money.
  *
  * `parseAmountToYen` and `yenToSheetString` are exact inverses, which is what makes a
  * read-modify-write round trip through the sheet lossless.
  *
  * Functions taking yen throw on non-integer input rather than propagating NaN into a
- * balance or a sheet cell. Only `parseAmountToYen`, which handles untrusted human
- * input, reports failure by returning null.
+ * balance or a sheet cell. Only `parseAmountToYen`, which handles untrusted human input,
+ * reports failure by returning null.
  */
 
 import { cached } from './memo.js'
@@ -36,10 +35,10 @@ function assertYen(yen, name = 'yen') {
  *
  *   1. Both '.' and ',' present: whichever comes last is the decimal separator.
  *      "1,234.56" and "1.234,56" both mean 1234.56.
- *   2. Commas only: the last comma is decimal unless exactly three digits
- *      follow, which reads as grouping — "42,10" is 42.10 but "1,234" is 1234.
- *      That is the one genuinely ambiguous case, resolved towards grouping
- *      because a decimal comma is written with two digits of cents, not three.
+ *   2. Commas only: the last comma is decimal unless exactly three digits follow, which
+ *      reads as grouping — "42,10" is 42.10 but "1,234" is 1234. The one genuinely
+ *      ambiguous case, resolved towards grouping because a decimal comma is written with
+ *      two digits of cents, not three.
  *   3. Dots only: a single dot is decimal, repeated dots are grouping.
  *
  * @returns {number} index of the decimal separator, or -1 if there is none.
@@ -62,13 +61,12 @@ function decimalSeparatorIndex(s) {
 /**
  * Parse whatever a human types on a phone into whole yen.
  *
- * Returns null — never NaN, never negative — for junk, malformed grouping and any
- * negative input. Amounts are positive magnitudes; direction is carried by the entry's
- * `payer`.
+ * Returns null — never NaN, never negative — for junk, malformed grouping and any negative
+ * input. Amounts are positive magnitudes; direction is carried by the entry's `payer`.
  *
- * A decimal part is still read rather than rejected, because two things write one: a
- * person typing out of habit, and the bank's own CSV export, which prints every yen
- * amount as "1400.000000". Both round half-up to the yen.
+ * A decimal part is read rather than rejected, because two things write one: a person
+ * typing out of habit, and the bank's own CSV export, which prints every yen amount as
+ * "1400.000000". Both round half-up to the yen.
  *
  * @param {string|number|null|undefined} input
  * @returns {number|null} whole yen, or null if unparseable
@@ -123,12 +121,8 @@ export function parseAmountToYen(input) {
 }
 
 /**
- * Whole yen -> the exact string that lands in a sheet cell: digits alone, no
- * separator, no grouping, no symbol, so it is locale-independent and re-parseable.
- * ¥1250 writes "1250".
- *
- * @param {number} yen
- * @returns {string}
+ * Whole yen -> the exact string that lands in a sheet cell: digits alone, no separator, no
+ * grouping, no symbol, so it is locale-independent and re-parseable. ¥1250 writes "1250".
  */
 export function yenToSheetString(yen) {
   return String(assertYen(yen))
@@ -153,8 +147,8 @@ function formatterFor(locale) {
       new Intl.NumberFormat(locale, {
         style: 'currency',
         currency: 'JPY',
-        // Stated rather than left to ICU. This decides what a person reads, so it must
-        // not vary with the browser's ICU version.
+        // Stated rather than left to ICU. This decides what a person reads, so it must not
+        // vary with the browser's ICU version.
         minimumFractionDigits: 0,
         maximumFractionDigits: 0,
       }),
@@ -162,29 +156,25 @@ function formatterFor(locale) {
 }
 
 /**
- * Whole yen -> a display string with the symbol and locale grouping ("¥1,250").
- * Never write this back to the sheet.
+ * Whole yen -> a display string with the symbol and locale grouping ("¥1,250"). Never
+ * write this back to the sheet.
  *
  * @param {number} yen
  * @param {object} [opts]
  * @param {string} [opts.locale] override the runtime locale
- * @returns {string}
  */
 export function formatYen(yen, { locale } = {}) {
   return formatterFor(locale).format(assertYen(yen))
 }
 
 /**
- * `formatYen` as `formatToParts` output, so the hero figure can style the symbol
- * apart from the digits.
+ * `formatYen` as `formatToParts` output, so the hero figure can style the symbol apart
+ * from the digits.
  *
  * Render the parts in the order Intl returns them — `en`/`ja` put the symbol before
  * ("¥1,250"), `fr-FR` after ("1 250 ¥"). There is no `decimal` or `fraction` part to
  * handle: the yen has no sub-unit, so Intl never emits one.
  *
- * @param {number} yen
- * @param {object} [opts]
- * @param {string} [opts.locale] override the runtime locale
  * @returns {Array<{type: string, value: string}>}
  */
 export function formatYenParts(yen, { locale } = {}) {
@@ -192,15 +182,14 @@ export function formatYenParts(yen, { locale } = {}) {
 }
 
 /**
- * Read a share of an expense — a `payer_share` cell, or a `default_split_p*` row — into
- * a fraction in [0,1].
+ * Read a share of an expense — a `payer_share` cell, or a `default_split_p*` row — into a
+ * fraction in [0,1].
  *
  * Anything above 1 reads as a percentage, because a spreadsheet is where people write 50
- * rather than 0.5. Both places a human can type a share go through this one rule: with
- * two readings of it, the same `50` would mean "half" in the config tab and "the payer
- * covers all of it" in the `payer_share` column.
+ * rather than 0.5. Both places a human can type a share go through this one rule: with two
+ * readings of it, the same `50` would mean "half" in the config tab and "the payer covers
+ * all of it" in the `payer_share` column.
  *
- * @param {unknown} value
  * @returns {number|null} null for junk, so the caller's own default wins rather than NaN
  *   reaching `splitYen`
  */
@@ -218,7 +207,6 @@ export function parseShare(value) {
  * `payerYen + otherYen === yen` exactly for every input: a shared expense can never lose
  * or invent a yen.
  *
- * @param {number} yen
  * @param {number} payerShare fraction in [0,1]; values outside are clamped
  * @returns {{payerYen: number, otherYen: number}}
  */
@@ -232,12 +220,7 @@ export function splitYen(yen, payerShare) {
   return { payerYen, otherYen: yen - payerYen }
 }
 
-/**
- * Sum whole yen. Empty list -> 0.
- *
- * @param {number[]} list
- * @returns {number}
- */
+/** Sum whole yen. Empty list -> 0. */
 export function sumYen(list) {
   if (!Array.isArray(list)) {
     throw new TypeError(`sumYen expects an array, got ${String(list)}`)

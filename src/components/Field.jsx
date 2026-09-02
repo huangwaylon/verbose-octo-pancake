@@ -7,16 +7,12 @@
  * plus its result — because a `<label>` pointing at a group makes a screen reader announce
  * the wrong element.
  *
- * `description` sits above the control and `hint` below it. `labelId` is for a group that
- * names itself with `aria-labelledby` instead of a `for`/`id` pair.
- *
  * @param {object} props
- * @param {import('react').ReactNode} props.label
  * @param {string} [props.htmlFor] id of the single control this label names
- * @param {string} [props.labelId] id to put ON the label, for aria-labelledby
+ * @param {string} [props.labelId] id to put ON the label, for a group that names itself
+ *   with `aria-labelledby` instead of a `for`/`id` pair
  * @param {import('react').ReactNode} [props.description] prose above the control
  * @param {import('react').ReactNode} [props.hint] prose below the control
- * @param {import('react').ReactNode} [props.children] the control
  */
 export function Field({ label, htmlFor, labelId, description, hint, children }) {
   return (
@@ -38,7 +34,7 @@ export function Field({ label, htmlFor, labelId, description, hint, children }) 
 }
 
 /**
- * A message a control produced, at the three places one can appear.
+ * A message a control produced.
  *
  * The `id` is required rather than generated, because the point of the element is to
  * be named by the `aria-describedby` of whichever control produced it — and that is

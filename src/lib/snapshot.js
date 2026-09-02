@@ -56,20 +56,19 @@ function isRestorable(entry) {
 }
 
 /**
- * What storage is believed to hold, so an unchanged ledger does not pay for a second
- * write. Comparing against storage instead would mean reading the whole string back,
- * which is the cost we are trying to avoid. Set by a successful read as well as a write.
+ * What storage is believed to hold, so an unchanged ledger does not pay for a second write.
+ * Comparing against storage would mean reading the whole string back, which is the cost we
+ * are avoiding. Set by a successful read as well as a write.
  */
 let lastPayload = null
 
 /**
  * The exact list and config that produced it, by reference.
  *
- * `lastPayload` is the backstop for a refresh that returned equal content in a fresh
- * array; this is for the cached launch, where the list on screen IS the one just restored.
- * It catches that case BEFORE the serialize rather than after, which is the expensive
- * half — a thousand-entry ledger is a quarter of a megabyte of JSON built to be thrown
- * away, on the frame someone is waiting for.
+ * `lastPayload` is the backstop for a refresh that returned equal content in a fresh array;
+ * this is for the cached launch, where the list on screen IS the one just restored. It
+ * catches that case BEFORE the serialize rather than after — a thousand-entry ledger is a
+ * quarter of a megabyte of JSON built to be thrown away, on the frame someone is waiting for.
  */
 let lastSource = null
 
@@ -94,11 +93,10 @@ export function readSnapshot(spreadsheetId) {
     // is worse than the empty frame a re-fetch costs.
     if (!saved.entries.every(isRestorable)) return null
     // What storage already holds, so the launch does not immediately rewrite it.
-    // `useLedger` persists whatever is on screen once nothing is pending, and on a
-    // cached launch that is this very list — so without this every launch pays a full
-    // serialize plus a synchronous `setItem` of bytes already there, on the one frame
-    // the person is waiting for. The reference pair skips the serialize; the string is
-    // the backstop.
+    // `useLedger` persists whatever is on screen once nothing is pending, and on a cached
+    // launch that is this very list — so without this every launch pays a full serialize
+    // plus a synchronous `setItem` of bytes already there, on the one frame the person is
+    // waiting for. The reference pair skips the serialize; the string is the backstop.
     lastPayload = raw
     lastSource = { entries: saved.entries, config: saved.config }
     return { entries: saved.entries, config: saved.config }

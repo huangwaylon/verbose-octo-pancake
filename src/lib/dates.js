@@ -18,10 +18,9 @@ const EN_DAY_LABELS = { today: 'Today', yesterday: 'Yesterday', none: 'No date' 
 /**
  * Constructed date formatters, keyed by every option that decides one.
  *
- * `Date#toLocaleDateString` builds a formatter per call, which costs an order of
- * magnitude more than reusing one, and a month's list asks for one per day heading.
- * The key space is (locale × the two shapes below × with-year or not), so it is
- * bounded by a handful of entries for the life of the page.
+ * `Date#toLocaleDateString` builds a formatter per call, which costs an order of magnitude
+ * more than reusing one, and a month's list asks for one per day heading. The key space is
+ * (locale × the two shapes below × with-year or not), so it stays a handful of entries.
  */
 const DATE_FORMATS = new Map()
 
@@ -42,10 +41,10 @@ function dateFormatter(locale, options) {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 /**
- * Shape *and* calendar validity, and the only test of a 'YYYY-MM-DD' day — the
- * companion to `isMonthKey` below. The regex alone accepts 2026-02-31 and 2026-13-45,
- * which surface as a bogus month in the month switcher; the UTC round-trip is what
- * rejects them, since an out-of-range month or day lands in a different one.
+ * Shape *and* calendar validity — the only test of a 'YYYY-MM-DD' day, and the companion
+ * to `isMonthKey` below. The regex alone accepts 2026-02-31 and 2026-13-45, which surface
+ * as a bogus month in the month switcher; the UTC round-trip is what rejects them, since an
+ * out-of-range month or day lands in a different one.
  */
 export function isIsoDate(value) {
   if (!ISO_DATE.test(value ?? '')) return false
@@ -79,18 +78,16 @@ function partsOf(iso) {
 }
 
 /**
- * A 'YYYY-MM' key as numbers, or null for anything that is not one. The single
- * parser for the two functions below: without a guard, `shiftMonth` answers the
- * string 'NaN-NaN' for junk, which then matches no entry in any month and reads on
- * screen as an empty month rather than as a bug.
+ * A 'YYYY-MM' key as numbers, or null for anything that is not one. The single parser for
+ * the two functions below: without a guard, `shiftMonth` answers the string 'NaN-NaN' for
+ * junk, which matches no entry in any month and reads on screen as an empty month rather
+ * than as a bug.
  *
- * The SHAPE is checked before the numbers, because the numbers alone accept plenty
- * of things that are not a month key: `split('-')` discards everything past the
- * second part, so a full ISO day ('2026-08-05') parses as a perfectly valid August.
- * That is the one piece of junk actually in reach, and it is the worst kind —
- * `inMonth` compares against a `slice(0, 7)`, which a ten-character string can never
- * equal, so every entry falls out of the month and the ledger renders empty with
- * nothing reported anywhere.
+ * The SHAPE is checked before the numbers, because `split('-')` discards everything past
+ * the second part — so a full ISO day ('2026-08-05') parses as a perfectly valid August.
+ * That is the one piece of junk actually in reach, and the worst kind: `inMonth` compares
+ * against a `slice(0, 7)`, which a ten-character string can never equal, so every entry
+ * falls out of the month and the ledger renders empty with nothing reported anywhere.
  */
 function monthParts(monthKey) {
   const text = String(monthKey ?? '')

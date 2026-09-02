@@ -7,7 +7,7 @@
  * reaching for anything that reads the i18n singleton.
  *
  * The key must name everything that decides the value: a cache keyed on less than the
- * options it actually passes hands back a formatter built for a different shape.
+ * options it passes hands back a formatter built for a different shape.
  */
 export function cached(store, key, make) {
   const found = store.get(key)
