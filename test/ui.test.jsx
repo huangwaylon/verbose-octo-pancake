@@ -2,11 +2,10 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { afterEach } from 'vitest'
 
-import { DEFAULT_CONFIG } from '../src/config.js'
 import { DEFAULT_LOCALE } from '../src/i18n/catalogs.js'
 import { setLocale } from '../src/i18n/index.js'
 import { ENTRY_TYPE, EVEN_SHARE, PERSON } from '../src/schema.js'
-import { expense, tombstone } from './support/entries.js'
+import { config, expense, noop, tombstone } from './support/entries.js'
 import { newTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
@@ -25,19 +24,35 @@ import { ConfirmDeleteSheet } from '../src/components/ConfirmDeleteSheet.jsx'
 import { ConfirmSheet } from '../src/components/ConfirmSheet.jsx'
 import { DeletedList } from '../src/components/DeletedList.jsx'
 
+/**
+ * The DECISIONS a component makes, as opposed to whether it renders at all: field order, which
+ * mode a control opens in, which ARIA wiring resolves, what a fallback picks. `render.test.jsx`
+ * is the other half — it renders each surface once on a real prop shape and catches a component
+ * that throws or silently drops data. A case belongs here if a correct-looking screen could
+ * still be wrong; there if the screen would be visibly broken.
+ *
+ * Both render to static markup: no DOM, no browser. A focus trap, an effect or a
+ * `scrollIntoView` cannot be tested this way, which is why logic belongs in `lib/`.
+ */
+
 /** The locale is a module singleton, so every test that changes it restores it. */
 afterEach(() => {
   setLocale(DEFAULT_LOCALE)
 })
 
-const config = {
-  ...DEFAULT_CONFIG,
-  person1Name: 'Alex',
-  person2Name: 'Sam',
-  categories: ['Groceries', 'Dining', 'Household'],
+/**
+ * A named dialog, in two steps: the attributes have to sit on the PANEL — as three separate
+ * substring checks this passes with them moved onto the backdrop's wrapper — and the name has to
+ * RESOLVE, which neither a visual check nor the match alone would show.
+ */
+function expectNamedDialog(markup) {
+  expect(markup).toMatch(
+    /class="sheet__panel[^"]*"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="([^"]+)"/,
+  )
+  const labelledBy = markup.match(/aria-labelledby="([^"]+)"/)[1]
+  expect(markup).toContain(`<h2 class="sheet__title" id="${labelledBy}">`)
 }
 
-const noop = () => {}
 const money = (yen) => `¥${yen}`
 const share = (percent) => `${percent}%`
 
@@ -213,17 +228,7 @@ describe('entry form', () => {
   })
 
   it('is a modal dialog named by its own title', () => {
-    const markup = render({}, { payerShare: EVEN_SHARE })
-    // Matched on ONE element, not against the document: as three separate substring
-    // checks this passes with `role`/`aria-modal` moved onto the backdrop's wrapper,
-    // which would make the scrim the dialog and leave the focus trap on a plain div.
-    expect(markup).toMatch(
-      /class="sheet__panel[^"]*"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="([^"]+)"/,
-    )
-    // And the name has to RESOLVE: a dangling aria-labelledby leaves the dialog
-    // unnamed, which neither a visual check nor the match above would show.
-    const labelledBy = markup.match(/aria-labelledby="([^"]+)"/)[1]
-    expect(markup).toContain(`<h2 class="sheet__title" id="${labelledBy}">`)
+    expectNamedDialog(render({}, { payerShare: EVEN_SHARE }))
   })
 
   it('offers each configured note as a datalist option and as a chip', () => {
@@ -373,12 +378,7 @@ describe('recurring form', () => {
   })
 
   it('is a modal dialog named by its own title', () => {
-    const markup = render()
-    expect(markup).toMatch(
-      /class="sheet__panel[^"]*"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*aria-labelledby="([^"]+)"/,
-    )
-    const labelledBy = markup.match(/aria-labelledby="([^"]+)"/)[1]
-    expect(markup).toContain(`<h2 class="sheet__title" id="${labelledBy}">`)
+    expectNamedDialog(render())
   })
 
   it('always offers the stored category, even when the config tab dropped it', () => {

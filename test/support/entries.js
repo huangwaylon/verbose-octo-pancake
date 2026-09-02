@@ -14,10 +14,12 @@ import {
   ENTRY_TYPE,
   EVEN_SHARE,
   PERSON,
+  RECURRING,
   SETTLEMENTS,
   expenseTab,
   makeEntry,
 } from '../../src/schema.js'
+import { DEFAULT_CONFIG } from '../../src/config.js'
 
 /**
  * The tombstone stamp `tombstone()` uses — a real ISO stamp rather than any non-empty
@@ -74,10 +76,44 @@ export function tombstone(over = {}) {
  * @returns {string[]} one cell per column, blank for anything unnamed
  */
 export function row(fields, tab = expenseTab(PERSON.P1)) {
-  return tab.columns.map((column) => fields[column] ?? '')
+  return columnRow(fields, tab.columns)
+}
+
+/** The same, for the two consumers that hold a column LIST rather than a tab. */
+export function columnRow(fields, columns) {
+  return columns.map((column) => fields[column] ?? '')
 }
 
 /** A raw settlement row, for the one tab whose payer is a cell. */
 export function settlementRow(fields) {
   return row(fields, SETTLEMENTS)
 }
+
+/** A raw `recurring` row, for the tab whose whole content is hand-authored. */
+export function templateRow(fields) {
+  return row(fields, RECURRING)
+}
+
+/**
+ * A row read back as a field map, so an assertion names the column it means rather than an
+ * index. The inverse of `row`, and the reason a positional expectation never appears in a test.
+ */
+export function asFields(cells, columns) {
+  return Object.fromEntries(columns.map((column, at) => [column, cells[at]]))
+}
+
+/**
+ * The config every render test renders against, and the no-op every handler takes.
+ *
+ * Shared because two suites asserting against two different category lists would let a
+ * component pass in one and fail in the other for reasons neither test names.
+ * `scripts/preview.jsx` keeps its own on purpose — it is a visual harness with real names.
+ */
+export const config = {
+  ...DEFAULT_CONFIG,
+  person1Name: 'Alex',
+  person2Name: 'Sam',
+  categories: ['Groceries', 'Dining', 'Household'],
+}
+
+export const noop = () => {}

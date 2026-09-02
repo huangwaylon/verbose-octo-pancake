@@ -42,15 +42,16 @@ function hasDate(entry) {
 }
 
 /**
- * What the non-payer owes the payer for a single entry, in yen. Routed through
- * `splitYen` so the two portions always add back up to `amountYen` exactly.
+ * What the non-payer owes the payer for a single entry, in yen. Routed through `splitYen` so the
+ * two portions always add back up to `amountYen` exactly.
  *
- * The share is coerced because `makeEntry` is the only thing that normalises a form's
- * '0.5' into a number, and this also runs over rows straight from the sheet. A genuinely
- * non-numeric share still throws in `splitYen` rather than becoming 0 and moving money.
+ * The share is passed through UNCOERCED, so `splitYen` throws on a junk one rather than a
+ * `Number()` here turning null or '' into 0 — which is "the other person owes all of it", money
+ * moved silently. Every producer already guarantees a number: `rowToEntry`, `makeEntry` and
+ * `isRestorable`.
  */
 export function owedToPayerYen(entry) {
-  return splitYen(entry.amountYen, Number(entry.payerShare)).otherYen
+  return splitYen(entry.amountYen, entry.payerShare).otherYen
 }
 
 /**

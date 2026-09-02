@@ -132,16 +132,14 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
               /* push-end shoves the destructive action to the far left of the
                  right-aligned footer, away from Save. */
               className="btn btn--icon push-end"
-              onClick={() => {
-                onDelete(entry)
-                onClose()
-              }}
+              onClick={() => onDelete(entry)}
+              disabled={busy}
               aria-label={t('form.deleteEntry')}
             >
               <TrashIcon />
             </button>
           )}
-          <button type="button" className="btn btn--ghost" onClick={onClose}>
+          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>
             {t('common.cancel')}
           </button>
           <button

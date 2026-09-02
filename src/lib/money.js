@@ -182,6 +182,21 @@ export function formatYenParts(yen, { locale } = {}) {
 }
 
 /**
+ * Whether a value is usable as an amount, and as a share.
+ *
+ * Both spellings existed twice, once per validator, in opposite forms — so the entry and the
+ * template rules could drift without either looking wrong. `Number.isFinite` does not coerce,
+ * so it already rejects every non-number and a `typeof` clause beside it is noise.
+ */
+export function isYenAmount(value) {
+  return Number.isInteger(value) && value > 0
+}
+
+export function isShare(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 1
+}
+
+/**
  * Read a share of an expense — a `payer_share` cell, or a `default_split_p*` row — into a
  * fraction in [0,1].
  *
@@ -212,7 +227,7 @@ export function parseShare(value) {
  */
 export function splitYen(yen, payerShare) {
   assertYen(yen)
-  if (typeof payerShare !== 'number' || !Number.isFinite(payerShare)) {
+  if (!Number.isFinite(payerShare)) {
     throw new TypeError(`payerShare must be a finite number, got ${String(payerShare)}`)
   }
   const share = Math.min(1, Math.max(0, payerShare))

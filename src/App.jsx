@@ -25,124 +25,64 @@ import {
   UnconfiguredGate,
 } from './components/Gate.jsx'
 
+/** Which overlay is open, if any. One value, because `overlay` says why. */
+const NO_OVERLAY = null
+
 export default function App() {
   const { t } = useT()
   const connection = useConnection()
   const toasts = useToasts()
   const ledger = useLedger(connection.spreadsheetId)
+  const { config, entries, templates, sheetExtras } = ledger
 
   // Nothing can detect who is signed in — the token belongs to the account that owns
   // the sheet, not to either person — so identity is this device's own choice.
   const [me, setIdentityChoice] = useState(readStoredIdentity)
   const [monthKey, setMonthKey] = useState(currentMonthKey)
-  const [draft, setDraft] = useState(null)
-  /** The entry the confirmation dialog is asking about, if it is open. */
-  const [pendingDelete, setPendingDelete] = useState(null)
-  const [showSettings, setShowSettings] = useState(false)
   /**
-   * The recurring surface, as ONE value rather than a flag per sheet: `null`, `'list'`, or
-   * a `{mode, template}` draft.
+   * Every sheet the app can put over the ledger, as ONE value: `null` or `{kind, …}`.
    *
-   * Exactly one sheet is open at a time and that has to be structural, not arbitrated.
-   * `BottomSheet` puts a keydown listener on the document, traps Tab against its own panel
-   * and mounts `useKeyboardInset` — so two of them at once means Escape closes both, two
-   * traps fight over Tab, and the inner one's cleanup clears `--keyboard-inset` while the
-   * outer still has the keyboard up, putting Save back behind a keypad that has no Done
-   * key. A single value cannot express "both".
+   * Exactly one `BottomSheet` may be mounted, and that has to be structural rather than
+   * arbitrated by each handler remembering to close its own. Two at once means two document
+   * keydown handlers (Escape closes both), two focus traps fighting over Tab, and the inner
+   * one's cleanup clearing `--keyboard-inset` while the outer still has the keyboard up —
+   * putting Save behind a keypad that has no Done key. A single value cannot express "both".
    */
-  const [recurring, setRecurring] = useState(null)
+  const [overlay, setOverlay] = useState(NO_OVERLAY)
+  const closeOverlay = () => setOverlay(NO_OVERLAY)
 
-  const config = ledger.config
-  const view = useLedgerView(ledger.entries, monthKey)
+  const view = useLedgerView(entries, monthKey)
   useInitialMonth(ledger.status, view.active, setMonthKey)
 
-  const setMe = useCallback((person) => {
+  const setMe = (person) => {
     storeIdentity(person)
     setIdentityChoice(person)
-  }, [])
+  }
 
-  // A service worker update activates by reloading, so it must never land while an
-  // entry is half-typed or a write has not reached the sheet. Nudging after the
-  // predicate changes is the other half: a worker refused while the form was open gets
-  // no `focus` event to ask again, because nobody left the app.
-  // `recurring` counts as well as `draft`: a half-typed recurring cost is as much a form
-  // mid-entry as an expense is, and a template write is invisible to `hasPendingWrite`
-  // because templates carry no optimistic flag.
+  /**
+   * An update activates by RELOADING, so never while a form is open or a write is
+   * unacknowledged. A template write is invisible to `hasPendingWrite` — templates carry no
+   * optimistic flag — so an open form covers it. The nudge is the other half: a worker refused
+   * while a sheet was open gets no `focus` event to ask again.
+   */
   useEffect(() => {
-    setSafeToReload(() => !draft && !recurring && !hasPendingWrite(ledger.entries))
+    const editing = overlay?.kind === 'entry' || overlay?.kind === 'template'
+    setSafeToReload(() => !editing && !hasPendingWrite(entries))
     reconsiderUpdate()
-  }, [draft, recurring, ledger.entries])
+  }, [overlay, entries])
 
-  const openAdd = () => setDraft({ mode: 'add', entry: newDraftEntry(me) })
+  /** Stable, or `EntryList`'s memo dies on every toast. Its sibling is a setter already. */
+  const openEntry = useCallback((entry) => setOverlay({ kind: 'entry', mode: 'edit', entry }), [])
+  const confirmDeleteEntry = useCallback((entry) => setOverlay({ kind: 'confirmEntry', entry }), [])
 
-  /**
-   * Stable so `EntryList`'s memo holds: it is one of the two handlers a row takes, and
-   * the other — `setPendingDelete` — is a setter, already stable. A fresh arrow here
-   * would defeat the memo on every toast and every refresh, which is exactly when the
-   * ledger must not be rebuilt.
-   */
-  const editDraft = useCallback((entry) => setDraft({ mode: 'edit', entry }), [])
-
-  /**
-   * Record tapped on the recurring page: an ordinary ADD, prefilled from the `recurring`
-   * tab. The recurring sheet CLOSES first, which is what keeps one sheet on screen — and
-   * the draft's deterministic id is the only thing standing between two taps and two rent
-   * rows, which is enough because the optimistic row carries that id and `recurringRows`
-   * reads it as recorded.
-   */
-  const recordTemplate = (entry) => {
-    setRecurring(null)
-    setDraft({ mode: 'add', entry })
-  }
-
-  const openRecurring = () => {
-    setShowSettings(false)
-    setRecurring('list')
-  }
+  const openAdd = () => setOverlay({ kind: 'entry', mode: 'add', entry: newDraftEntry(me) })
+  const openSettings = () => setOverlay({ kind: 'settings' })
+  const openRecurring = () => setOverlay({ kind: 'recurring' })
+  const openTemplate = (mode, template) => setOverlay({ kind: 'template', mode, template })
 
   /**
-   * The three recurring writes, which are one write with three sentences attached. Each returns
-   * to the list because `TemplateFormSheet`'s own `onClose` does that — these only own the
-   * toast — and each RETHROWS, unlike the ledger's toast paths: the form stays open on a
-   * failure and shows the reason against its own Save button.
-   *
-   * Retiring is dated from TODAY, never from `monthKey`. The page is scoped to the month on
-   * screen so a missed month stays recordable, but "stop this cost" is a decision about now —
-   * dated from an August anyone had navigated back to, it would silently retire September
-   * through December as well.
-   */
-  const saveTemplate = async (input, okKey) => {
-    await ledger.saveTemplate(input)
-    toasts.push(t(okKey))
-  }
-
-  const submitTemplate = (input) =>
-    saveTemplate(input, recurring?.mode === 'add' ? 'toast.added' : 'toast.saved')
-
-  const retireTemplate = (input) =>
-    saveTemplate(retiredTemplate(input, currentMonthKey()), 'toast.retired')
-
-  const restoreTemplate = (input) => saveTemplate(restoredTemplate(input), 'toast.restored')
-
-  /**
-   * Deleting a cost's row, which is irreversible and the only recurring path that is. The form
-   * closes and the confirmation opens in its place — one sheet at a time — and confirming
-   * returns to the list rather than to the form, which no longer has anything to edit.
-   *
-   * Reported through a toast rather than rethrown, unlike the form's own writes: by the time it
-   * runs there is no form left to show a message against.
-   */
-  const deleteTemplate = (template) => {
-    setRecurring('list')
-    return report(() => ledger.deleteTemplate(template), 'toast.deleted', 'toast.deleteFailed')
-  }
-
-  /**
-   * The write paths that report to a toast. `useLedger` has already reverted the
-   * optimistic change by the time the catch runs, so there is nothing to undo here.
-   *
-   * Saying it is not decoration: the balance in the header deliberately carries no
-   * `role="status"`, on the grounds that every write already speaks through a toast.
+   * Every write that reports through a toast. `useLedger` has already reverted the optimistic
+   * change by the time the catch runs, so there is nothing to undo here.
    */
   const report = async (write, okKey, failKey) => {
     try {
@@ -154,26 +94,49 @@ export default function App() {
   }
 
   /**
-   * Rethrown, unlike the other paths: the form stays open on a failure and shows the
-   * reason against its own Save button, so the toast is the SUCCESS half only.
+   * The two form paths RETHROW, unlike the toast paths above: the form stays open on a failure
+   * and shows the reason against its own Save button, so the toast is the success half only.
    */
-  const submitDraft = async (input) => {
-    const edit = draft.mode === 'edit'
-    const entry = await (edit ? ledger.editEntry(input) : ledger.addEntry(input))
-    toasts.push(t(edit ? 'toast.saved' : 'toast.added'))
+  const submitEntry = async (input) => {
+    const editing = overlay.mode === 'edit'
+    const entry = await (editing ? ledger.editEntry(input) : ledger.addEntry(input))
+    toasts.push(t(editing ? 'toast.saved' : 'toast.added'))
     return entry
   }
 
-  const removeEntry = (entry) => {
-    setPendingDelete(null)
+  const writeTemplate = async (input, okKey) => {
+    await ledger.saveTemplate(input)
+    toasts.push(t(okKey))
+  }
+
+  /**
+   * Retiring is dated from TODAY, never from `monthKey`. The page is scoped to the month on
+   * screen so a missed month stays recordable, but "stop this cost" is a decision about now —
+   * dated from an August someone had navigated back to, it would retire four more months too.
+   */
+  const retire = (input) =>
+    writeTemplate(retiredTemplate(input, currentMonthKey()), 'toast.retired')
+  const restore = (input) => writeTemplate(restoredTemplate(input), 'toast.restored')
+
+  /** Recorded from the recurring page: an ordinary ADD, prefilled, in place of that sheet. */
+  const recordTemplate = (entry) => setOverlay({ kind: 'entry', mode: 'add', entry })
+
+  const deleteEntry = (entry) => {
+    closeOverlay()
     return report(() => ledger.removeEntry(entry.id), 'toast.deleted', 'toast.deleteFailed')
   }
 
-  const restoreEntry = (entry) =>
+  const undeleteEntry = (entry) =>
     report(() => ledger.restoreEntry(entry.id), 'toast.restored', 'toast.restoreFailed')
 
+  /** Irreversible, so this is the one template path reported by toast: no form is left. */
+  const deleteTemplate = (template) => {
+    setOverlay({ kind: 'recurring' })
+    return report(() => ledger.deleteTemplate(template), 'toast.deleted', 'toast.deleteFailed')
+  }
+
   const forgetKey = () => {
-    setShowSettings(false)
+    closeOverlay()
     connection.forget()
   }
 
@@ -214,7 +177,7 @@ export default function App() {
   const notices = noticeKeys({
     status: ledger.status,
     error: ledger.error,
-    ...ledger.sheetExtras,
+    ...sheetExtras,
   }).map(({ key, vars }) => t(key, vars))
 
   return (
@@ -227,86 +190,95 @@ export default function App() {
         notices={notices}
         refreshing={ledger.status === 'refreshing'}
         onRefresh={ledger.refresh}
-        onOpenSettings={() => setShowSettings(true)}
+        onOpenSettings={openSettings}
         onMonthChange={setMonthKey}
-        onEdit={editDraft}
-        onDelete={setPendingDelete}
-        onRestore={restoreEntry}
+        onEdit={openEntry}
+        onDelete={confirmDeleteEntry}
+        onRestore={undeleteEntry}
         onAdd={openAdd}
       />
 
-      {draft && (
+      {/* One switch over one value: the invariant is that this expression can only ever
+          produce a single sheet. Every handler above SETS the overlay rather than adding one. */}
+      {overlay?.kind === 'entry' && (
         <EntryFormSheet
-          draft={draft}
+          draft={overlay}
           config={config}
           me={me}
-          onSubmit={submitDraft}
-          onDelete={setPendingDelete}
-          onClose={() => setDraft(null)}
+          onSubmit={submitEntry}
+          onDelete={confirmDeleteEntry}
+          onClose={closeOverlay}
         />
       )}
 
-      {/* Opened from the row's trash control or the edit form's, and the only path to a
-          delete: nothing calls removeEntry without going through it. */}
-      {pendingDelete && (
+      {/* The only path to an entry delete: nothing calls `removeEntry` without going through
+          it, whether it was opened from a row's trash control or the edit form's. */}
+      {overlay?.kind === 'confirmEntry' && (
         <ConfirmDeleteSheet
-          entry={pendingDelete}
-          onConfirm={() => removeEntry(pendingDelete)}
-          onClose={() => setPendingDelete(null)}
+          entry={overlay.entry}
+          onConfirm={() => deleteEntry(overlay.entry)}
+          onClose={closeOverlay}
         />
       )}
 
-      {showSettings && (
+      {overlay?.kind === 'settings' && (
         <SettingsSheet
           config={config}
           me={me}
           spreadsheetId={connection.spreadsheetId}
           tombstoneCount={ledger.tombstoneCount}
-          templateCount={ledger.templates.length}
+          templateCount={templates.length}
           onSetMe={setMe}
           onCompact={ledger.compact}
           onOpenRecurring={openRecurring}
           onForget={forgetKey}
-          onClose={() => setShowSettings(false)}
+          onClose={closeOverlay}
         />
       )}
 
-      {/* One ternary, not two independent guards: the list and the form are two views of
-          one surface and must never both be mounted. See `recurring`'s own comment. */}
-      {recurring?.mode === 'delete' ? (
-        <ConfirmSheet
-          title={t('recurring.deleteTitle')}
-          body={t('recurring.deleteBody', { name: recurring.template.description })}
-          onConfirm={() => deleteTemplate(recurring.template)}
-          onClose={() => setRecurring({ mode: 'edit', template: recurring.template })}
-        />
-      ) : recurring === 'list' ? (
+      {overlay?.kind === 'recurring' && (
         <RecurringSheet
-          templates={ledger.templates}
-          entries={ledger.entries}
+          templates={templates}
+          entries={entries}
           config={config}
           me={me}
           monthKey={monthKey}
           loaded={ledger.status === 'ready' || ledger.status === 'refreshing'}
-          undecodedTemplates={ledger.sheetExtras.undecodedTemplates}
+          undecodedTemplates={sheetExtras.undecodedTemplates}
           spreadsheetId={connection.spreadsheetId}
-          onAdd={() => setRecurring({ mode: 'add', template: newTemplate(me) })}
-          onEdit={(template) => setRecurring({ mode: 'edit', template })}
+          onAdd={() => openTemplate('add', newTemplate(me))}
+          onEdit={(template) => openTemplate('edit', template)}
           onRecord={recordTemplate}
-          onClose={() => setRecurring(null)}
+          onClose={closeOverlay}
         />
-      ) : recurring ? (
+      )}
+
+      {overlay?.kind === 'template' && (
         <TemplateFormSheet
-          draft={recurring}
+          draft={overlay}
           config={config}
           me={me}
-          onSubmit={submitTemplate}
-          onRetire={retireTemplate}
-          onRestore={restoreTemplate}
-          onDelete={(template) => setRecurring({ mode: 'delete', template })}
-          onClose={() => setRecurring('list')}
+          onSubmit={(input) =>
+            writeTemplate(input, overlay.mode === 'add' ? 'toast.added' : 'toast.saved')
+          }
+          onRetire={retire}
+          onRestore={restore}
+          /* The EDITED template, not the stored one, so the confirmation names what is on
+             screen and cancelling returns the form to the values someone had typed. */
+          onDelete={(template) => setOverlay({ kind: 'confirmTemplate', template })}
+          onClose={openRecurring}
         />
-      ) : null}
+      )}
+
+      {overlay?.kind === 'confirmTemplate' && (
+        <ConfirmSheet
+          title={t('confirm.deleteTemplateTitle')}
+          body={t('confirm.deleteTemplateBody', { name: overlay.template.description })}
+          confirmLabel={t('recurring.delete')}
+          onConfirm={() => deleteTemplate(overlay.template)}
+          onClose={() => openTemplate('edit', overlay.template)}
+        />
+      )}
 
       <Toasts toasts={toasts.toasts} />
     </div>

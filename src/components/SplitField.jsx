@@ -17,11 +17,9 @@ import { Segmented } from './Segmented.jsx'
  * 100` for the same reason — a stored 0.333 must not be quantized to 0.33 by an edit that
  * never touched it.
  *
- * For a TEMPLATE, `allowDefault` makes null a durable answer rather than an unfilled one:
- * the control opens on its own "Default" mode and keeps saving null until somebody picks
- * another mode. Resolving it to a number would detach the cost from `default_split_p*`, and
- * — because a blank share is what makes `postRecurring` skip a row — would silently turn on
- * unattended posting for it.
+ * For a TEMPLATE, `allowDefault` makes null a durable answer rather than an unfilled one: the
+ * control opens on its own "Default" mode and keeps saving null, so the cost keeps FOLLOWING
+ * `default_split_p*` instead of being pinned to whatever it happened to say on the day.
  *
  * Every transition is in `lib/split.js`; this holds only the one piece of state.
  */
@@ -77,7 +75,7 @@ export function SplitField({
     >
       {/* What "Default" actually resolves to today, in words: the mode saves a BLANK cell,
           so the number shown is the config tab's and will move if that does. */}
-      {split.mode === 'default' && defaultHint ? (
+      {split.mode === 'default' ? (
         /* `role="status"` for the same reason the breakdown below it has one: it appears and
            its percentage changes with the payer control, without a page change. */
         <p className="field__hint" role="status">

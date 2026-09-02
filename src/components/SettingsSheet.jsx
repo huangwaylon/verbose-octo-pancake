@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
-import { sheetUrl } from '../config.js'
 import { defaultSplitFor } from '../lib/split.js'
 import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
@@ -9,6 +8,7 @@ import { LOCALE_LABELS, SUPPORTED } from '../i18n/catalogs.js'
 import { ACCENTS, setAccent, useAccent } from '../lib/theme.js'
 import { Field } from './Field.jsx'
 import { Segmented } from './Segmented.jsx'
+import { OpenSheetLink } from './OpenSheetLink.jsx'
 
 export function SettingsSheet({
   config,
@@ -117,26 +117,18 @@ export function SettingsSheet({
 
         <Field label={t('settings.sheet')}>
           <div className="row">
-            <a
-              className="btn btn--ghost btn--sm"
-              href={sheetUrl(spreadsheetId)}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              {t('settings.openSheet')}
-            </a>
+            <OpenSheetLink spreadsheetId={spreadsheetId} />
           </div>
         </Field>
 
-        {/* The one way into the recurring page. Here rather than on the ledger because it
-            is somewhere you go to set something up, and a count rather than a reminder
-            because a reminder over the balance is the thing that surface must not carry. */}
-        <Field label={t('recurring.title')} description={t('recurring.settingsHint')}>
+        {/* The one way into the recurring page. A count rather than a reminder: a reminder
+            over the balance is the thing that surface must not carry. */}
+        <Field label={t('recurring.title')} description={t('settings.recurringHint')}>
           <div className="row">
             <button type="button" className="btn btn--ghost btn--sm" onClick={onOpenRecurring}>
               {templateCount
-                ? t('recurring.manageCount', { count: templateCount })
-                : t('recurring.manageEmpty')}
+                ? t('settings.recurringCount', { count: templateCount })
+                : t('settings.recurringEmpty')}
             </button>
           </div>
         </Field>

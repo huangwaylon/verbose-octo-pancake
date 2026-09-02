@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { DEFAULT_CONFIG } from '../src/config.js'
-import { ENTRY_TYPE, PERSON, RECURRING } from '../src/schema.js'
-import { expense } from './support/entries.js'
-import { newTemplate, rowToTemplate } from '../src/lib/recurring.js'
+import { ENTRY_TYPE, PERSON, rowToTemplate } from '../src/schema.js'
+import { config, expense, noop, templateRow } from './support/entries.js'
+import { newTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
@@ -35,15 +34,6 @@ import { Toasts } from '../src/components/Toasts.jsx'
  * that throws on a real prop shape, or a view that silently drops data. They
  * render to static markup, so no DOM or browser is needed.
  */
-
-const config = {
-  ...DEFAULT_CONFIG,
-  person1Name: 'Alex',
-  person2Name: 'Sam',
-  categories: ['Groceries', 'Dining', 'Household'],
-}
-
-const noop = () => {}
 
 /**
  * The shared expense. Amounts stay at the call sites: every figure in the assertions
@@ -303,11 +293,7 @@ describe('entry list renders', () => {
  */
 describe('the recurring page renders', () => {
   const template = (fields) =>
-    rowToTemplate(
-      RECURRING.columns.map(
-        (column) => ({ payer: 'p1', day_of_month: '27', ...fields })[column] ?? '',
-      ),
-    )
+    rowToTemplate(templateRow({ payer: 'p1', day_of_month: '27', ...fields }))
 
   const RENT = template({ id: 'rent', description: 'Rent', amount: '220000', category: 'Rent' })
   const GAS = template({ id: 'gas', description: 'Gas', day_of_month: '10' })
@@ -366,13 +352,22 @@ describe('the recurring page renders', () => {
     expect(recorded).toContain('recorded')
     expect(recorded).not.toContain('>Record<')
 
-    // Retired through `active_to`: still listed, so it can be restored.
-    const retired = render({
+    // Stopped through `active_to`: still listed, so it can be restarted — and it says STOPPED
+    // rather than "not this month", which is what a quarterly cost out of quarter says. Two
+    // different facts, and the row is the only place they can be told apart.
+    const stopped = render({
       templates: [template({ id: 'rent', description: 'Rent', active_to: '2026-07' })],
     })
-    expect(retired).toContain('Rent')
-    expect(retired).toContain('not this month')
-    expect(retired).not.toContain('>Record<')
+    expect(stopped).toContain('Rent')
+    expect(stopped).toContain('stopped')
+    expect(stopped).not.toContain('>Record<')
+
+    // A quarterly cost, in a month outside its quarter.
+    const quarterly = render({
+      templates: [template({ id: 'tax', description: 'Tax', months: '1,7' })],
+    })
+    expect(quarterly).toContain('not this month')
+    expect(quarterly).not.toContain('stopped')
   })
 
   it('distinguishes "not loaded" from "none", so nobody adds a second copy', () => {

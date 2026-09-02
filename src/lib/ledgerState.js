@@ -11,15 +11,7 @@
  * handed to `writeSnapshot`, must never be edited in place.
  */
 
-import {
-  DATA_TABS,
-  ENTRY_TYPE,
-  PERSON,
-  isActive,
-  isPerson,
-  makeEntry,
-  validateEntryCodes,
-} from '../schema.js'
+import { ENTRY_TYPE, PERSON, isActive, isPerson, makeEntry, validateEntryCodes } from '../schema.js'
 import { todayIso } from './dates.js'
 import { makeTemplate, validateTemplateCodes } from './recurring.js'
 import { i18nError } from '../i18n/index.js'
@@ -276,13 +268,16 @@ export function shouldRefresh(now, lastAt, floorMs) {
 }
 
 /**
- * Whether `compact` can run: it needs a numeric gid per DATA tab — the settlements one
- * included — and `values.batchGet` cannot report one, so every compact reads them fresh
- * through `readSheetGids`. A gid still missing after that read is what makes `compact`
- * refuse loudly instead of silently skipping a tab and under-reporting what it removed.
+ * Whether a hard delete can run. `deleteDimension` takes nothing but a numeric gid and
+ * `values.batchGet` cannot report one, so every such write reads them fresh through
+ * `readSheetGids`; a gid still missing after that is what makes the caller refuse loudly rather
+ * than silently skip a tab and under-report what it removed.
+ *
+ * Takes the tabs, because there are two callers with different lists: `compact` over
+ * `DATA_TABS`, `deleteTemplate` over the recurring one alone.
  */
-export function missingDataGid(sheetIds) {
-  return DATA_TABS.some((tab) => sheetIds?.[tab.title] == null)
+export function missingGid(sheetIds, tabs) {
+  return tabs.some((tab) => sheetIds?.[tab.title] == null)
 }
 
 /**
@@ -297,30 +292,21 @@ export function looksUninitialized(cause) {
 }
 
 /**
- * Turn form input into a complete entry, or throw something the person can read.
+ * Form input as a complete, valid object — or a thrown sentence the person can read.
  *
- * Both write paths validate identically and report the FIRST problem only: a form with one
- * message slot showing four at once is a wall. The codes are the stable contract, so the
- * thrown error carries `error.<code>` rather than an English sentence.
+ * Here rather than in the pure layers because those answer with CODES; turning one into
+ * something a person reads is what needs the catalog. The FIRST problem only: a form with one
+ * message slot showing four at once is a wall.
  */
-export function entryFromInput(input) {
-  const entry = makeEntry(input)
-  const problems = validateEntryCodes(entry)
+const fromInput = (build, validate) => (input) => {
+  const value = build(input)
+  const problems = validate(value)
   if (problems.length) throw i18nError(`error.${problems[0]}`)
-  return entry
+  return value
 }
 
-/**
- * The same for a recurring declaration, and here rather than in `recurring.js` for the same
- * reason `entryFromInput` is here rather than in `schema.js`: the pure layer answers with
- * CODES, and turning one into something a person reads is what needs the catalog.
- */
-export function templateFromInput(input) {
-  const template = makeTemplate(input)
-  const problems = validateTemplateCodes(template)
-  if (problems.length) throw i18nError(`error.${problems[0]}`)
-  return template
-}
+export const entryFromInput = fromInput(makeEntry, validateEntryCodes)
+export const templateFromInput = fromInput(makeTemplate, validateTemplateCodes)
 
 /**
  * Everything the screen has to say about itself, as catalog keys.
@@ -388,4 +374,24 @@ export function gateFor(state = {}) {
   if (state.ledgerStatus === 'idle' || state.ledgerStatus === 'loading') return 'loading'
   if (!state.me) return 'identity'
   return null
+}
+
+/**
+ * What the last read found that `entries` cannot carry, as one object.
+ *
+ * The key list is written once. Spelled out at both the empty value and the read, adding a
+ * counter would mean editing two places and a miss would report a stale number for the life of
+ * the session.
+ */
+export const NO_SHEET_EXTRAS = Object.freeze({
+  supersededRows: 0,
+  undecodedRows: 0,
+  undatedRows: 0,
+  unattributedRows: 0,
+  undecodedTemplates: 0,
+  configMissing: false,
+})
+
+export function sheetExtrasFrom(data) {
+  return Object.fromEntries(Object.keys(NO_SHEET_EXTRAS).map((key) => [key, data[key]]))
 }

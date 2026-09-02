@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { PERSON, RECURRING } from '../src/schema.js'
+import { PERSON, RECURRING, rowToTemplate, templateToRow } from '../src/schema.js'
 import {
   TEMPLATE_ERROR,
   templateFormProblem,
@@ -9,23 +9,12 @@ import {
   recurringRows,
   restoredTemplate,
   retiredTemplate,
-  rowToTemplate,
-  templateToRow,
+  reconcileTemplates,
   validateTemplateCodes,
 } from '../src/lib/recurring.js'
-import { expense, tombstone } from './support/entries.js'
+import { expense, templateRow as row, tombstone } from './support/entries.js'
 
-/**
- * The recurring tab, and which of its rows a month is still missing.
- *
- * Three things here fail silently and cost money or a forgotten bill: a blank
- * `payer_share` read as an even split rather than as the payer's default, a tombstone
- * treated as "not yet recorded" so the card nags for the rest of the month, and a
- * template offered before its day so the balance claims money owed weeks early.
- */
-
-/** A row built from RECURRING's own column list, by field NAME rather than position. */
-const row = (fields) => RECURRING.columns.map((column) => fields[column] ?? '')
+/** What a month says about each recurring declaration, and what a form may refuse. */
 
 /** The rent template every case below varies. */
 const rent = (fields) =>
@@ -113,7 +102,7 @@ describe('rowToTemplate', () => {
   })
 
   it('leaves a blank amount null, meaning recurring but variable', () => {
-    // A utility bill: the card lists it with no figure and the form opens empty.
+    // A utility bill: the page lists it with no figure and the form opens empty.
     expect(rowToTemplate(rent({ amount: '' })).amountYen).toBeNull()
   })
 
@@ -135,7 +124,7 @@ describe('entryFromTemplate', () => {
   const template = rowToTemplate(rent({ day_of_month: '27', payer_share: '80' }))
 
   it('derives the id from the template and the month, not from what a person can edit', () => {
-    // The literal, because this string IS the contract between the card, the Apps Script
+    // The literal, because this string IS the contract between the page, the Apps Script
     // poster and the ledger. Category plus description would post a second rent the
     // moment somebody renamed a note to 'Rent (Aug)'.
     expect(entryFromTemplate(template, '2026-09').id).toBe('rent#2026-09')
@@ -188,8 +177,9 @@ describe('recurringRows', () => {
   })
 
   it('is empty only when there are no templates', () => {
+    // The pure layer trusts its callers for shape — `loadAll` always hands it two arrays — and
+    // says so by not guarding. What it does NOT trust is the month key, which comes from state.
     expect(recurringRows([], [], '2026-09', '2026-09-30')).toEqual([])
-    expect(recurringRows(undefined, [], '2026-09', '2026-09-30')).toEqual([])
   })
 
   it('still lists every template for a month key that is not one', () => {
@@ -214,7 +204,7 @@ describe('recurringRows', () => {
   it('does not offer a cost before its day has come, but still calls it scheduled', () => {
     const [rentRow] = rowsFor([], '2026-09', '2026-09-01')
     expect(rentRow.due).toBeNull()
-    // The distinction the card could not draw: not-yet-due reads identically to already-paid
+    // The distinction two states could not draw: not-yet-due reads identically to already-paid
     // unless the row can tell them apart.
     expect(rentRow.scheduled).toBe(true)
     expect(rentRow.recorded).toBe(false)

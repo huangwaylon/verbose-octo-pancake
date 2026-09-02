@@ -19,21 +19,13 @@ import { RetireIcon } from './icons.jsx'
  * in a list, so the name leads because it is the only thing naming the row on screen, and the
  * amount follows because it is the second thing anyone recognises it by.
  *
- * SIX of the tab's ten columns. `months`, `active_from` and `active_to` stay Sheets-only —
- * quarterly and annual costs are rare and three more controls would earn their place on
- * nobody's phone — but they ride along on the draft and get written back, because a save writes
- * the whole row and a form that dropped them would silently turn a quarterly cost into a
- * monthly one.
+ * SIX of the tab's ten columns; the other three ride the draft untouched, because a save writes
+ * the whole row and dropping them would silently turn a quarterly cost into a monthly one.
  *
- * TWO ways to stop a cost, and the footer holds the safe one. Retiring sets `active_to`, which
- * keeps the row and therefore the instance id, so every month it has already posted stays
- * recorded — `retiredTemplate` says why that matters. Being reversible is also why it needs no
- * confirmation and is not `btn--danger`.
- *
- * Deleting the row is the other, and it sits LAST IN THE BODY behind a confirmation, where
- * `SettingsSheet` puts "Forget key" and for the same reasons: reachable, explained, and not the
- * button a thumb lands on by default. Its own `Field` carries what it costs, because the cost is
- * not guessable from the word "delete".
+ * TWO ways to stop a cost, and their placement is the difference between them. Retiring is
+ * reversible, so it is the footer icon and not `btn--danger`. Deleting is not, so it sits last
+ * in the body behind prose that says what it costs — where `SettingsSheet` puts "Forget key",
+ * and for the same reasons.
  */
 export function TemplateFormSheet({
   draft,
@@ -57,18 +49,8 @@ export function TemplateFormSheet({
   const [category, setCategory] = useState(template.category || config.categories[0] || '')
   const [payer, setPayer] = useState(template.payer || PERSON.P1)
   const [day, setDay] = useState(String(template.dayOfMonth ?? 1))
-  /**
-   * The exact values a submit rejected, so each field's error is DERIVED from the value that
-   * was refused: it clears the instant that field is edited and never returns without another
-   * submit. Stored as messages they would linger over values that are now fine and freeze in
-   * whichever language was current when they were built; keyed on a bare "has submitted" flag
-   * they would come back mid-edit, because every select-all-and-retype passes through ''.
-   */
+  /** The values a submit refused, so each error is derived from one. `EntryFormSheet` says why. */
   const [rejected, setRejected] = useState(null)
-  /**
-   * `saveError` IS stored, and that is the deliberate opposite: nothing about the form's own
-   * values can tell you the network failed.
-   */
   const [saveError, setSaveError] = useState(null)
   const [busy, setBusy] = useState(false)
   const nameErrorId = useId()
@@ -86,14 +68,11 @@ export function TemplateFormSheet({
   const payerLabel = label(payer)
   const otherLabel = label(otherPerson(payer))
 
-  /**
-   * Each error derived from the exact value that was refused, and which field is refused at all
-   * is `templateFormProblem`'s decision — in lib, where a test can reach it.
-   */
+  /** Which field is refused is `templateFormProblem`'s decision, in lib. */
   const refused = rejected && templateFormProblem(rejected)
   const nameError =
     refused === 'description' && rejected.description === description
-      ? t('recurring.nameError')
+      ? t('error.missingDescription')
       : null
   const amountError =
     refused === 'amount' && rejected.amount === amount ? t('error.badTemplateAmount') : null
@@ -101,30 +80,26 @@ export function TemplateFormSheet({
 
   const retired = Boolean(template.activeTo)
 
-  /**
-   * What the form says, or null with the first bad field focused.
-   *
-   * Shared by Save and by Stop/Start, so retiring cannot silently discard an edit made in the
-   * same visit — and so the two paths cannot disagree about what a blank amount means.
-   */
+  /** What the form says, or null with the first bad field focused. Shared by every write. */
   function collect() {
     setSaveError(null)
     const problem = templateFormProblem({ description, amount, day })
     if (problem) {
       setRejected({ description, amount, day })
-      // Focus follows the refusal. Each error is a newly INSERTED `role="status"`, which iOS
-      // announces unreliably, and the button pressed is at the foot of a full-screen sheet —
-      // so without this a VoiceOver user hears nothing and has no idea which field is wrong.
-      // `BottomSheet`'s `focusin` handler scrolls it in.
+      // Focus follows the refusal, for the reason `EntryFormSheet` gives.
       const field = { description: nameInput, amount: amountInput, day: dayInput }[problem]
       field.current?.focus()
       return null
     }
+    return edited()
+  }
+
+  /** The form's values as a template, without judging them. Delete needs this too. */
+  function edited() {
     return {
       ...template,
       description: description.trim(),
-      // Blank IS a value here: it means variable, which is what a utility bill is.
-      amountYen: amount.trim() ? parseAmountToYen(amount) : null,
+      amountYen: yen,
       category,
       payer,
       dayOfMonth: Number(day),
@@ -132,7 +107,7 @@ export function TemplateFormSheet({
     }
   }
 
-  /** Both write paths report the same way; only which one they call differs. */
+  /** Every write path reports the same way; only which one it calls differs. */
   async function run(write) {
     const input = collect()
     if (!input) return
@@ -142,14 +117,22 @@ export function TemplateFormSheet({
       onClose()
     } catch (cause) {
       setBusy(false)
-      setSaveError(errorMessage(cause, 'recurring.saveError'))
+      setSaveError(errorMessage(cause, 'form.saveError'))
     }
   }
 
-  // Two integer operations, so it is recomputed rather than memoised. Absent in Default mode,
-  // where the share is deliberately null and there is no number to split by yet.
-  const yen = parseAmountToYen(amount)
+  // Blank parses to null, which is the value that means "variable"; `templateFormProblem` has
+  // already refused every other unreadable amount by the time `collect` reads this.
+  const yen = amount.trim() ? parseAmountToYen(amount) : null
   const shares = yen == null || split.payerShare == null ? null : splitYen(yen, split.payerShare)
+  const breakdown =
+    shares &&
+    t('form.breakdown', {
+      payer: payerLabel,
+      payerAmount: money(shares.payerYen),
+      other: otherLabel,
+      otherAmount: money(shares.otherYen),
+    })
 
   return (
     <BottomSheet
@@ -284,18 +267,8 @@ export function TemplateFormSheet({
           payerLabel={payerLabel}
           payerPossessive={possessive(payer)}
           otherLabel={otherLabel}
-          breakdown={
-            shares &&
-            t('form.breakdown', {
-              payer: payerLabel,
-              payerAmount: money(shares.payerYen),
-              other: otherLabel,
-              otherAmount: money(shares.otherYen),
-            })
-          }
-          /* Names the person and the number it would follow: "Default" alone says nothing
-             about what gets saved, and what gets saved is a BLANK cell. `possessive`, not
-             `label` — English inflects, and `label` reads "You’s default split". */
+          breakdown={breakdown}
+          /* `possessive`, not `label` — English inflects, and `label` reads "You’s default". */
           defaultLabel={t('recurring.splitDefault')}
           defaultHint={t('recurring.splitDefaultHint', {
             owner: possessive(payer),
@@ -322,7 +295,7 @@ export function TemplateFormSheet({
               <button
                 type="button"
                 className="btn btn--danger btn--sm"
-                onClick={() => onDelete(template)}
+                onClick={() => onDelete(edited())}
                 disabled={busy}
               >
                 {t('recurring.delete')}

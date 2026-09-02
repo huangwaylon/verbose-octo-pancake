@@ -76,30 +76,34 @@ export default {
   'entry.delete': '{description}を削除',
   'entry.metaSeparator': '・',
 
-  // --- recurring costs ------------------------------------------------------
-  'recurring.title': '定期の支出',
-  'recurring.settingsHint': '家賃やジムなど、毎月かかって金額が分かっているもの。',
-  'recurring.manageCount': {
+  // --- recurring costs: the settings row -----------------------------------
+  'settings.recurringHint': '家賃やジムなど、毎月かかって金額が分かっているもの。',
+  'settings.recurringCount': {
     other: '{count}件を管理',
   },
-  'recurring.manageEmpty': '設定する',
+  'settings.recurringEmpty': '設定する',
+
+  // --- recurring costs: the page --------------------------------------------
+  'recurring.title': '定期の支出',
   'recurring.hint': '{month}を表示しています。タップすると編集できます。',
   'recurring.empty': 'まだありません。家賃など、毎月かかるものを追加しましょう。',
-  'recurring.notLoaded': 'まだ読み込めていません。シートを読み込んでからお試しください。',
-  'recurring.add': '定期の支出を追加',
+  'recurring.notLoaded': 'まだ読み込めていません。シー���を読み込んでからお試しください。',
+  'recurring.add': '追加',
   'recurring.amountVaries': '金額は変動',
   'recurring.schedule': '{day}日',
+  'recurring.paidBy': '{name}の支払い',
   'recurring.recorded': '記録ずみ',
   'recurring.notYetDue': '{day}日に予定',
   'recurring.notThisMonth': '今月は対象外',
+  'recurring.stopped': '停止中',
   'recurring.record': '記録',
   'recurring.recordName': '{name}を記録',
 
+  // --- recurring costs: the form --------------------------------------------
   'recurring.addTitle': '定期の支出を追加',
   'recurring.editTitle': '定期の支出を編集',
   'recurring.name': '名前',
   'recurring.namePlaceholder': '家賃',
-  'recurring.nameError': '見分けられるように名前を入力してください。',
   'recurring.amountHint': '毎月変わる場合は空のままにしてください。',
   'recurring.day': '毎月の日付',
   'recurring.dayHint': 'この日より前には記録されません。31日は短い月の末日になります。',
@@ -109,14 +113,11 @@ export default {
     '四半期ごと・年ごとの設定はシートの recurring タブにあり、この画面では変更されません。',
   'recurring.editScopeHint': 'すでに記録した月は、記録した時点の金額のままです。',
   'recurring.retire': 'この支出を止める',
+  'recurring.restore': 'この支出を再開する',
   'recurring.delete': '完全に削除',
-  'recurring.deleteTitle': 'この定期の支出を削除しますか？',
+  'recurring.deleteTitle': '完全に削除',
   'recurring.deleteHint':
     'recurring タブから行を削除します。すでに追加された記録は台帳に残りますが、どの月を記録したかはシートから失われるため、同じ支出を再度追加すると同じ月を二重に記録することがあります。「止める」ならその記録は残ります。',
-  'recurring.deleteBody':
-    '{name}を recurring タブから完全に削除します。すでに追加された記録は台帳に残ります。あとで追加し直す場合は、今月がすでに記録されていないか確認してください。',
-  'recurring.restore': 'この支出を再開する',
-  'recurring.saveError': '保存できませんでした。',
 
   // --- deleted entries ------------------------------------------------------
   'deleted.title': {
@@ -132,6 +133,9 @@ export default {
   'confirm.deleteTitle': 'この記録を削除しますか？',
   'confirm.deleteBody':
     '{description}・{amount}は下の「削除ずみ」に移ります。そこから元に戻せます。',
+  'confirm.deleteTemplateTitle': 'この定期の支出を削除しますか？',
+  'confirm.deleteTemplateBody':
+    '{name}を recurring タブから完全に削除します。すでに追加された記録は台帳に残ります。あとで追加し直す場合は、今月がすでに記録されていないか確認してください。',
 
   // --- add / edit form ------------------------------------------------------
   'form.addTitle': '支出を追加',
@@ -175,10 +179,10 @@ export default {
   'settings.defaultSplit': '既定の分担',
   'settings.defaultSplitValue': '{name}が支払ったとき、{name}の負担は{percent}%',
   'settings.defaultSplitHint':
-    '新しい記録での、その人自身の負担です。configタブのdefault_split_p1とdefault_split_p2で設定します。',
-  'settings.notePresetsEmpty': 'まだありません。configタブに{key}の行を追加してください。',
+    '新しい記録での、その人自身の負担です。config タブの default_split_p1 と default_split_p2 で設定します。',
+  'settings.notePresetsEmpty': 'まだありません。config タブに {key} の行を追加してください。',
   'settings.configHint':
-    'これらはシートの{tab}タブから読み込まれます。変更したらタブを編集して再読み込みしてください。',
+    'これらはシートの {tab} タブから読み込まれます。変更はそのタブで行い、そのあと再読み込みしてください。',
   'settings.deletedRows': '削除ずみの行',
   'settings.deletedRowsHint':
     '削除した記録は、行の位置がずれず「削除ずみ」から元に戻せるように、シートに印だけ残ります。まとめて消すと元に戻せません。',
@@ -251,7 +255,6 @@ export default {
   'error.duplicateTemplate':
     'recurring タブの2行が同じ ID を使っているため、安全に保存できません。シートでどちらかの ID を変更してください。',
   'warning.staleData': '保存したデータを表示しています。シートにつながりませんでした。',
-  // `Intl.PluralRules('ja')` reports only `other`, so a single branch is correct.
   'warning.configMissing':
     'config タブが見つからないため、名前・カテゴリー・既定の分担は既定値です。シートで復元してください。',
   'warning.undatedRows': {
@@ -264,6 +267,6 @@ export default {
     other: '支払った人を読み取れない精算が {count} 件あるため、残高に含まれていません。',
   },
   'warning.undecodedTemplates': {
-    other: 'recurring タブの{count}行が使えないため、「定期の支出」に表示されません。',
+    other: 'recurring タブの {count} 行が使えないため、「定期の支出」に表示されません。',
   },
 }

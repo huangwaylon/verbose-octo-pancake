@@ -26,7 +26,10 @@ import { readStored, writeStored } from '../config.js'
  */
 export function storedPreference({ key, values, fallback, detect }) {
   const stored = readStored(key)
-  let current = values.includes(stored) ? stored : (detect?.() ?? fallback)
+  // The detected value is checked against `values` exactly as a stored one is: an unrecognised
+  // guess persists nothing yet still paints an attribute CSS has no rule for.
+  const guessed = stored ?? detect?.()
+  let current = values.includes(guessed) ? guessed : fallback
 
   const listeners = new Set()
   const subscribe = (listener) => {

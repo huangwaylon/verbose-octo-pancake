@@ -11,17 +11,13 @@ import { PERSON } from '../src/schema.js'
  * would corrupt an entry — a NaN split silently moves money.
  */
 
-const rows = (pairs) => pairs.map(([k, v]) => [k, v])
-
 describe('text and list keys', () => {
   it('reads names and categories', () => {
-    const parsed = parseConfigRows(
-      rows([
-        ['person1_name', 'Waylon'],
-        ['person2_name', 'Yuki'],
-        ['categories', '食費, 外食 , 日用品'],
-      ]),
-    )
+    const parsed = parseConfigRows([
+      ['person1_name', 'Waylon'],
+      ['person2_name', 'Yuki'],
+      ['categories', '食費, 外食 , 日用品'],
+    ])
     expect(parsed).toEqual({
       person1Name: 'Waylon',
       person2Name: 'Yuki',
@@ -30,21 +26,21 @@ describe('text and list keys', () => {
   })
 
   it('is case-insensitive on the key', () => {
-    expect(parseConfigRows(rows([['PERSON1_NAME', 'Waylon']]))).toEqual({ person1Name: 'Waylon' })
+    expect(parseConfigRows([['PERSON1_NAME', 'Waylon']])).toEqual({ person1Name: 'Waylon' })
   })
 
   it('omits blank values so the defaults win', () => {
-    expect(parseConfigRows(rows([['person1_name', '   ']]))).toEqual({})
+    expect(parseConfigRows([['person1_name', '   ']])).toEqual({})
   })
 
   it('omits a list that is only separators, rather than returning an empty list', () => {
     // An empty array here would shadow the default categories and leave the
     // category picker with nothing in it.
-    expect(parseConfigRows(rows([['categories', ' , , ']]))).toEqual({})
+    expect(parseConfigRows([['categories', ' , , ']])).toEqual({})
   })
 
   it('ignores keys it does not know', () => {
-    expect(parseConfigRows(rows([['favourite_colour', 'blue']]))).toEqual({})
+    expect(parseConfigRows([['favourite_colour', 'blue']])).toEqual({})
   })
 })
 
@@ -73,13 +69,13 @@ describe('mergeConfig', () => {
 
 describe('note presets', () => {
   it('reads a comma-separated list', () => {
-    expect(parseConfigRows(rows([['note_presets', 'OK Mart, Ozeki, Life']]))).toEqual({
+    expect(parseConfigRows([['note_presets', 'OK Mart, Ozeki, Life']])).toEqual({
       notePresets: ['OK Mart', 'Ozeki', 'Life'],
     })
   })
 
   it('keeps names containing spaces intact', () => {
-    expect(parseConfigRows(rows([['note_presets', 'OK Mart,  My Basket ']]))).toEqual({
+    expect(parseConfigRows([['note_presets', 'OK Mart,  My Basket ']])).toEqual({
       notePresets: ['OK Mart', 'My Basket'],
     })
   })
@@ -92,7 +88,7 @@ describe('note presets', () => {
 describe('default split', () => {
   // The parser reads each person's key independently, so the shared
   // percentage-vs-fraction rules are pinned once against p1.
-  const p1 = (value) => parseConfigRows(rows([['default_split_p1', value]])).defaultSplitP1
+  const p1 = (value) => parseConfigRows([['default_split_p1', value]]).defaultSplitP1
 
   it('reads a percentage, which is what people write in a spreadsheet', () => {
     expect(p1('60')).toBe(0.6)
@@ -131,19 +127,17 @@ describe('default split', () => {
 
   it('keeps the two people independent', () => {
     expect(
-      parseConfigRows(
-        rows([
-          ['default_split_p1', '80'],
-          ['default_split_p2', '20'],
-        ]),
-      ),
+      parseConfigRows([
+        ['default_split_p1', '80'],
+        ['default_split_p2', '20'],
+      ]),
     ).toEqual({ defaultSplitP1: 0.8, defaultSplitP2: 0.2 })
   })
 
   it('leaves the other person to the default when only one key is set', () => {
     // Not mirrored to 1 - x: the two are independent settings, and inventing
     // the other half would silently commit someone to a split they never wrote.
-    expect(parseConfigRows(rows([['default_split_p1', '80']]))).toEqual({ defaultSplitP1: 0.8 })
+    expect(parseConfigRows([['default_split_p1', '80']])).toEqual({ defaultSplitP1: 0.8 })
   })
 
   it('defaults to an even split for both people', () => {
@@ -165,7 +159,7 @@ describe('the two people’s names', () => {
   })
 
   it('wins over the fallback as soon as the sheet says one', () => {
-    const config = mergeConfig(parseConfigRows(rows([['person1_name', 'Waylon']])))
+    const config = mergeConfig(parseConfigRows([['person1_name', 'Waylon']]))
     expect(nameOf(config, PERSON.P1, { p1: 'ひとり目', p2: 'ふたり目' })).toBe('Waylon')
     expect(nameOf(config, PERSON.P2, { p1: 'ひとり目', p2: 'ふたり目' })).toBe('ふたり目')
   })
@@ -177,7 +171,7 @@ describe('comparing two reads of the tab', () => {
    * fresh but equal one re-renders the whole ledger on a resume that changed nothing.
    * So a false positive is a config change the screen never shows.
    */
-  const parsed = (pairs) => parseConfigRows(rows(pairs))
+  const parsed = (pairs) => parseConfigRows(pairs)
 
   it('answers true for two reads of an identical tab', () => {
     const pairs = [

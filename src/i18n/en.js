@@ -14,6 +14,11 @@
  *
  * Separators and symbols (`·`, `%`) live in the text rather than in JSX, so
  * their placement is a translation decision at zero code cost.
+ *
+ * The prefix is the SURFACE, not the feature: a string rendered by `SettingsSheet` is
+ * `settings.*` wherever it came from. And a control repeated down a column — Restore, Record —
+ * gets a `*Name`/`*Entry` variant naming its own row, or a screen reader reads the same word N
+ * times with nothing to tell them apart.
  */
 export default {
   // --- app chrome -----------------------------------------------------------
@@ -94,42 +99,47 @@ export default {
   'entry.delete': 'Delete {description}',
   'entry.metaSeparator': ' · ',
 
-  // --- recurring costs ------------------------------------------------------
-  // The page behind Settings. "Recurring costs" rather than "Subscriptions":
-  // rent is the reason this exists and it is nobody's subscription.
-  'recurring.title': 'Recurring costs',
-  // Deliberately does not promise the daily poster: the Apps Script trigger is optional,
-  // and SETUP.md step 9 is where it gets set up.
-  'recurring.settingsHint':
+  // --- recurring costs: the settings row -----------------------------------
+  // Under `settings.` because the surface decides the prefix, not the feature:
+  // these three render beside settings.deletedRowsHint and nothing else.
+  'settings.recurringHint':
     'Rent, the gym, anything that comes round every month with an amount you already know.',
-  'recurring.manageCount': {
+  'settings.recurringCount': {
     one: 'Manage {count} cost',
     other: 'Manage {count} costs',
   },
-  'recurring.manageEmpty': 'Set one up',
+  'settings.recurringEmpty': 'Set one up',
+
+  // --- recurring costs: the page --------------------------------------------
+  // "Recurring costs" rather than "Subscriptions": rent is the reason this
+  // exists and it is nobody's subscription.
+  'recurring.title': 'Recurring costs',
   'recurring.hint': 'Showing {month}. Tap a cost to edit it.',
   'recurring.empty': 'Nothing set up yet. Add rent, or anything else that comes round every month.',
   // A cached launch has an empty list for a completely different reason, and
   // "none yet" there invites a second copy of a cost that already exists.
   'recurring.notLoaded': 'Not loaded yet — pull the sheet in and come back.',
-  'recurring.add': 'Add a recurring cost',
+  'recurring.add': 'Add a cost',
   'recurring.amountVaries': 'Varies',
-  // The row's own state, in words. Never by colour, and never by the absence of
+  // A row's own state, in words. Never by colour, and never by the absence of
   // the Record button: not-yet-due and already-paid look identical without these.
-  'recurring.schedule': 'day {day}',
+  // "day {day}" rather than an ordinal, which English cannot form from a number.
+  'recurring.schedule': 'on day {day}',
+  // 'paid by {name}' rather than '{name} pays': `label` answers "You" for whoever is
+  // holding the phone, and English does not inflect that to "You pays".
+  'recurring.paidBy': 'paid by {name}',
   'recurring.recorded': 'recorded',
-  'recurring.notYetDue': 'due on the {day}',
+  'recurring.notYetDue': 'due on day {day}',
   'recurring.notThisMonth': 'not this month',
+  'recurring.stopped': 'stopped',
   'recurring.record': 'Record',
-  // Several identical "Record" buttons in a column say nothing about which cost
-  // each one belongs to.
   'recurring.recordName': 'Record {name}',
 
+  // --- recurring costs: the form --------------------------------------------
   'recurring.addTitle': 'Add a recurring cost',
   'recurring.editTitle': 'Edit recurring cost',
   'recurring.name': 'Name',
   'recurring.namePlaceholder': 'Rent',
-  'recurring.nameError': 'Give it a name, so you can tell it apart.',
   // Blank is a real answer here, and the one a utility bill needs.
   'recurring.amountHint': 'Leave it empty if the amount changes every month.',
   'recurring.day': 'Day of the month',
@@ -143,17 +153,14 @@ export default {
     'Quarterly and annual schedules live in the recurring tab of your sheet, and this form keeps them.',
   'recurring.editScopeHint': 'Months already recorded keep the figures they were recorded with.',
   'recurring.retire': 'Stop this cost',
+  'recurring.restore': 'Start this cost again',
   'recurring.delete': 'Delete for good',
-  'recurring.deleteTitle': 'Delete this recurring cost?',
-  // The description is the whole guard. "Delete" does not tell anyone that what is lost is
-  // the sheet's record of which months this cost already covered — and that adding it back
-  // afterwards can therefore post a month that was already paid.
+  'recurring.deleteTitle': 'Delete for good',
+  // The description is the whole guard. "Delete" does not tell anyone that what is
+  // lost is the sheet's record of which months this cost already covered — and that
+  // adding it back afterwards can therefore record a month twice.
   'recurring.deleteHint':
     'Removes the row from the recurring tab. The entries it already added stay in your ledger, but the sheet forgets which months it covered — so adding this cost again could record a month twice. Stopping it keeps that memory.',
-  'recurring.deleteBody':
-    '{name} is removed from the recurring tab for good. The entries it already added stay in your ledger. If you add it again later, check this month has not already been recorded.',
-  'recurring.restore': 'Start this cost again',
-  'recurring.saveError': 'Could not save that.',
 
   // --- deleted entries ------------------------------------------------------
   // The count is in the summary line because the section is collapsed: closed,
@@ -166,14 +173,15 @@ export default {
     'Deleted from this month. Restore one here, or clear every deleted row for good in settings.',
   'deleted.meta': '{date} · {name} paid',
   'deleted.restore': 'Restore',
-  // Several identical "Restore" buttons in a column say nothing about which
-  // entry each one belongs to.
   'deleted.restoreEntry': 'Restore {description}',
 
   // --- delete confirmation --------------------------------------------------
   'confirm.deleteTitle': 'Delete this entry?',
   'confirm.deleteBody':
     '{description} · {amount} moves to Deleted at the bottom of the list, where you can restore it.',
+  'confirm.deleteTemplateTitle': 'Delete this recurring cost?',
+  'confirm.deleteTemplateBody':
+    '{name} is removed from the recurring tab for good. The entries it already added stay in your ledger. If you add it again later, check this month has not already been recorded.',
 
   // --- add / edit form ------------------------------------------------------
   'form.addTitle': 'Add expense',

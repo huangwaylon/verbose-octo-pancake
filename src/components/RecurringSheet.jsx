@@ -2,9 +2,10 @@ import { useMemo } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { recurringRows } from '../lib/recurring.js'
 import { monthLabel } from '../lib/dates.js'
-import { sheetUrl } from '../config.js'
+import { OpenSheetLink } from './OpenSheetLink.jsx'
 import { PlusIcon } from './icons.jsx'
 import { useMoney, usePeopleLabels, useT } from '../i18n/index.js'
+import { isRetired } from '../lib/recurring.js'
 
 /**
  * Every recurring cost, and what the month being looked at says about each.
@@ -12,16 +13,12 @@ import { useMoney, usePeopleLabels, useT } from '../i18n/index.js'
  * Reached from Settings rather than from the ledger, deliberately: this is a page you visit
  * to set something up, and nothing about it belongs over the balance.
  *
- * ONE list rather than a due section and a template section. A row's state is four-way —
- * recorded, due now, scheduled but not yet due, not scheduled this month — and every one of
- * those is a sentence on the row itself. Two sections could only show two of the four, and
- * a row with no Record button and no explanation reads as broken when in fact a quarterly
- * cost simply is not due in September.
+ * ONE list rather than a due section and a template section: a row's state is four-way, and
+ * `recurringRows` answers all of it as a sentence on the row. Two sections could show two.
  *
- * Scoped to `monthKey`, the month the ledger is showing, NOT to today's month. A month
- * missed while nobody was recording — away in October, back in November — has to stay
- * recordable, and `postRecurring` only ever posts the current one. The month is named on
- * screen so it is never a mystery which one is being answered.
+ * Scoped to `monthKey`, the month the ledger is showing, NOT to today's: a month missed while
+ * nobody was recording has to stay recordable, and `postRecurring` only ever posts the current
+ * one. Which month is named on screen so it is never a mystery.
  */
 export function RecurringSheet({
   templates,
@@ -38,6 +35,9 @@ export function RecurringSheet({
   onClose,
 }) {
   const { t, locale } = useT()
+  const money = useMoney()
+  // Resolved once for the whole list rather than per row, exactly as `EntryList` does it.
+  const { label } = usePeopleLabels(config, me)
 
   /**
    * Computed here rather than in `useLedgerView`, so nothing walks the ledger while this
@@ -73,8 +73,8 @@ export function RecurringSheet({
               <RecurringRow
                 key={state.template.id}
                 state={state}
-                config={config}
-                me={me}
+                label={label}
+                money={money}
                 onEdit={onEdit}
                 onRecord={onRecord}
               />
@@ -91,18 +91,15 @@ export function RecurringSheet({
             when they wonder why a cost they typed is not listed. The count comes from the
             same `loadAll` counter the notice does. */}
         {undecodedTemplates > 0 && (
-          <div className="field" role="status">
-            <p className="field__hint">
+          <div className="field">
+            {/* On the `<p>` alone, like every other notice: a button label inside the region
+                would be read out as part of the announcement. */}
+            <p className="field__hint" role="status">
               {t('warning.undecodedTemplates', { count: undecodedTemplates })}
             </p>
-            <a
-              className="btn btn--ghost btn--sm"
-              href={sheetUrl(spreadsheetId)}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              {t('settings.openSheet')}
-            </a>
+            <div className="row">
+              <OpenSheetLink spreadsheetId={spreadsheetId} />
+            </div>
           </div>
         )}
       </div>
@@ -111,46 +108,40 @@ export function RecurringSheet({
 }
 
 /**
- * One cost. The body edits it; the trailing control records this month's instance, and only
- * when there is one to record.
- *
- * Its own component because it needs the two people's names and a money formatter, and
- * because the state sentence is the part worth reading in one place.
+ * One cost: the body edits it, the trailing control records this month's instance and appears
+ * only when there is one to record. `label` and `money` arrive resolved from the list, the same
+ * shape `EntryList` uses.
  */
-function RecurringRow({ state, config, me, onEdit, onRecord }) {
+function RecurringRow({ state, label, money, onEdit, onRecord }) {
   const { t } = useT()
-  const money = useMoney()
-  const { label } = usePeopleLabels(config, me)
   const { template, due, recorded, scheduled } = state
 
   /**
-   * Why this row has no Record button, in words rather than by its absence — and never by
-   * colour alone. `recorded` counts a tombstoned instance, so "already recorded" is the
-   * honest reading of a month whose rent was deliberately removed.
+   * Why this row has no Record button, in words rather than by its absence. Retired first:
+   * "stopped" and "not this month" are different facts, and a quarterly cost out of quarter is
+   * only the second.
    */
   const status = recorded
     ? t('recurring.recorded')
-    : !scheduled
-      ? t('recurring.notThisMonth')
-      : !due
-        ? t('recurring.notYetDue', { day: template.dayOfMonth })
-        : null
-
-  /**
-   * The amount leads the meta line rather than sitting in a column of its own. At the 320px
-   * floor a name, an eight-figure figure and a Record button cannot share a row: the name
-   * gets about 60px and `overflow-wrap: anywhere` starts breaking words mid-glyph. The
-   * figure is still the strongest thing on the line, and it is inside the button, so it is
-   * part of what the row announces.
-   */
-  const amount =
-    template.amountYen == null ? t('recurring.amountVaries') : money(template.amountYen)
+    : isRetired(template)
+      ? t('recurring.stopped')
+      : !scheduled
+        ? t('recurring.notThisMonth')
+        : !due
+          ? t('recurring.notYetDue', { day: template.dayOfMonth })
+          : null
 
   const name = template.description || t('entry.expense')
 
+  /**
+   * The amount leads the meta line rather than taking a column of its own: at 320px a name, an
+   * eight-figure figure and a Record button leave the name about 60px, and `overflow-wrap` then
+   * breaks words mid-glyph. It stays inside the button, so it is part of what the row announces.
+   */
   const meta = [
+    template.amountYen == null ? t('recurring.amountVaries') : money(template.amountYen),
     t('recurring.schedule', { day: template.dayOfMonth }),
-    t('common.paid', { name: label(template.payer) }),
+    t('recurring.paidBy', { name: label(template.payer) }),
     status,
   ]
     .filter(Boolean)
@@ -160,15 +151,7 @@ function RecurringRow({ state, config, me, onEdit, onRecord }) {
     <li className="recurring__row">
       <button type="button" className="recurring__main" onClick={() => onEdit(template)}>
         <span className="recurring__name">{name}</span>
-        <span className="recurring__meta">
-          <span
-            className={template.amountYen == null ? 'recurring__amount' : 'recurring__amount tnum'}
-          >
-            {amount}
-          </span>
-          {t('entry.metaSeparator')}
-          {meta}
-        </span>
+        <span className="recurring__meta">{meta}</span>
       </button>
       {due && (
         <button

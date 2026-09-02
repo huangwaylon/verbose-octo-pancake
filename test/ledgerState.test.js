@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { DATA_TABS, ENTRY_ERROR, ENTRY_TYPE, PERSON, isPerson } from '../src/schema.js'
+import { DATA_TABS, ENTRY_ERROR, ENTRY_TYPE, PERSON, RECURRING, isPerson } from '../src/schema.js'
 import { expense, tombstone } from './support/entries.js'
 import {
   gateFor,
@@ -11,7 +11,7 @@ import {
   hasPendingWrite,
   looksUninitialized,
   mergeLoaded,
-  missingDataGid,
+  missingGid,
   newDraftEntry,
   noticeKeys,
   reconcileById,
@@ -481,7 +481,7 @@ describe('entryFromInput', () => {
   })
 })
 
-describe('the gids compact needs', () => {
+describe('the gids a hard delete needs', () => {
   /** A gid for every data tab, built from the same list `compact` iterates. */
   const allGids = (over = {}) => ({
     ...Object.fromEntries(DATA_TABS.map((tab, index) => [tab.title, index + 1])),
@@ -489,20 +489,27 @@ describe('the gids compact needs', () => {
   })
 
   it('is satisfied only when EVERY data tab has one', () => {
-    expect(missingDataGid(allGids())).toBe(false)
-    expect(missingDataGid({})).toBe(true)
-    expect(missingDataGid(undefined)).toBe(true)
+    expect(missingGid(allGids(), DATA_TABS)).toBe(false)
+    expect(missingGid({}, DATA_TABS)).toBe(true)
+    expect(missingGid(undefined, DATA_TABS)).toBe(true)
     // One per tab, dropped in turn: the settlements tab counts exactly as much as the
     // two expenses ones, or `compact` silently leaves every tombstoned settlement in
     // place while the settings count goes on offering to remove them.
     for (const tab of DATA_TABS) {
-      expect(missingDataGid(allGids({ [tab.title]: undefined })), tab.title).toBe(true)
+      expect(missingGid(allGids({ [tab.title]: undefined }), DATA_TABS), tab.title).toBe(true)
     }
+  })
+
+  it('covers whichever tabs it is given, which is how the recurring delete reuses it', () => {
+    // `compact` passes DATA_TABS; `deleteTemplate` passes [RECURRING]. One predicate, or the
+    // second caller grows its own inline check and the two drift.
+    expect(missingGid({ recurring: 5 }, [RECURRING])).toBe(false)
+    expect(missingGid(allGids(), [RECURRING])).toBe(true)
   })
 
   it('accepts gid 0, which is what the first tab of a new spreadsheet gets', () => {
     // A truthiness check here would ask for the gids on every compact, forever.
-    expect(missingDataGid(allGids({ [DATA_TABS[0].title]: 0 }))).toBe(false)
+    expect(missingGid(allGids({ [DATA_TABS[0].title]: 0 }), DATA_TABS)).toBe(false)
   })
 })
 

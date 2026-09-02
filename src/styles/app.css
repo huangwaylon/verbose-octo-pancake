@@ -249,48 +249,39 @@
    that changes one rule: the name WRAPS rather than truncating. This is where a
    household's fixed costs are managed, so a name has to be readable in full, and
    `.sheet__body`'s `overflow-x: hidden` would clip a truncation rather than
-   report it. `min-width: 0` plus `overflow-wrap` is what CLAUDE.md requires of
-   anything holding sheet-authored text. */
-
-.recurring__list {
-  display: flex;
-  flex-direction: column;
-}
-
-/* Inset divider, full-bleed press: the hairline stops at the text like the entry
-   list's does, while the row below spills into the sheet's padding so a finger's
-   worth of highlight is not a stripe narrower than the tap it answers. */
-.recurring__row + .recurring__row {
-  border-top: 1px solid var(--line);
-}
+   report it. */
 
 .recurring__row {
   display: grid;
-  /* Two tracks, not three. The amount rides the meta line instead of taking one of its
-     own: at 320px a name, an eight-figure figure and the Record button leave the name
-     about 60px, and `overflow-wrap` then breaks words mid-glyph. */
+  /* Two tracks, not three. The amount rides the meta line instead of taking one of
+     its own: at 320px a name, an eight-figure figure and the Record button leave
+     the name about 60px, and `overflow-wrap` then breaks words mid-glyph. */
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
 }
 
+/* Full-bleed hairline, not the entry list's inset one: these rows have no leading
+   padding to inset from, and the sheet's own padding is what holds it off the edge. */
+.recurring__row + .recurring__row {
+  border-top: 1px solid var(--line);
+}
+
+/* A row is a row, not text: the same touch and selection rules `button.entry__main`
+   carries, so a long press on an edit affordance does not raise iOS's selection
+   magnifier. Unlike there, this class is only ever a button, so it needs no element
+   qualifier — which is also why the two blocks are one. */
 .recurring__main {
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
+  justify-content: center;
+  gap: var(--space-1);
   min-width: 0;
   min-height: var(--tap-target);
-  justify-content: center;
   margin-inline-start: calc(var(--space-2) * -1);
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   text-align: left;
-}
-
-/* A row is a row, not text: the same rules `button.entry__main` carries, and for the same
-   reason — a long press on an edit affordance must not raise iOS's selection magnifier. Unlike
-   there, this class is only ever a button, so it needs no element qualifier. */
-.recurring__main {
   touch-action: manipulation;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
@@ -307,8 +298,11 @@
   }
 }
 
+/* `overflow-wrap` rather than an ellipsis, for the reason at the top of this block.
+   These are flex items on the CROSS axis of a column container, so they need no
+   `min-width: 0` of their own — `.recurring__main`'s is what lets the grid track
+   shrink. */
 .recurring__name {
-  min-width: 0;
   color: var(--ink);
   font-size: var(--fs-label);
   font-weight: 500;
@@ -317,16 +311,10 @@
 }
 
 .recurring__meta {
-  min-width: 0;
   color: var(--ink-3);
   font-size: var(--fs-caption);
   line-height: var(--lh-tight);
   overflow-wrap: anywhere;
-}
-
-.recurring__amount {
-  color: var(--ink);
-  font-weight: 600;
 }
 
 /* =========================================================================
@@ -573,7 +561,7 @@
 }
 
 .entry:not(:first-child)::before {
-  content: "";
+  content: '';
   position: absolute;
   top: 0;
   left: var(--space-4);
@@ -613,10 +601,10 @@
 .entry__main {
   display: flex;
   flex-direction: column;
-  gap: 0.125rem;
-  min-height: var(--tap-target);
   justify-content: center;
+  gap: var(--space-1);
   min-width: 0;
+  min-height: var(--tap-target);
   padding: var(--space-1) 0;
   text-align: left;
 }

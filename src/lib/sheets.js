@@ -19,15 +19,15 @@ import {
   SHEET_TABS,
   cellText,
   entryToRow,
-  expenseTab,
   isPerson,
   rowToEntry,
   tabOf,
+  templateToRow,
 } from '../schema.js'
 import { reconcileById, tombstoneCount } from './ledgerState.js'
 import { parseAmountToYen } from './money.js'
 import { getAccessToken, refreshToken } from './connection.js'
-import { rowToTemplate, templateToRow } from './recurring.js'
+import { reconcileTemplates } from './recurring.js'
 import { defaultConfigRows, parseConfigRows } from './sheetConfig.js'
 import { i18nError } from '../i18n/index.js'
 
@@ -56,11 +56,10 @@ function isUnreachable(status, payload) {
 }
 
 /**
- * The three cells this layer reads positionally, per tab.
+ * The cells this layer reads positionally, per tab.
  *
- * Deliberately NOT module-wide constants. The two layouts put `deleted_at` at different
- * indexes, so a single shared one would have `compact` reading the settlements tab's
- * `id` column — non-empty on every row — and hard-deleting every live settlement.
+ * Per tab, never module-wide: the layouts put `deleted_at` at different indexes, and
+ * `schema.js` says what a shared one would cost.
  */
 const idCell = (tab, row) => cellText(row, tab.index('id'))
 const deletedCell = (tab, row) => cellText(row, tab.index('deleted_at'))
@@ -146,13 +145,38 @@ function updateValues(spreadsheetId, range, values) {
   })
 }
 
+function appendRow(spreadsheetId, tab, cells) {
+  return request(
+    `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(tab.title)}:append`,
+    {
+      method: 'POST',
+      params: { valueInputOption: RAW, insertDataOption: 'INSERT_ROWS' },
+      body: { values: [cells] },
+    },
+  )
+}
+
+/** 0-based and half-open: sheet row N is index N-1. The one home of that arithmetic. */
+function deleteRowRequest(sheetGid, rowNumber) {
+  return {
+    deleteDimension: {
+      range: {
+        sheetId: sheetGid,
+        dimension: 'ROWS',
+        startIndex: rowNumber - 1,
+        endIndex: rowNumber,
+      },
+    },
+  }
+}
+
 /**
  * Load everything the app needs in one round trip.
  *
  * Returns the sheet's own partial config as well as the merged one, because the snapshot
  * cache has to store the partial — see `mergeConfig`.
  *
- * The four counts are how the sheet reports what it holds and the app cannot show. Each
+ * The five counts are how the sheet reports what it holds and the app cannot show. Each
  * exists because the alternative is a wrong number with nothing said:
  *
  * `supersededRows` — TOMBSTONES `reconcileById` hid. Only tombstones, because the
@@ -246,28 +270,11 @@ export async function loadAll(spreadsheetId) {
 
   const entries = reconcileById(decoded)
 
-  // The recurring range sits immediately after the data ones in `SHEET_TABS`, so this
-  // index is derived rather than a literal for the same reason the config one is.
-  let undecodedTemplates = 0
-  const templates = []
-  const templateIds = new Set()
-  for (const row of valueRanges[DATA_TABS.length]?.values ?? []) {
-    const template = rowToTemplate(row)
-    // The FIRST row per id wins, exactly as `parseConfigRows` takes the first usable value
-    // for a config key — the same hand-authored-tab problem. A duplicate is reachable by
-    // copying the rent row to add parking and forgetting to change `id`, and by retrying an
-    // append whose response was lost. Kept unreconciled it would render two identical rows
-    // under one React key, and `recurringRows` would emit two drafts nothing could tell
-    // apart. Counted rather than dropped silently, and `saveTemplate` refuses to write to a
-    // duplicate at all, so the row on screen is always the row an edit lands on.
-    if (template && !templateIds.has(template.id)) {
-      templateIds.add(template.id)
-      templates.push(template)
-    }
-    // Anything somebody filled in that this cannot use. A wholly blank row says nothing —
-    // the range runs to the bottom of the tab, so most of them are blank.
-    else if ((row ?? []).some((_, index) => cellText(row, index))) undecodedTemplates += 1
-  }
+  // The recurring range sits immediately after the data ones in `SHEET_TABS`, so this index is
+  // derived rather than a literal for the same reason the config one is.
+  const { templates, undecoded: undecodedTemplates } = reconcileTemplates(
+    valueRanges[DATA_TABS.length]?.values ?? [],
+  )
 
   return {
     entries,
@@ -285,14 +292,7 @@ export async function loadAll(spreadsheetId) {
 
 export async function appendEntry(spreadsheetId, entry) {
   const tab = tabOf(entry)
-  await request(
-    `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(tab.title)}:append`,
-    {
-      method: 'POST',
-      params: { valueInputOption: RAW, insertDataOption: 'INSERT_ROWS' },
-      body: { values: [entryToRow(entry, tab)] },
-    },
-  )
+  await appendRow(spreadsheetId, tab, entryToRow(entry, tab))
 }
 
 /**
@@ -390,30 +390,12 @@ export async function setDeletedAt(spreadsheetId, tab, id, deletedAtIso) {
 }
 
 /**
- * ---------------------------------------------------------------------------
- * The `recurring` tab's own writes.
- * ---------------------------------------------------------------------------
- *
- * Separate from the entry paths above rather than generalised with them, because almost
- * nothing is shared: a template has no `deleted_at` and no payer-driven tab, so there is no
- * soft delete, no row to move between tabs and no `tabOf` decision. `saveTemplate` is almost
- * the whole surface: `deleteTemplate` is the one destructive path, kept apart because it is the
- * only thing here that shifts a row and the only one that needs a gid.
- *
- * What IS shared is the rule that matters: a row number is never cached, and the write
- * re-resolves id -> row against a fresh read immediately beforehand.
- */
-
-/**
  * The row a template's id sits on, or null if the tab does not hold it yet.
  *
- * REFUSES a duplicate rather than picking one, which is the opposite of `resolveRow` — and
- * deliberately. `resolveRow` prefers the last match because `updateEntry` leaves a same-id
- * tombstone behind; nothing in this tab does, so two rows under one id is a mistake rather
- * than a state. It is reachable by copying the rent row in the Sheets UI to add parking and
- * forgetting to change `id`, and writing to a guess would put one cost's values over
- * another's. `loadAll` shows only the first of them and counts the rest, so a person can see
- * that something is wrong; only the sheet can put it right.
+ * REFUSES a duplicate rather than picking one, which is the opposite of `resolveRow` and
+ * deliberately: that prefers the last match because `updateEntry` leaves a same-id tombstone
+ * behind, and nothing in this tab does. `reconcileTemplates` says where a duplicate comes from
+ * and what it costs; only the sheet can put one right.
  */
 async function findTemplateRow(spreadsheetId, id) {
   const data = await getValues(spreadsheetId, RECURRING.dataRange)
@@ -421,7 +403,7 @@ async function findTemplateRow(spreadsheetId, id) {
 
   const matches = []
   rows.forEach((row, index) => {
-    if (cellText(row, RECURRING.index('id')) === id) matches.push(FIRST_DATA_ROW + index)
+    if (idCell(RECURRING, row) === id) matches.push(FIRST_DATA_ROW + index)
   })
 
   // Reaches the screen through the form's own error line, so it is translated. Only the sheet
@@ -434,48 +416,25 @@ async function findTemplateRow(spreadsheetId, id) {
  * Write a template, wherever it belongs: append when the tab has no row for its id, overwrite
  * when it does.
  *
- * ONE function for add and edit rather than two, and that is what makes it idempotent. A
- * template's id is minted when the form OPENS, so an append whose response was lost —
- * committed, but reported as failed — gets retried under the SAME id; two calls to a dedicated
- * append would leave two rows, and from then on `findTemplateRow` refuses every edit and the
- * cost is unmaintainable from the app until somebody opens Sheets.
- *
- * The WHOLE row either way, never the edited cells: `templateToRow` writes a blank for a null
- * amount or share, and those blanks are values — variable, and "follow the payer's default". A
- * partial write could not clear one. Retiring is this same call with `active_to` set, which is
- * why there is no third function and no delete.
+ * ONE function for add and edit rather than two, which is what makes it idempotent: the id is
+ * minted when the form opens (see `newTemplate`), so a lost response is retried under the same
+ * id and a dedicated append would leave two rows. Retiring is this same call with `active_to`
+ * set. The WHOLE row either way — `templateToRow` says why a blank cell cannot be skipped.
  */
 export async function saveTemplate(spreadsheetId, template) {
   const rowNumber = await findTemplateRow(spreadsheetId, template.id)
-  if (rowNumber == null) {
-    await request(
-      `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(RECURRING.title)}:append`,
-      {
-        method: 'POST',
-        params: { valueInputOption: RAW, insertDataOption: 'INSERT_ROWS' },
-        body: { values: [templateToRow(template)] },
-      },
-    )
-    return
-  }
-  await updateValues(spreadsheetId, RECURRING.rowRange(rowNumber), [templateToRow(template)])
+  const cells = templateToRow(template)
+  if (rowNumber == null) await appendRow(spreadsheetId, RECURRING, cells)
+  else await updateValues(spreadsheetId, RECURRING.rowRange(rowNumber), [cells])
 }
 
 /**
  * Remove a template's row for good.
  *
- * The one hard delete outside `compact`, and it exists because a person asked for it rather
- * than because it is the safe path — `retiredTemplate` is. What it costs is stated where a
- * person can read it, in the confirmation: the instance id is the only link between a
- * declaration and the rows it has already posted, so deleting the row ORPHANS them. The rows
- * stay in the ledger, correctly; what is lost is the sheet's memory that those months were
- * handled. Add the same cost back afterwards — necessarily under a new id — and a month
- * already paid reads as unrecorded again.
- *
- * The row number comes from a read immediately beforehand, for the same reason `compact`
- * refuses to trust a cached one: `deleteDimension` shifts every row below it. Two phones
- * deleting at the same instant is the one case that can still land on the wrong row, and it is
- * the accepted last-write-wins design applied to a four-row tab that two people can talk about.
+ * The second hard delete in the app, and not the safe path — `retiredTemplate` is, and what
+ * this costs instead is stated in the confirmation the caller shows. The row number comes from
+ * a read immediately beforehand for the same reason `compact` refuses a cached one:
+ * `deleteDimension` shifts every row below it.
  */
 export async function deleteTemplate(spreadsheetId, sheetGid, id) {
   const rowNumber = await findTemplateRow(spreadsheetId, id)
@@ -485,21 +444,7 @@ export async function deleteTemplate(spreadsheetId, sheetGid, id) {
 
   await request(`/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
     method: 'POST',
-    body: {
-      requests: [
-        {
-          deleteDimension: {
-            range: {
-              sheetId: sheetGid,
-              dimension: 'ROWS',
-              // 0-based and half-open: sheet row N is index N-1.
-              startIndex: rowNumber - 1,
-              endIndex: rowNumber,
-            },
-          },
-        },
-      ],
-    },
+    body: { requests: [deleteRowRequest(sheetGid, rowNumber)] },
   })
 }
 
@@ -544,19 +489,7 @@ export async function compact(spreadsheetId, sheetGids) {
     // row below it, so ascending order would make each request after the first target
     // the wrong row.
     rowNumbers.sort((a, b) => b - a)
-    for (const rowNumber of rowNumbers) {
-      requests.push({
-        deleteDimension: {
-          range: {
-            sheetId: sheetGid,
-            dimension: 'ROWS',
-            // 0-based and half-open: sheet row N is index N-1.
-            startIndex: rowNumber - 1,
-            endIndex: rowNumber,
-          },
-        },
-      })
-    }
+    for (const rowNumber of rowNumbers) requests.push(deleteRowRequest(sheetGid, rowNumber))
   }
 
   if (requests.length === 0) return { removed: 0 }

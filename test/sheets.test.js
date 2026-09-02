@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DATA_TABS, PERSON, RECURRING, SETTLEMENTS, SHEET_TABS, expenseTab } from '../src/schema.js'
 import { DEFAULT_CONFIG } from '../src/config.js'
-import { expense as entry, row, settlement, settlementRow } from './support/entries.js'
+import {
+  asFields,
+  expense as entry,
+  row,
+  settlement,
+  settlementRow,
+  templateRow as recurringRow,
+} from './support/entries.js'
 import {
   installSheets,
   removeSheets,
@@ -722,8 +729,6 @@ describe('loadAll', () => {
      * — and a refused row going uncounted.
      */
     describe('the recurring tab', () => {
-      const recurringRow = (fields) => RECURRING.columns.map((column) => fields[column] ?? '')
-
       it('decodes it from its own range, not from a ledger one', async () => {
         installSheets(() =>
           ranges5({
@@ -828,8 +833,6 @@ describe('loadAll', () => {
  * on the wrong row when two rows share an id.
  */
 describe('template writes', () => {
-  const recurringRow = (fields) => RECURRING.columns.map((column) => fields[column] ?? '')
-
   const RENT = {
     id: 'rent',
     description: 'Rent',
@@ -844,8 +847,7 @@ describe('template writes', () => {
   }
 
   /** The appended or updated row as a field map, so an assertion names its column. */
-  const sentRow = (call) =>
-    Object.fromEntries(RECURRING.columns.map((column, at) => [column, call.body.values[0][at]]))
+  const sentRow = (call) => asFields(call.body.values[0], RECURRING.columns)
 
   it('appends when the tab has no row for that id, RAW, at the schema’s column order', async () => {
     const calls = installSheets(() => ({}))

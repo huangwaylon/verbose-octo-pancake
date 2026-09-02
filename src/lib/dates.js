@@ -71,7 +71,7 @@ function toIso(date) {
 }
 
 export function currentMonthKey(now = new Date()) {
-  return toIso(now).slice(0, 7)
+  return todayIso(now).slice(0, 7)
 }
 
 function partsOf(iso) {
@@ -85,11 +85,9 @@ function partsOf(iso) {
  * junk, which matches no entry in any month and reads on screen as an empty month rather
  * than as a bug.
  *
- * The SHAPE is checked before the numbers, because `split('-')` discards everything past
- * the second part — so a full ISO day ('2026-08-05') parses as a perfectly valid August.
- * That is the one piece of junk actually in reach, and the worst kind: `inMonth` compares
- * against a `slice(0, 7)`, which a ten-character string can never equal, so every entry
- * falls out of the month and the ledger renders empty with nothing reported anywhere.
+ * The SHAPE is checked before the numbers, because `split('-')` discards everything past the
+ * second part — so a full ISO day ('2026-08-05') would parse as a perfectly valid August, and
+ * then match no entry in any month.
  */
 function monthParts(monthKey) {
   const text = String(monthKey ?? '')

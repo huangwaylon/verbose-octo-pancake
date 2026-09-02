@@ -55,8 +55,8 @@ Cloud console silently acts as the wrong account when several are signed in.
 4. Back in **Editor**, replace `appsscript.json` with
    [`apps-script/appsscript.json`](apps-script/appsscript.json). It pins the scope
    to `spreadsheets` alone, sets the web app to run as the owner with anonymous
-   access, and pins the script's timezone to `Asia/Tokyo` — which step 9 depends on,
-   because `new Date()` is UTC underneath and a 03:00 JST run on the 1st would
+   access, and pins the script's timezone to `Asia/Tokyo` — which step 9 depends on:
+    `new Date()` is UTC underneath and a 03:00 JST run on the 1st would
    otherwise compute the previous month.
 5. **Project Settings** → **Script Properties** → **Add script property**, twice:
 
@@ -172,6 +172,9 @@ Set up at least one cost first, or a run has nothing to do. Every cost with an *
 posts itself; one with a blank amount — a utility bill whose figure changes — cannot, so
 those stay on the page with a Record button.
 
+A cost that ends is **stopped**, not deleted: the row's id is the sheet's only record of
+which months it already covered.
+
 Same script project as the token minter: it already holds `SHEET_ID` and the
 `spreadsheets` authorization, and `postRecurring` is already in the `Code.gs` from step 3.
 
@@ -188,17 +191,11 @@ Create the trigger in the UI rather than with `ScriptApp.newTrigger`, which woul
 the `script.scriptapp` scope adding to `oauthScopes` — and pinning that list to
 `spreadsheets` alone is worth keeping.
 
-Two things about how this deploys, both deliberate:
-
-**Triggers run HEAD; the web app runs the pinned deployment.** Saving `Code.gs` changes
+One thing about how this deploys, and it is deliberate. **Triggers run HEAD; the web app
+runs the pinned deployment.** Saving `Code.gs` changes
 tonight's 3am run immediately, while the token endpoint keeps serving the version from
 step 6. So adding the poster needs no new deployment — and a half-finished edit left
 saved in the editor runs unattended.
-
-**An uncaught throw here is the monitoring.** `exceptionLogging: STACKDRIVER` plus the
-notification in step 3 means a failure mails you, which is the deliberate opposite of
-`doPost`, where a throw returns Google's HTML error page and the app reads it as a
-transient blip.
 
 Cost is about 90 seconds of runtime a month against the free 90 minutes **per day**,
 which the token minter also draws on.

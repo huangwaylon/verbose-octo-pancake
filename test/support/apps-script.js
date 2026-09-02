@@ -73,11 +73,19 @@ export function loadPoster({ tabs, sheetId = 'sheet-under-test' }) {
     sheets[title] = fakeSheet([[...header], ...rows.map((row) => [...row])])
   }
 
+  /** Every tab the poster asked for, in order. Asserting on `sheets` would read the fixture. */
+  const asked = []
+
   const globals = {
     SpreadsheetApp: {
       openById: (id) => {
         if (id !== sheetId) throw new Error(`openById got ${id}`)
-        return { getSheetByName: (title) => sheets[title] ?? null }
+        return {
+          getSheetByName: (title) => {
+            asked.push(title)
+            return sheets[title] ?? null
+          },
+        }
       },
     },
     PropertiesService: {
@@ -115,6 +123,7 @@ export function loadPoster({ tabs, sheetId = 'sheet-under-test' }) {
 
   return {
     sheets,
+    asked,
     ...api,
     /** What `postRecurring` will read the clock as, for the timezone-free path. */
     setToday: (iso) => {

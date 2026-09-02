@@ -14,11 +14,10 @@ import { EVEN_SHARE, PERSON } from '../schema.js'
 /**
  * The share `person` covers by default on an expense they paid for.
  *
- * Keyed on the payer, not one household number: with 0.8 for p1 and 0.2 for p2, p1 bears
- * 80% of the cost whichever of them actually paid. The two values are independent and need
- * not sum to 1 — only the payer's is ever read, so never mirror one from the other. The
- * `isFinite` guard is the last thing between an unparseable config cell and `splitYen`,
- * which moves money.
+ * Keyed on the payer, not one household number: with 0.8 for p1 and 0.2 for p2, p1 bears 80% of
+ * the cost whichever of them paid. The two are independent and need not sum to 1 — only the
+ * payer's is read, so never mirror one from the other. The `isFinite` guard is the last thing
+ * between an unparseable config cell and `splitYen`.
  */
 export function defaultSplitFor(config, person) {
   const value = person === PERSON.P2 ? config?.defaultSplitP2 : config?.defaultSplitP1
@@ -29,11 +28,9 @@ export function defaultSplitFor(config, person) {
  * A share as the two split controls see it. An even share drives the segmented control to
  * "Even" and hides the slider; anything else opens Custom on that number.
  *
- * A NULL share is the recurring tab's blank `payer_share` cell, which is a durable
- * declaration — "follow whoever pays, at whatever their default is, forever" — rather than
- * an unfilled draft. It gets its own mode so the control can keep it blank; resolving it to
- * a number would detach the cost from the config tab and, because a blank share is also
- * what makes `postRecurring` leave a template alone, silently turn on unattended posting.
+ * A NULL share is the recurring tab's blank `payer_share`: a durable declaration — "follow
+ * whoever pays, at whatever their default is" — rather than an unfilled draft, so it gets its
+ * own mode and the control keeps it blank.
  *
  * `share` is carried alongside `percent` and is the value that gets SAVED. The slider is
  * whole percents, so a stored 0.333 displays as 33 — saving `percent / 100` would rewrite

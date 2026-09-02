@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { EXPENSE_COLUMNS, RECURRING_COLUMNS, expenseTab, PERSON } from '../src/schema.js'
+import { asFields, columnRow } from './support/entries.js'
 import { loadPoster } from './support/apps-script.js'
 
 /**
@@ -18,7 +19,7 @@ import { loadPoster } from './support/apps-script.js'
 const P1 = expenseTab(PERSON.P1)
 const P2 = expenseTab(PERSON.P2)
 
-const template = (fields) => RECURRING_COLUMNS.map((column) => fields[column] ?? '')
+const template = (fields) => columnRow(fields, RECURRING_COLUMNS)
 
 const RENT = {
   id: 'rent',
@@ -54,13 +55,10 @@ const poster = ({ recurring = [], p1 = [], p2 = [], config = null } = {}) =>
   })
 
 /** An expenses row, by field name, exactly as `entryToRow` would build it. */
-const expenseRow = (fields) => EXPENSE_COLUMNS.map((column) => fields[column] ?? '')
+const expenseRow = (fields) => columnRow(fields, EXPENSE_COLUMNS)
 
 /** One appended row as a field map, so an assertion names the column it means. */
-const appendedAt = (sheet, index = 0) =>
-  Object.fromEntries(
-    EXPENSE_COLUMNS.map((column, at) => [column, sheet.appended[index].values[at]]),
-  )
+const appendedAt = (sheet, index = 0) => asFields(sheet.appended[index].values, EXPENSE_COLUMNS)
 
 describe('what it writes', () => {
   it('appends one instance to the payer’s own tab, at the schema’s column order', () => {
@@ -206,9 +204,8 @@ describe('what it refuses to write', () => {
 
 /**
  * A blank `payer_share` means "follow that payer's `default_split`", and resolving it is the
- * poster's job. Refusing it instead — which is what this file used to assert — put a cliff
- * under the form's own default state: the Split control starts on "Default", which writes a
- * blank cell, so the most likely cost anyone set up would silently never post.
+ * poster's job — the Split control starts on Default, which writes a blank cell, so refusing
+ * one would leave the most likely cost anyone sets up never posting.
  */
 describe('a blank share follows the payer’s default', () => {
   const CONFIG = [
@@ -262,16 +259,14 @@ describe('a blank share follows the payer’s default', () => {
   })
 
   it('leaves an explicit share alone, whatever the config says', () => {
-    const app = poster({ recurring: [template(RENT)], config: CONFIG })
-
-    app.postRecurringFor('2026-09', 27)
-    // RENT spells out 80, which happens to match — so use a value that cannot be confused.
-    const pinned = poster({
+    // 30, not RENT's own 80, which would collide with the config value and prove nothing.
+    const app = poster({
       recurring: [template({ ...RENT, payer_share: '30' })],
       config: CONFIG,
     })
-    pinned.postRecurringFor('2026-09', 27)
-    expect(appendedAt(pinned.sheets.expenses_p1).payer_share).toBe('0.3')
+
+    app.postRecurringFor('2026-09', 27)
+    expect(appendedAt(app.sheets.expenses_p1).payer_share).toBe('0.3')
   })
 })
 
@@ -327,9 +322,8 @@ describe('already recorded', () => {
   })
 
   it('reads the id from the column the schema puts it in', () => {
-    // The id is LAST in an expense row. Reading the first column instead would find the
-    // date on every row, match nothing, and post a duplicate every single day.
-    expect(EXPENSE_COLUMNS.indexOf('id')).toBe(6)
+    // Reading the first column instead would find the date on every row, match nothing, and
+    // post a duplicate every single day.
     const app = poster({
       recurring: [template(RENT)],
       p1: [expenseRow({ id: 'rent#2026-09', date: '2026-09-27', amount: '220000' })],
@@ -393,11 +387,13 @@ describe('a ledger the poster cannot use', () => {
     expect(app.sheets.expenses_p1.appended).toHaveLength(0)
   })
 
-  // Named after what it asserts: both titles come from `schema.js` via schema.test.js's pin,
-  // so this only proves the poster asks for them and nothing else.
-  it('touches no tab beyond the two expenses tabs and recurring', () => {
-    const app = poster({ recurring: [template(RENT)] })
+  it('asks for exactly the four tabs it needs, and nothing else', () => {
+    // The harness records the ASK, not the fixture: a `Object.keys(app.sheets)` check would be
+    // reading back the tabs the test itself supplied, and could not fail.
+    const app = poster({ recurring: [template(RENT)], config: [['default_split_p1', '80']] })
     app.postRecurringFor('2026-09', 27)
-    expect(Object.keys(app.sheets).sort()).toEqual([P1.title, P2.title, 'recurring'].sort())
+    expect([...new Set(app.asked)].sort()).toEqual(
+      [P1.title, P2.title, 'config', 'recurring'].sort(),
+    )
   })
 })

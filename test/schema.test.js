@@ -552,9 +552,17 @@ describe('validateEntryCodes', () => {
   })
 
   it('rejects a non-integer or NaN amount', () => {
-    for (const amountYen of [4.5, NaN, Infinity, '4210', null, undefined]) {
+    for (const amountYen of [4.5, NaN, Infinity, null, undefined]) {
       expect(validateEntryCodes(fullEntry({ amountYen }))).toEqual([ENTRY_ERROR.BAD_AMOUNT])
     }
+  })
+
+  it('rejects a numeric STRING amount, which means makeEntry was bypassed', () => {
+    // `makeEntry` coerces both numerics, so validation only sees a string when something
+    // skipped it — and a string reaching `yenToSheetString` throws rather than writing a cell.
+    expect(validateEntryCodes({ ...fullEntry(), amountYen: '4210' })).toEqual([
+      ENTRY_ERROR.BAD_AMOUNT,
+    ])
   })
 
   it('rejects a badly shaped date', () => {
@@ -716,7 +724,7 @@ describe('the recurring poster agrees about the column lists', () => {
 
   /**
    * The instance id is the whole of "already recorded", and the two derivations have to
-   * agree character for character or the poster and the card each post their own copy of
+   * agree character for character or the poster and the page each post their own copy of
    * every month's rent. `test/recurring.test.js` pins the client's side to the same shape.
    */
   it('joins the template id and the month with the same separator', () => {

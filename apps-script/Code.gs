@@ -13,25 +13,24 @@
  * Access is "anyone, even anonymous", and the `/exec` URL ships in a public
  * bundle, so the shared key is the ONLY access control. It is not protected by
  * the URL being hard to guess; assume the URL is known.
- *
- * CRITICAL: any uncaught throw in `doPost` returns Google's HTML error page
- * instead of JSON, and the client classifies a non-JSON reply as a transient
- * failure and retries. A throw on the reject path therefore becomes a silent
- * retry loop, so this function must be structurally incapable of throwing.
- * Note that a body of `null` parses fine, so the try/catch below does not fire
- * and `body.key` would dereference null — hence the explicit check.
- *
- * The reply vocabulary is exactly `{token, spreadsheetId}`,
- * `{error:'unauthorized'}` and `{error:'unavailable'}` — never an exception
- * message, never an echo of the request.
- *
- * Never read `e.parameter`. Accepting a key from the query string would write it
- * into Google's request logs; requiring it in the body is what keeps it out.
  */
 
 /** The legitimate body is a 64-character key. Anything larger is not worth parsing. */
 var MAX_BODY_CHARS = 1024
 
+/**
+ * CRITICAL: any uncaught throw here returns Google's HTML error page instead of
+ * JSON, and the client classifies a non-JSON reply as a transient failure and
+ * retries. A throw on the reject path is therefore a silent retry loop, so this
+ * function must be structurally incapable of throwing.
+ *
+ * The reply vocabulary is exactly `{token, spreadsheetId}`, `{error:'unauthorized'}`
+ * and `{error:'unavailable'}` — never an exception message, never an echo of the
+ * request.
+ *
+ * Never read `e.parameter`. Accepting a key from the query string would write it
+ * into Google's request logs; requiring it in the body is what keeps it out.
+ */
 function doPost(e) {
   if (!e || !e.postData || !e.postData.contents) return unauthorized()
   if (e.postData.contents.length > MAX_BODY_CHARS) return unauthorized()
@@ -93,15 +92,13 @@ function json(payload) {
  *
  * CRITICAL, and the deliberate opposite of `doPost` above: this MUST be allowed
  * to throw. `exceptionLogging: STACKDRIVER` plus the trigger's own failure
- * notification means an uncaught throw in a TRIGGER mails the owner, and that
- * mail is the only channel by which this stopping is ever reported — the app
- * cannot see it. `doPost` must be incapable of throwing because a throw there
- * returns Google's HTML error page, which the client reads as transient. Do not
- * tidy the asymmetry away.
+ * notification means an uncaught throw in a TRIGGER mails the owner, and that mail
+ * is the only channel by which this stopping is ever reported — the app cannot see
+ * it. Do not tidy the asymmetry away.
  *
  * The instance id is `<template id>#<YYYY-MM>`, derived identically here and in
  * `src/lib/recurring.js`, which is the whole of "already recorded" — it is what
- * makes this poster and the app's own card safe to coexist, and a re-run a no-op.
+ * makes this poster and the app's own Record control safe to coexist.
  *
  * TRIGGERS RUN HEAD; the web app runs the pinned deployment. Saving this file
  * changes tonight's run immediately while the token endpoint keeps serving the
@@ -421,8 +418,7 @@ function pad2(value) {
  * `values.append` landing in the same instant would resolve the same row, which is
  * last-write-wins — the accepted design, and vanishingly unlikely at 3am.
  *
- * `share` arrives RESOLVED rather than read off the template, because a blank
- * `payer_share` means "the payer's default" and only `defaultShares` knows that.
+ * `share` arrives RESOLVED; only `defaultShares` can resolve a blank one.
  */
 function appendInstance(ss, template, id, date, share) {
   var sheet = ss.getSheetByName(EXPENSE_TABS[template.payer])

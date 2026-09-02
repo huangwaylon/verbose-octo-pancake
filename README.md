@@ -4,7 +4,8 @@ A static React app for two people to track shared expenses, with a single Google
 the database. It is built for one place: Safari on iOS, added to the Home Screen, on a
 phone. There is no sign-in: a small Apps Script web app, owned by a dedicated
 account that owns the sheet, mints short-lived Google tokens for whoever presents a shared
-app key, and the browser then talks straight to the Sheets API. Google Cloud setup is in
+app key, and the browser then talks straight to the Sheets API. The same script holds an
+optional daily trigger that posts recurring costs. Google Cloud setup is in
 [SETUP.md](SETUP.md); the invariants that fail silently if broken are in
 [CLAUDE.md](CLAUDE.md).
 
@@ -76,8 +77,8 @@ Deletes are soft — `deleted_at` is stamped and the row filtered out client-sid
 Sheets API addresses rows by index, so a hard delete would shift every row below it out from
 under the other person's cached positions. Deleting asks for confirmation and is then one cell
 write, reversible from the collapsed **Deleted** section at the bottom of the month being
-viewed. The manual **compact** action is the only hard delete, and the only thing that spans
-every month at once.
+viewed. The manual **compact** action is the only hard delete of an entry, and the only thing
+that spans every month at once.
 
 ### `recurring` tab
 
@@ -85,13 +86,16 @@ Rent, the gym, a subscription: costs whose amount and split are known in advance
 only real failure mode is forgetting to type them. The tab is a **declaration** of what
 recurs, not a log of what happened — it holds no date and no `deleted_at`.
 
-**Settings → Recurring costs** is the interface: add, edit, and stop or restart a cost. Rows
-can still be authored by hand, and three of the ten columns only can be.
+**Settings → Recurring costs** is the interface: add, edit, stop or restart, and — behind a
+confirmation — delete a cost. Rows can still be authored by hand, and columns F, H and I only
+can be: quarterly and annual schedules are rare enough that three more controls would earn
+their place on nobody's phone. The form **keeps** them, so editing a quarterly cost does not
+silently make it monthly.
 
 | Col | Field | Example | Notes |
 | --- | --- | --- | --- |
 | A | `description` | `Rent` | What the entry's note will say |
-| B | `amount` | `220000` | Blank means recurring but **variable** — a utility bill. The card lists it with no figure and the form opens empty |
+| B | `amount` | `220000` | Blank means recurring but **variable** — a utility bill. The page lists it with no figure and the form opens empty |
 | C | `category` | `Rent` | Blank falls through to the first configured category |
 | D | `payer` | `p1` | Whose tab the instance lands in; case-folded on read |
 | E | `payer_share` | `80` | As in the expense column. Blank means "follow that payer's `default_split`" — **not** an even split |
@@ -100,10 +104,6 @@ can still be authored by hand, and three of the ten columns only can be.
 | H | `active_from` | `2026-04` | Month keys, so an ended lease stops nagging without deleting what it cost. Both blank means always |
 | I | `active_to` | `2027-03` | as above |
 | J | `id` | `rent` | Minted by the app; yours to invent by hand. It has to be stable — see below |
-
-Columns F, H and I are the sheet-only three: quarterly and annual schedules are rare enough
-that three more controls would earn their place on nobody's phone. The form **keeps** them, so
-editing a quarterly cost does not silently make it monthly.
 
 A blank cell takes its default; a cell that was **filled in and cannot be read refuses the
 whole row**, and so does a second row carrying an id an earlier row already used. Both are
@@ -132,21 +132,20 @@ Two writers use that id and neither can post a month twice:
   spells out **both** its amount and its share, because anything left blank is a figure a
   person should confirm. `SETUP.md` step 9 sets it up.
 
-Daily rather than on the 1st: Google can delay or skip a scheduled run, and this trigger's
-documented failure mode — the consent screen lapsing — is silent, so a monthly trigger that
-misses its one run does nothing for 30 days. The recurring page is also what tells you the
-poster has died, since a row it should have written still shows a Record button there.
+Daily rather than on the 1st, because Google can delay or skip a scheduled run and every run
+after the first is a no-op. The recurring page is also what tells you the poster has died,
+since a row it should have written still shows a Record button there.
 
-There are **two ways to stop a cost**, and they differ in what the sheet remembers.
+There are **two ways to stop a cost**, and they differ in what the sheet remembers. Both live on
+the cost's own form: stopping in the footer, deleting last in the body behind a confirmation.
 
 **Stopping it** sets `active_to`. The row stays, so its id stays, so every month it has already
 posted stays recorded — and it is reversible from the same control. This is the one to use.
 
-**Deleting it** removes the row. The entries it already added stay in your ledger, correctly;
-what is lost is the sheet's memory of *which months it covered*. Add the same cost back
-afterwards — necessarily under a new id — and a month already paid reads as unrecorded, which is
-enough for the trigger to post it a second time. The confirmation says so. Both live on the
-cost's own form: stopping in the footer, deleting last in the body behind that sentence.
+**Deleting it** removes the row. The entries it already added stay in your ledger; what is lost
+is the sheet's memory of *which months it covered*. Add the same cost back afterwards —
+necessarily under a new id — and a month already paid reads as unrecorded, which is enough for
+the trigger to post it a second time.
 
 ### `config` tab
 
@@ -245,8 +244,8 @@ Standalone changes what can go wrong: the keyboard covers a fixed footer without
 the viewport `dvh` reads, `:hover` latches after a tap, a flick from the top reloads the app
 out from under a half-typed entry, and safe-area insets are the app's problem because there is
 no browser chrome to absorb them. Those rules are in CLAUDE.md's Platform section. Layout is
-decided at 320px; `npx vite-node scripts/preview.jsx` writes eighteen pages for checking it,
-three of them deliberately pathological.
+decided at 320px; `npx vite-node scripts/preview.jsx` writes twenty-four pages for checking it,
+four of them deliberately pathological.
 
 ### Launch speed
 
@@ -292,7 +291,7 @@ exists in a build, so exercising it means `npm run build && npm run preview`, an
 registers a real worker on port 4173 — shared with every other Vite project on the machine.
 
 A green suite says nothing about whether the page looks right. `npx vite-node
-scripts/preview.jsx` writes eighteen static pages with the real stylesheets, and
+scripts/preview.jsx` writes twenty-four static pages with the real stylesheets, and
 `scripts/frames.html` renders one at several widths at once with the measurements printed
 underneath — including, on a page carrying a sheet, whether Save clears a simulated keyboard.
 CLAUDE.md has the invocation.
@@ -303,7 +302,7 @@ CLAUDE.md has the invocation.
 | --- | --- |
 | `index.html` | entry HTML, the CSP, the manifest and Home Screen tags |
 | `base.js`, `vite.config.js` | the Pages base path, in one place; React plugin and vitest config |
-| `apps-script/` | the token endpoint: `Code.gs` and its manifest, deployed by hand |
+| `apps-script/` | the token endpoint and the recurring-cost poster: `Code.gs` and its manifest, pasted into the editor by hand |
 | `src/schema.js` | the sheet contract: columns, ranges, row ↔ entry mapping |
 | `src/config.js` | build-time values, storage keys, defaults and their merge, `localStorage` wrappers |
 | `src/lib/sheets.js` | every Sheets API call |
@@ -311,6 +310,7 @@ CLAUDE.md has the invocation.
 | `src/lib/money.js` | whole yen: parse, format, split, sum |
 | `src/lib/balance.js` | who-owes-whom and the month aggregates; pure |
 | `src/lib/ledgerState.js` | the optimistic list transitions, the status decisions, duplicate-id reconciliation; pure |
+| `src/lib/recurring.js` | the `recurring` tab: what a month owes, retire/restore, what a form refuses; pure |
 | `src/lib/split.js` | the payer's default share and the split control's transitions; pure |
 | `src/lib/connection.js` | the app key, the minted token, and the failure taxonomy |
 | `src/lib/snapshot.js` | the launch cache: last successful read, kept on the device |
@@ -324,5 +324,5 @@ CLAUDE.md has the invocation.
 | `test/` | vitest specs; shared harnesses under `test/support/` |
 | `scripts/preview.jsx`, `scripts/frames.html` | the static-HTML visual harness, and the viewer that measures it at several widths |
 | `scripts/build-sw.js` | walks `dist/` and emits the service worker; importable, so its silent failure modes are tested |
-| `scripts/bank_to_ledger.py` | turns a bank CSV into pasteable rows; the one place outside `schema.js` that knows the columns |
+| `scripts/bank_to_ledger.py` | turns a bank CSV into pasteable rows; one of the two places outside `schema.js` that knows a column list |
 | `.github/workflows/deploy.yml` | test, build, deploy to Pages |

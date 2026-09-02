@@ -6,8 +6,8 @@
  *
  * One file per locale, each accent as its own variant so a colour change can be
  * eyeballed across all five, and one page per overlay — the delete dialog, the entry
- * form, the settlement form and the settings sheet — because those are what a small
- * phone has least room for.
+ * form, the settlement form, the settings sheet, the recurring page and its form —
+ * because those are what a small phone has least room for.
  *
  * The surface is the app's own `LedgerScreen`, so this harness cannot drift from what
  * `App` renders.
@@ -19,9 +19,16 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { DEFAULT_CONFIG } from '../src/config.js'
 import { setLocale, t } from '../src/i18n/index.js'
-import { ENTRY_TYPE, EVEN_SHARE, PERSON, RECURRING, makeEntry } from '../src/schema.js'
+import {
+  ENTRY_TYPE,
+  EVEN_SHARE,
+  PERSON,
+  RECURRING,
+  makeEntry,
+  rowToTemplate,
+} from '../src/schema.js'
 import { ACCENTS } from '../src/lib/theme.js'
-import { newTemplate, rowToTemplate } from '../src/lib/recurring.js'
+import { newTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,

@@ -50,9 +50,18 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
     for (const property of ['width', 'height', 'border-radius']) {
       expect(declares(FILES.app, selector, property)).toBe(true)
     }
-    // And each still paints its own colour: the meter's from the accent, the chart's
-    // from a --series-N token, which is the whole reason they are two selectors.
-    expect(declares(FILES.app, selector, 'background-color')).toBe(true)
+  })
+
+  /**
+   * The VALUE, not the property. `.chart__swatch` appears in TWO selector lists — the shared
+   * shape block and its own override — so a `declares(..., 'background-color')` check is
+   * satisfied by the shared one, which is exactly the half that must not be what paints it.
+   */
+  it.each([
+    ['.summary__person-swatch', 'var(--accent)'],
+    ['.chart__swatch', 'var(--series-1)'],
+  ])('%s paints its own colour, %s', (selector, value) => {
+    expect(blocksFor(FILES.app, selector).at(-1)).toContain(value)
   })
 
   it.each(headings)('%s %s is still a heading', (file, selector) => {
@@ -184,11 +193,8 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('keeps the sheet clear of the keyboard at DIALOG widths too', () => {
-    // Asserted PER BLOCK, not against the join: a phone in landscape is 852px wide, so
-    // it takes the >=48rem treatment, and that block sets `padding` as a SHORTHAND —
-    // which discards the phone rule's `padding-bottom: var(--keyboard-inset)` outright.
-    // Joining the blocks hides it, because the phone block satisfies the string on its
-    // own while the rotated phone puts Save back behind a keypad that has no Done key.
+    // PER BLOCK, not against the join: the >=48rem block sets `padding` as a shorthand, so
+    // it discards the phone rule's `padding-bottom`, and a joined check cannot see that.
     for (const body of blocksFor(FILES.primitives, '.sheet')) {
       if (!/(^|;|\s)padding(-bottom)?\s*:/.test(body)) continue
       expect(body).toContain('--keyboard-inset')
@@ -217,9 +223,8 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('gives the full-screen panel the whole screen, and undoes it for the dialog', () => {
-    // Asserted PER BLOCK, not against the join of both: with every declaration in one
-    // bucket, hoisting `height: auto` out of the media query and deleting the reset
-    // satisfies each string while leaving the panel never full screen on a phone.
+    // PER BLOCK again: with both in one bucket, hoisting `height: auto` out of the media
+    // query and deleting the reset satisfies every string on a panel never full screen.
     const blocks = blocksFor(FILES.primitives, '.sheet__panel--full')
     expect(blocks).toHaveLength(2)
     const [phone, dialog] = blocks
@@ -306,6 +311,8 @@ describe('the rules an installed iOS web app depends on', () => {
       // The button form only: the deleted list renders the same class as an inert
       // span, where a press state promises a tap that does nothing.
       ['app', 'button.entry__main'],
+      // The same affordance in a sheet. Only ever a button, so no element qualifier.
+      ['app', '.recurring__main'],
     ]) {
       expect(declares(FILES[file], selector, 'touch-action')).toBe(true)
     }
@@ -330,16 +337,20 @@ describe('the rules an installed iOS web app depends on', () => {
     for (const selector of ['.segmented__option', '.pill']) {
       expect(declares(FILES.primitives, selector, 'overflow-wrap')).toBe(true)
     }
+    // The recurring page holds the same hand-authored text, and WRAPS it rather than
+    // truncating — inside a sheet there is nothing to scroll a truncation into view.
+    for (const selector of ['.recurring__name', '.recurring__meta']) {
+      expect(declares(FILES.app, selector, 'overflow-wrap')).toBe(true)
+    }
     expect(declares(FILES.primitives, '.segmented__option', 'min-width')).toBe(true)
     expect(declares(FILES.primitives, '.pill', 'max-width')).toBe(true)
   })
 
   it('never lets a LEDGER column be sized by its widest unbreakable child', () => {
-    // Both grid tracks, because a grid item's automatic minimum is its min-content
-    // WIDTH: one non-wrapping descendant sizes the whole column and the page scrolls
-    // sideways at 320px. The aside is the one that catches people — it held only
-    // wrapping prose until the recurring card's truncated names arrived, and what
-    // breaks is the truncation itself, so nothing on a wide screen looks wrong.
+    // Both grid tracks, because a grid item's automatic minimum is its min-content WIDTH:
+    // one non-wrapping descendant sizes the whole column and the page scrolls sideways at
+    // 320px. Nothing in the aside relies on it today, which is exactly why it has to stay
+    // stated — and only the stress pages' SIDEWAYS readout would show it going.
     for (const selector of ['.layout__aside', '.layout__main']) {
       expect(declares(FILES.app, selector, 'min-width')).toBe(true)
     }

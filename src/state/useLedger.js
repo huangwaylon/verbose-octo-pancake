@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { mergeConfig } from '../config.js'
 import { i18nError } from '../i18n/index.js'
-import { RECURRING, tabOf } from '../schema.js'
+import { DATA_TABS, RECURRING, tabOf } from '../schema.js'
 import * as sheets from '../lib/sheets.js'
 import {
   acknowledge,
@@ -11,7 +11,9 @@ import {
   hasPendingWrite,
   looksUninitialized,
   mergeLoaded,
-  missingDataGid,
+  missingGid,
+  NO_SHEET_EXTRAS,
+  sheetExtrasFrom,
   reverted,
   settled,
   shouldRefresh,
@@ -29,16 +31,6 @@ import { sameSheetConfig } from '../lib/sheetConfig.js'
 
 /** Floor between focus-triggered refreshes. Window switching is constant. */
 const REFRESH_THROTTLE_MS = 30_000
-
-/** Nothing read yet, and what a disconnect resets to. */
-const EMPTY_EXTRAS = {
-  supersededRows: 0,
-  undecodedRows: 0,
-  undatedRows: 0,
-  unattributedRows: 0,
-  undecodedTemplates: 0,
-  configMissing: false,
-}
 
 /**
  * Owns the entry list for one spreadsheet.
@@ -85,7 +77,7 @@ export function useLedger(spreadsheetId) {
    * settlements whose payer names neither person. None can be recovered from the entry
    * list, because being absent from it is the point.
    */
-  const [sheetExtras, setSheetExtras] = useState(EMPTY_EXTRAS)
+  const [sheetExtras, setSheetExtras] = useState(NO_SHEET_EXTRAS)
 
   const loadedFor = useRef(null)
   /** Whether there has ever been something real to show, cached or loaded. */
@@ -118,7 +110,11 @@ export function useLedger(spreadsheetId) {
     }, 0)
   }, [])
 
-  useEffect(() => () => clearTimeout(persistTimer.current), [])
+  // The ref is captured into the closure, not read at cleanup time: `useToasts` says why.
+  useEffect(() => {
+    const timer = persistTimer
+    return () => clearTimeout(timer.current)
+  }, [])
 
   /** The sheet's own partial config, which is what the snapshot has to store. */
   const sheetConfigRef = useRef(seed?.config)
@@ -133,14 +129,7 @@ export function useLedger(spreadsheetId) {
     sheetConfigRef.current = data.sheetConfig
     if (changed) setConfig(mergeConfig(data.sheetConfig))
     setTemplates(data.templates ?? [])
-    setSheetExtras({
-      supersededRows: data.supersededRows,
-      undecodedRows: data.undecodedRows,
-      undatedRows: data.undatedRows,
-      unattributedRows: data.unattributedRows,
-      undecodedTemplates: data.undecodedTemplates,
-      configMissing: data.configMissing,
-    })
+    setSheetExtras(sheetExtrasFrom(data))
     setError(null)
     setStatus('ready')
     everLoaded.current = true
@@ -232,7 +221,7 @@ export function useLedger(spreadsheetId) {
       setEntries([])
       setConfig(mergeConfig())
       setTemplates([])
-      setSheetExtras(EMPTY_EXTRAS)
+      setSheetExtras(NO_SHEET_EXTRAS)
       setStatus('idle')
       setError(null)
       return
@@ -375,7 +364,7 @@ export function useLedger(spreadsheetId) {
   const deleteTemplate = useCallback(
     async (template) => {
       const gids = await sheets.readSheetGids(spreadsheetId)
-      if (gids[RECURRING.title] == null) throw i18nError('error.missingTabs')
+      if (missingGid(gids, [RECURRING])) throw i18nError('error.missingTabs')
       await sheets.deleteTemplate(spreadsheetId, gids[RECURRING.title], template.id)
       await refresh()
     },
@@ -395,7 +384,7 @@ export function useLedger(spreadsheetId) {
     const gids = await sheets.readSheetGids(spreadsheetId)
     // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab it
     // cannot name, which is right for it and wrong to leave unsaid here.
-    if (missingDataGid(gids)) throw i18nError('error.missingTabs')
+    if (missingGid(gids, DATA_TABS)) throw i18nError('error.missingTabs')
 
     const result = await sheets.compact(spreadsheetId, gids)
     await refresh()

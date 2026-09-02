@@ -12,8 +12,14 @@
  * column — non-empty on every row — and hard-deleting every live settlement.
  */
 
-import { isIsoDate } from './lib/dates.js'
-import { parseAmountToYen, parseShare, yenToSheetString } from './lib/money.js'
+import { isIsoDate, isMonthKey } from './lib/dates.js'
+import {
+  isShare,
+  isYenAmount,
+  parseAmountToYen,
+  parseShare,
+  yenToSheetString,
+} from './lib/money.js'
 
 export const PERSON = {
   P1: 'p1',
@@ -51,7 +57,7 @@ export const EVEN_SHARE = 0.5
  * statement lands under the right headings and the columns a person reads come first.
  * `id` is last for the same reason: it is the app's bookkeeping, not anything to read.
  */
-export const EXPENSE_COLUMNS = [
+export const EXPENSE_COLUMNS = Object.freeze([
   'date',
   'description',
   'amount',
@@ -59,7 +65,7 @@ export const EXPENSE_COLUMNS = [
   'payer_share',
   'deleted_at',
   'id',
-]
+])
 
 /**
  * Settlements live in one tab of their own, so that tab cannot say who paid the way an
@@ -71,7 +77,14 @@ export const EXPENSE_COLUMNS = [
  * share is 0 by definition. No `category` either — a transfer is not spending. Both
  * would be cells with exactly one correct value, which is a cell somebody can get wrong.
  */
-export const SETTLEMENT_COLUMNS = ['date', 'description', 'amount', 'payer', 'deleted_at', 'id']
+export const SETTLEMENT_COLUMNS = Object.freeze([
+  'date',
+  'description',
+  'amount',
+  'payer',
+  'deleted_at',
+  'id',
+])
 
 /**
  * The `recurring` tab: what recurs, not what happened. Editable from the app through
@@ -86,7 +99,7 @@ export const SETTLEMENT_COLUMNS = ['date', 'description', 'amount', 'payer', 'de
  * retires a cost, because the row's id is the only link to the instances it has already
  * posted. `retiredTemplate` says what removing it would cost.
  */
-export const RECURRING_COLUMNS = [
+export const RECURRING_COLUMNS = Object.freeze([
   'description',
   'amount',
   'category',
@@ -97,10 +110,17 @@ export const RECURRING_COLUMNS = [
   'active_from',
   'active_to',
   'id',
-]
+])
 
 /** Sheet rows are 1-indexed and row 1 is the header, so data starts at 2. */
 export const FIRST_DATA_ROW = 2
+
+/** A blank `day_of_month` means the 1st, and the day has to be one some month can name. */
+export const DEFAULT_DAY_OF_MONTH = 1
+
+export function isDayOfMonth(day) {
+  return Number.isInteger(day) && day >= 1 && day <= 31
+}
 
 /**
  * Column letter from a 0-based position, e.g. 0 -> 'A'.
@@ -240,6 +260,11 @@ export function cellText(row, index) {
   return value == null ? '' : String(value).trim()
 }
 
+/** Whether a row holds anything at all. A range runs to the bottom of its tab. */
+export function hasAnyCell(row) {
+  return Array.isArray(row) && row.some((_, index) => cellText(row, index))
+}
+
 /**
  * Map a raw sheet row to an entry object.
  *
@@ -307,6 +332,20 @@ export function rowToEntry(row, tab) {
  * @param {object} tab the tab descriptor being written to
  * @returns {string[]}
  */
+/**
+ * A field map as the row a tab expects: one cell per column, in the tab's own order.
+ *
+ * Never a hole. A RAW write treats a missing cell as "leave it alone", so a hole is how a
+ * cleared amount keeps its old figure — which is why every value is stringified and every
+ * absent one becomes ''.
+ */
+function rowFromFields(tab, byField) {
+  return tab.columns.map((field) => {
+    const value = byField[field]
+    return value == null ? '' : String(value)
+  })
+}
+
 export function entryToRow(entry, tab) {
   // A tab with no `type` holds no entries, so writing one into it would fill six of the
   // `recurring` tab's ten columns with values that mean something else entirely.
@@ -324,9 +363,112 @@ export function entryToRow(entry, tab) {
     payer_share: Number.isFinite(entry.payerShare) ? entry.payerShare : '',
     deleted_at: entry.deletedAt ?? '',
   }
-  return tab.columns.map((field) => {
-    const value = byField[field]
-    return value == null ? '' : String(value)
+  return rowFromFields(tab, byField)
+}
+
+/**
+ * One `recurring` row -> a template, or null for a row that cannot be used.
+ *
+ * The rule, and the one place it differs from the `config` tab: **a blank cell takes its
+ * documented default; a cell somebody FILLED IN and this cannot read refuses the whole row.**
+ * A config default is cosmetic, so a parser there answers null and the default quietly wins.
+ * Here every default either moves money (`payer_share`) or decides whether a cost is offered at
+ * all, so a typo has to be counted and said out loud instead of absorbed. `loadAll` counts what
+ * this refused.
+ *
+ * `payerShare` stays null for a blank cell, meaning "follow the PAYER's default". Reading it as
+ * `EVEN_SHARE` — right for an entry, whose blank share is a row already written — would split
+ * every rent 50/50 on a sheet running 80/20.
+ *
+ * @param {string[]} row cell values as returned by values.get
+ * @returns {object|null}
+ */
+export function rowToTemplate(row) {
+  if (!Array.isArray(row)) return null
+
+  const id = cellText(row, RECURRING.index('id'))
+  if (!id) return null
+
+  let refused = false
+  /** A cell, its parsed value, and the blank rule in one line per field. */
+  const read = (field, parse, blank = null) => {
+    const text = cellText(row, RECURRING.index(field))
+    if (!text) return blank
+    const value = parse(text)
+    if (value == null) refused = true
+    return value
+  }
+
+  // Case-folded and refused rather than defaulted, exactly as the settlements tab's payer cell
+  // is: this decides which person's tab the instance lands in.
+  const payer = read('payer', (text) => {
+    const person = text.toLowerCase()
+    return isPerson(person) ? person : null
+  })
+  // Blank is recurring-but-VARIABLE — a utility bill — so the page lists it with no figure and
+  // the form opens empty. A zero is a mistake rather than a variable cost.
+  const amountYen = read('amount', (text) => {
+    const yen = parseAmountToYen(text)
+    return isYenAmount(yen) ? yen : null
+  })
+  const payerShare = read('payer_share', parseShare)
+  const months = read('months', parseMonths)
+  const dayOfMonth = read(
+    'day_of_month',
+    (text) => (isDayOfMonth(Number(text)) ? Number(text) : null),
+    DEFAULT_DAY_OF_MONTH,
+  )
+  const activeFrom = read('active_from', (text) => (isMonthKey(text) ? text : null))
+  const activeTo = read('active_to', (text) => (isMonthKey(text) ? text : null))
+
+  if (refused || !payer) return null
+
+  return {
+    id,
+    description: cellText(row, RECURRING.index('description')),
+    amountYen,
+    category: cellText(row, RECURRING.index('category')),
+    payer,
+    payerShare,
+    months,
+    dayOfMonth,
+    activeFrom,
+    activeTo,
+  }
+}
+
+/**
+ * The `months` cell as month numbers, or null if any part of it is not one.
+ *
+ * Blank means every month, and `1,7` covers annual and quarterly — so there is no cadence
+ * concept to add, and no weekly, which the app being month-scoped rules out anyway.
+ */
+function parseMonths(text) {
+  const found = text.split(',').map((part) => Number(part.trim()))
+  return found.some((month) => !Number.isInteger(month) || month < 1 || month > 12) ? null : found
+}
+
+/**
+ * A template as the row that goes back — the exact inverse of `rowToTemplate` in TEMPLATE
+ * space, so a read-modify-write round trip is lossless. Not in cell space: a hand-typed `80`
+ * comes back as `0.8`, which re-parses identically.
+ *
+ * A null amount or share writes BLANK, and blank is a value in both — variable, and "follow the
+ * payer's default". Writing '0' makes `rowToTemplate` refuse the row, so the template would
+ * vanish from the page the app itself just wrote it to.
+ */
+export function templateToRow(template) {
+  return rowFromFields(RECURRING, {
+    description: template.description,
+    amount: template.amountYen == null ? '' : yenToSheetString(template.amountYen),
+    category: template.category,
+    payer: template.payer,
+    payer_share: template.payerShare == null ? '' : template.payerShare,
+    months: template.months?.length ? template.months.join(', ') : '',
+    day_of_month: template.dayOfMonth,
+    active_from: template.activeFrom ?? '',
+    active_to: template.activeTo ?? '',
+    id: template.id,
   })
 }
 
@@ -349,7 +491,9 @@ export function makeEntry(input) {
     type,
     date: input.date ?? '',
     payer: input.payer ?? '',
-    amountYen: input.amountYen ?? 0,
+    // Coerced with the share below it, so a form handing over '4210' becomes a number before
+    // it can reach the balance or a sheet cell.
+    amountYen: input.amountYen == null ? 0 : Number(input.amountYen),
     category: input.category ?? '',
     description: input.description ?? '',
     payerShare:
@@ -357,9 +501,7 @@ export function makeEntry(input) {
         ? type === ENTRY_TYPE.SETTLEMENT
           ? 0
           : EVEN_SHARE
-        : // Coerced so a form handing over '0.5' becomes a number before it can
-          // reach validation or the balance math.
-          Number(input.payerShare),
+        : Number(input.payerShare),
     deletedAt: input.deletedAt ?? null,
   }
 }
@@ -383,20 +525,11 @@ export function validateEntryCodes(entry) {
   const errors = []
   if (!entry.id) errors.push(ENTRY_ERROR.MISSING_ID)
   if (!isIsoDate(entry.date)) errors.push(ENTRY_ERROR.BAD_DATE)
-  if (!Number.isInteger(entry.amountYen) || entry.amountYen <= 0) {
-    errors.push(ENTRY_ERROR.BAD_AMOUNT)
-  }
+  if (!isYenAmount(entry.amountYen)) errors.push(ENTRY_ERROR.BAD_AMOUNT)
   if (!isPerson(entry.payer)) {
     errors.push(ENTRY_ERROR.BAD_PAYER)
   }
-  if (
-    typeof entry.payerShare !== 'number' ||
-    !Number.isFinite(entry.payerShare) ||
-    entry.payerShare < 0 ||
-    entry.payerShare > 1
-  ) {
-    errors.push(ENTRY_ERROR.BAD_SHARE)
-  }
+  if (!isShare(entry.payerShare)) errors.push(ENTRY_ERROR.BAD_SHARE)
   if (entry.type === ENTRY_TYPE.EXPENSE && !entry.category) {
     errors.push(ENTRY_ERROR.MISSING_CATEGORY)
   }
