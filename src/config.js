@@ -65,7 +65,13 @@ export function writeStored(key, value) {
  * `SEED_NAMES` in `lib/sheetConfig.js`, which must stay unlocalized.
  */
 export const DEFAULT_CONFIG = {
-  categories: ['Groceries', 'Dining', 'Household', 'Other'],
+  /**
+   * Deliberately short, and the same list `CATEGORIES` in `scripts/bank_to_ledger.py`
+   * classifies into — one vocabulary, or an imported row lands on a category the picker
+   * does not offer. `test/schema.test.js` pins the two together. Groceries is first
+   * because `config.categories[0]` is what a new entry starts on.
+   */
+  categories: ['Groceries', 'Dining', 'Household', 'Travel', 'Rent', 'Gym', 'Wedding', 'Other'],
   /**
    * The share each person covers on a new expense they paid for. Per-person rather than
    * one universal number: a couple splitting 80/20 wants p1 to bear 80% of an expense

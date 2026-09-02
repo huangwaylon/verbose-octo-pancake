@@ -228,6 +228,13 @@ the UI in different languages. The names are the one place this cuts both ways:
 no names, so a sheet that says nothing falls through to `nameOf`'s localized fallback
 instead of "Person 1".
 
+**`bank_to_ledger.py` never translates a merchant name, and never rewrites one.** A
+description is the bank's own text plus, when it adds anything, your own note — so every
+row in the ledger can be found in the statement by searching for what it says. A rule
+picks a category, a share and whether the row is a purchase; nothing else. Romaji and
+kana patterns both appear in RULES because the bank prints a shop both ways, which is
+matching, not translating.
+
 **Neither the locale nor the accent may ever be written to the sheet** — neither person
 gets to restyle the other's phone. Which of the two people this device is, is the third
 per-device value and is likewise never written; nothing detects it (see Gotchas).
@@ -629,6 +636,11 @@ a disagreement is silent in the worst way: the script keeps emitting its old ord
 rows paste in looking plausible, and every value lands under the neighbouring field.
 `test/schema.test.js` parses both Python literals and compares them to `EXPENSE_COLUMNS`
 and `SETTLEMENT_COLUMNS` — change them together, and never add a third home.
+
+**Its `CATEGORIES` is pinned to `DEFAULT_CONFIG.categories` the same way,** order included,
+because the app pre-selects `categories[0]`. The two lists are one vocabulary: a category
+the config tab does not offer renders the picker blank on every imported row someone opens.
+The script's own module-level `assert` is what holds each RULE to that list.
 
 **A test that cannot fail is worse than no test**, because it reads as coverage. Do not
 assert a function against itself, do not assert a property of the platform, and do not name

@@ -16,11 +16,10 @@ their own `.settlements.csv` beside it — written only when there are any.
 this file cannot import it and a silent disagreement writes every value under the
 wrong field. Amounts are whole yen exactly as `entryToRow` writes them.
 
-A description is the bank's own text, never rewritten: the merchant name as
-exported, plus your note when the note says something the name does not. A rule
-decides the category, the share and whether the row is a purchase at all — it
-never renames anything, so a row in the ledger can always be found in the
-statement by searching for what it says.
+NOTHING IS EVER TRANSLATED. A description is the bank's own text — the merchant name
+as exported, plus your note when the note says something the name does not — so a row
+in the ledger can always be found in the statement by searching for what it says. A
+rule only chooses a category, a share, and whether the row is a purchase at all.
 
 Everything the script decides is decided by RULES below: first match wins, and
 whatever matches nothing becomes a shared "Other" expense AND is listed in the
@@ -29,9 +28,10 @@ the file against every yen out of it — the point is that a row can be dropped
 only on purpose.
 
 Conventions that mirror the app:
+  * The categories are CATEGORIES and nothing else. A fresh sheet's config tab holds
+    the same short list, and a category it does not list renders as an empty picker.
   * payer_share is the fraction the PAYER covers themselves. 1.0 = paid in
-    full by the payer (the other person owes nothing); 0.8 = shared with the
-    payer bearing 80%; 0 = a settlement.
+    full by the payer (the other person owes nothing); 0 = a settlement.
   * A settlement carries no category and is never spending.
 """
 
@@ -47,249 +47,198 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
+# The whole vocabulary, pinned to the app's own default list by test/schema.test.js.
+# Kept this short deliberately: a category earns its place only if a month's spending
+# reads differently for having it, and every extra one is another choice to make on
+# every entry. Everything else is Other.
+CATEGORIES = (
+    "Groceries",
+    "Dining",
+    "Household",
+    "Travel",
+    "Rent",
+    "Gym",
+    "Wedding",
+    "Other",
+)
+
 # ---------------------------------------------------------------------------
-# Rules. First match wins, so put the specific one above the general one
+# Rules. First match wins, so the specific one goes above the general one
 # (ライフドラッグ is a drugstore; ライフ is the supermarket next door).
 #
 #   (pattern, category, mode)
 #
 # mode: "personal"   -> payer_share 1.0
 #       "shared"     -> payer_share --share (default 0.8)
-#       "even"       -> payer_share 0.5
 #       "settlement" -> a settlement row, no category
 #       "skip"       -> not a purchase; dropped and counted
 #
-# A rule never touches the description. The row keeps the name the bank exported,
-# so it stays greppable back to the statement.
+# Prefer a pattern that names a KIND of place over one that names a shop: 薬局 and
+# ドラッグ classify every drugstore in the country, and the list stays short enough to
+# read in one screen. A shop earns its own line only when its name says nothing about
+# what it sells, or when it disagrees with the general rule below it. A one-off is not
+# worth a rule — Other is the honest answer, and the summary lists it either way.
 #
-# Patterns are matched loosely: case, ASCII/full-width, spaces, punctuation and
-# small kana are all folded away first, and every kind of dash — including the
-# katakana long vowel mark — becomes one character, so a single spelling matches
-# every way the bank renders a name (ラクテンカ－ドサ－ビス == ラクテンカードサービス).
+# Both spellings are patterns where the bank prints both: it renders one merchant as
+# ライフ and as LIFE CORPORATION. That is matching, not translating — the row keeps
+# whichever spelling the statement used.
+#
+# Patterns are matched loosely: case, ASCII/full-width, hiragana/katakana, spaces,
+# punctuation and small kana are all folded away first, and every kind of dash —
+# including the katakana long vowel mark — becomes one character, so one spelling
+# matches every way the bank renders a name (ラクテンカ－ドサ－ビス == ラクテンカードサービス).
 #
 # The long vowel mark is FOLDED rather than dropped, because dropping it leaves
 # オーケー as a two-character pattern that would match half the file by accident.
 #
-# A rule is tried against the merchant name first and only then against the
-# merchant plus your note, so a note that happens to name a different shop
-# ("ozeki groceries" written against an OK Mart row) cannot outvote the merchant.
+# A skip is tried against the merchant AND your note, because an exclusion is always
+# deliberate and is sometimes only identifiable from the note (a laptop bought for
+# someone who transferred the money straight back is an APPLE.COM row like any other).
+# Every other rule sees the merchant ALONE: notes are written loosely, and one reading
+# "ozeki groceries" against an OK Mart row must not be what classifies it.
 # ---------------------------------------------------------------------------
 
+# prettier-ignore
 RULES: list[tuple[str, str | None, str]] = [
-    # -- not purchases -------------------------------------------------------
-    ("給与振込", None, "skip"),
-    ("決算利息", None, "skip"),
-    ("利息特典", None, "skip"),
-    ("デビットリョウキャッシュバック", None, "skip"),
-    ("セブンATM", None, "skip"),
-    ("IBショウケン", None, "skip"),
-    ("ラクテンカードサービス", None, "skip"),
-    ("シバゼイムショ", None, "skip"),
-    ("エスケーエナジー", None, "skip"),
-    # Bought for someone who paid it straight back, so both halves of the pair
-    # are dropped: the note is what identifies the debit side.
-    ("アンドリュー", None, "skip"),
-    ("ANDREW", None, "skip"),
+    # -- not a purchase ------------------------------------------------------
+    ("セブンATM", None, "skip"),               # cash out of the account, not spent yet
+    ("ラクテンカードサービス", None, "skip"),      # a card bill; its rows are not in this file
+    ("IBショウケン", None, "skip"),             # money moved to the brokerage
+    ("アンドリュー", None, "skip"),              # bought for someone who paid it straight
+    ("ANDREW", None, "skip"),                 # back, so both halves of the pair go
     # -- settlements ---------------------------------------------------------
     ("ウメダ アスカ", None, "settlement"),
-    ("シノケンコミュニケーションズ", None, "settlement"),
-    ("カイコーポレーション", None, "settlement"),
-    # -- paid in full by me --------------------------------------------------
+    # -- rent ----------------------------------------------------------------
+    ("シノケンコミュニケーションズ", "Rent", "shared"),
+    ("カイコーポレーション", "Rent", "shared"),
+    # -- wedding -------------------------------------------------------------
+    ("GEIHINKAN", "Wedding", "shared"),
+    # -- gym -----------------------------------------------------------------
+    ("AF大崎", "Gym", "personal"),
+    ("AF OSAKI", "Gym", "personal"),
+    # -- mine alone: the commute, the office lunch, my own things ------------
+    ("モバイルSUICA", "Travel", "personal"),
+    ("MOBILE SUICA", "Travel", "personal"),
     ("六本木ヒルズ", "Dining", "personal"),
-    ("ROPPONGI HILLS", "Dining", "personal"),
-    ("ROPPONGIHIRUZU", "Dining", "personal"),
+    ("ROPPONGI", "Dining", "personal"),
     ("森ビル関連施設", "Dining", "personal"),
-    ("CAFF MACS", "Dining", "personal"),
-    ("CAFFE MACS", "Dining", "personal"),
-    ("海南鶏飯食堂", "Dining", "personal"),
-    ("HAINANJIFANSYOKUDO", "Dining", "personal"),
-    ("大戸屋 六本木", "Dining", "personal"),
-    ("ポンパドウル六本木", "Dining", "personal"),
-    ("フリホーレス 六本木", "Dining", "personal"),
-    ("モバイルSUICA", "Transport", "personal"),
-    ("AMAZON.CO.JP", "Shopping", "personal"),
-    ("APPLE COM BILL", "Shopping", "personal"),
-    ("APPLE.COM", "Shopping", "personal"),
-    ("AF大崎", "Health", "personal"),
-    # -- health / pharmacy (before the supermarkets) -------------------------
-    ("ライフドラッグ", "Health", "shared"),
-    ("マツモトキヨシ", "Health", "shared"),
-    ("ツルハドラッグ", "Health", "shared"),
-    ("スギ薬局", "Health", "shared"),
-    ("トモズ", "Health", "shared"),
-    ("ココカラファイン", "Health", "shared"),
+    ("MACS", "Dining", "personal"),           # CAFF / CAFFE MACS, the canteen
+    ("AMAZON", "Other", "personal"),
+    ("APPLE", "Other", "personal"),
+    # -- drugstores, above the supermarket they share a name with ------------
+    ("薬局", "Household", "shared"),
+    ("ドラッグ", "Household", "shared"),
+    ("マツモトキヨシ", "Household", "shared"),
+    ("トモズ", "Household", "shared"),
+    ("ココカラファイン", "Household", "shared"),
+    # -- household -----------------------------------------------------------
+    ("ダイソー", "Household", "shared"),
+    ("DAISO", "Household", "shared"),
+    ("セリア", "Household", "shared"),
+    ("3COINS", "Household", "shared"),
+    ("ドン・キホーテ", "Household", "shared"),
+    ("コーナン", "Household", "shared"),
+    ("IKEA", "Household", "shared"),
+    ("ロフト", "Household", "shared"),
+    ("郵便", "Household", "shared"),
+    ("ヤマト運輸", "Household", "shared"),
+    # -- travel --------------------------------------------------------------
+    ("空港", "Travel", "shared"),
+    ("ホテル", "Travel", "shared"),
+    ("ハーヴェストクラブ", "Travel", "shared"),
+    ("スキージョウ", "Travel", "shared"),
+    ("サービスエリア", "Travel", "shared"),
+    ("パーキングエリア", "Travel", "shared"),
+    ("SA上り", "Travel", "shared"),
+    ("SA下り", "Travel", "shared"),
+    ("道の駅", "Travel", "shared"),
+    ("食の駅", "Travel", "shared"),
+    ("DELTA AIR", "Travel", "shared"),
+    ("EXPEDIA", "Travel", "shared"),
+    ("AGODA", "Travel", "shared"),
+    ("水族館", "Travel", "shared"),
+    ("記念公園", "Travel", "shared"),
+    ("富士山", "Travel", "shared"),
+    ("HAKONE", "Travel", "shared"),
     # -- groceries -----------------------------------------------------------
     ("ライフ", "Groceries", "shared"),
     ("LIFE CORPORATION", "Groceries", "shared"),
-    ("京急ストア", "Groceries", "shared"),
-    ("KEIKYU STORE", "Groceries", "shared"),
     ("オオゼキ", "Groceries", "shared"),
     ("OZEKI", "Groceries", "shared"),
     ("オーケー", "Groceries", "shared"),
     ("OK TOGOSHI", "Groceries", "shared"),
     ("リンコス", "Groceries", "shared"),
     ("LINCOS", "Groceries", "shared"),
-    ("ピーコックストア", "Groceries", "shared"),
     ("マルエツ", "Groceries", "shared"),
     ("サミット", "Groceries", "shared"),
     ("成城石井", "Groceries", "shared"),
-    ("東急ストア", "Groceries", "shared"),
-    ("TOKYU STORE", "Groceries", "shared"),
     ("ビッグ・エー", "Groceries", "shared"),
     ("リブレ京成", "Groceries", "shared"),
-    ("まいばすけっと", "Groceries", "shared"),
-    ("旬八青果店", "Groceries", "shared"),
-    ("韓国広場", "Groceries", "shared"),
-    ("中島水産", "Groceries", "shared"),
-    ("ヒカリ屋", "Groceries", "shared"),
-    ("フードスタイル", "Groceries", "shared"),
-    ("フードワン", "Groceries", "shared"),
+    ("マイバスケット", "Groceries", "shared"),
     ("カルディ", "Groceries", "shared"),
     ("KALDI", "Groceries", "shared"),
     ("おかしのまちおか", "Groceries", "shared"),
-    ("ほしのベーカリー", "Groceries", "shared"),
-    ("AMBIKA", "Groceries", "shared"),
+    ("韓国広場", "Groceries", "shared"),
+    ("水産", "Groceries", "shared"),
+    ("青果", "Groceries", "shared"),
+    ("フード", "Groceries", "shared"),
+    ("ストア", "Groceries", "shared"),
+    ("KEIKYU STORE", "Groceries", "shared"),
+    ("TOKYU STORE", "Groceries", "shared"),
+    ("スーパー", "Groceries", "shared"),
     ("セブンイレブン", "Groceries", "shared"),
+    ("SEVEN", "Groceries", "shared"),
     ("ローソン", "Groceries", "shared"),
     ("LAWSON", "Groceries", "shared"),
     ("ファミリーマート", "Groceries", "shared"),
+    ("FAMILYMART", "Groceries", "shared"),
     ("ミニストップ", "Groceries", "shared"),
-    # -- household -----------------------------------------------------------
-    ("ダイソー", "Household", "shared"),
-    ("DAISO", "Household", "shared"),
-    ("セリア", "Household", "shared"),
-    ("3COINS", "Household", "shared"),
-    ("コーナン", "Household", "shared"),
-    ("ドン・キホーテ", "Household", "shared"),
-    ("ニトリ", "Household", "shared"),
-    ("クロネコヤマト", "Household", "shared"),
-    ("日本郵便", "Household", "shared"),
-    # -- shopping ------------------------------------------------------------
-    ("ユニクロ", "Shopping", "shared"),
-    ("UNIQLO", "Shopping", "shared"),
-    ("ジーユー", "Shopping", "shared"),
-    ("エービーシーマート", "Shopping", "shared"),
-    ("OWNDAYS", "Shopping", "shared"),
-    ("ソフマップ", "Shopping", "shared"),
-    ("BOOKOFF", "Shopping", "shared"),
-    ("ブックスタマ", "Shopping", "shared"),
-    ("NOMA BOOKS", "Shopping", "shared"),
-    ("ホビーオフ", "Shopping", "shared"),
-    ("モンベル", "Shopping", "shared"),
-    ("アンドレザー", "Shopping", "shared"),
-    ("やまよ", "Shopping", "shared"),
-    ("ウィットスポーツ", "Shopping", "shared"),
-    ("イオンモール", "Shopping", "shared"),
-    ("五反田東急スクエア", "Shopping", "shared"),
-    ("スクランブルスクエア", "Shopping", "shared"),
-    ("渋谷ストリーム", "Shopping", "shared"),
-    ("コクミン", "Shopping", "shared"),
-    # -- travel --------------------------------------------------------------
-    ("DELTA AIR", "Travel", "shared"),
-    ("成田国際空港", "Travel", "shared"),
-    ("羽田空港", "Travel", "shared"),
-    ("東急ハーヴェストクラブ", "Travel", "shared"),
-    ("ホテル天坊", "Travel", "shared"),
-    ("赤倉観光ホテル", "Travel", "shared"),
-    ("スキージョウ", "Travel", "shared"),
-    ("サービスエリア", "Travel", "shared"),
-    ("パーキングエリア", "Travel", "shared"),
-    ("双葉SA", "Travel", "shared"),
-    ("道の駅", "Travel", "shared"),
-    ("食の駅", "Travel", "shared"),
-    ("国営昭和記念公園", "Travel", "shared"),
-    ("ケンバイキ", "Travel", "shared"),
-    ("新江ノ島水族館", "Travel", "shared"),
-    ("クロスステーション", "Travel", "shared"),
-    # -- dining --------------------------------------------------------------
-    ("とんかつ神楽坂さくら", "Dining", "shared"),
-    ("はま寿司", "Dining", "shared"),
-    ("スシロー", "Dining", "shared"),
-    ("くら寿司", "Dining", "shared"),
-    ("KURA戸越", "Dining", "shared"),
-    ("焼肉ライク", "Dining", "shared"),
-    ("リンガーハット", "Dining", "shared"),
-    ("マクドナルド", "Dining", "shared"),
-    ("MCDONALDS", "Dining", "shared"),
-    ("七宝麻辣湯", "Dining", "shared"),
-    ("麻辣先生", "Dining", "shared"),
-    ("大戸屋", "Dining", "shared"),
-    ("味四川", "Dining", "shared"),
-    ("中国料理百番", "Dining", "shared"),
-    ("ダイニー", "Dining", "shared"),
-    ("ヨプトッポッキ", "Dining", "shared"),
-    ("一芳", "Dining", "shared"),
-    ("大久保園", "Dining", "shared"),
-    ("ちゃんこ江戸沢", "Dining", "shared"),
-    ("東京ソラマチ", "Dining", "shared"),
-    ("銀だこ", "Dining", "shared"),
-    ("チェゴヤ", "Dining", "shared"),
-    ("魚がし日本一", "Dining", "shared"),
-    ("KOLLABO", "Dining", "shared"),
-    ("しんぱち食堂", "Dining", "shared"),
-    ("ダンダダン", "Dining", "shared"),
-    ("台湾甜商店", "Dining", "shared"),
-    ("東京豆漿生活", "Dining", "shared"),
-    ("香家", "Dining", "shared"),
-    ("KITADE TACOS", "Dining", "shared"),
-    ("GUZMAN Y GOMEZ", "Dining", "shared"),
-    ("カオマンガイ", "Dining", "shared"),
-    ("SAIGON PAN", "Dining", "shared"),
-    ("ジェラート", "Dining", "shared"),
-    ("五代目花山うどん", "Dining", "shared"),
-    ("さわやか", "Dining", "shared"),
-    ("松の家", "Dining", "shared"),
-    ("らっか家", "Dining", "shared"),
-    ("大澤屋", "Dining", "shared"),
-    ("ぷるりん", "Dining", "shared"),
-    ("THE DEN", "Dining", "shared"),
-    ("SUPER RAW", "Dining", "shared"),
-    ("HEY'S DINER", "Dining", "shared"),
-    ("GRASS HOUSE", "Dining", "shared"),
-    ("SEA BIRDS CAFE", "Dining", "shared"),
-    ("回転寿司", "Dining", "shared"),
-    ("燻製工房", "Dining", "shared"),
-    ("ナマステ", "Dining", "shared"),
-    ("PIKE PLACE CHOWDER", "Dining", "shared"),
-    ("BREADANDCOFFEE", "Dining", "shared"),
-    ("サンマルクカフェ", "Dining", "shared"),
-    ("サンマルクカフェ", "Dining", "shared"),
-    ("SANMARUKUKAFUE", "Dining", "shared"),
-    ("コージーコーナー", "Dining", "shared"),
-    ("カツマタ", "Dining", "shared"),
-    ("MAHALO", "Dining", "shared"),
-    ("スイーツバンク", "Dining", "shared"),
-    ("麦の家", "Dining", "shared"),
-    ("サニーヒルズ", "Dining", "shared"),
-    ("SQUARE", "Dining", "shared"),
-    ("花エリカ", "Other", "shared"),
-    ("GEIHINKAN", "Wedding", "shared"),
-    ("SQ*PASO", "Other", "shared"),
-    ("株式会社トムス", "Other", "shared"),
-    ("クロスステーショ", "Groceries", "shared"),
-    ("チイキセンタ", "Other", "shared"),
-    # -- last resort: shape of the name, not the name ------------------------
-    ("薬局", "Health", "shared"),
-    ("ドラッグ", "Health", "shared"),
-    ("スーパー", "Groceries", "shared"),
-    ("青果", "Groceries", "shared"),
-    ("ストア", "Groceries", "shared"),
-    ("マート", "Groceries", "shared"),
+    # -- dining: the shape of the name, not the name -------------------------
     ("寿司", "Dining", "shared"),
+    ("ZUSHI", "Dining", "shared"),
     ("ラーメン", "Dining", "shared"),
     ("うどん", "Dining", "shared"),
     ("食堂", "Dining", "shared"),
     ("居酒屋", "Dining", "shared"),
     ("レストラン", "Dining", "shared"),
+    ("RESTAURAN", "Dining", "shared"),
     ("カフェ", "Dining", "shared"),
     ("CAFE", "Dining", "shared"),
+    ("KAFUE", "Dining", "shared"),
+    ("珈琲", "Dining", "shared"),
+    ("COFFEE", "Dining", "shared"),
+    ("DINER", "Dining", "shared"),
     ("ベーカリー", "Dining", "shared"),
-    ("ホテル", "Travel", "shared"),
+    ("ジェラート", "Dining", "shared"),
+    ("焼肉", "Dining", "shared"),
+    ("餃子", "Dining", "shared"),
+    ("とんかつ", "Dining", "shared"),
+    ("うなぎ", "Dining", "shared"),
+    ("麻辣", "Dining", "shared"),
+    ("中国料理", "Dining", "shared"),
+    ("大戸屋", "Dining", "shared"),
+    ("マクドナルド", "Dining", "shared"),
+    ("MCDONALDS", "Dining", "shared"),
+    ("銀だこ", "Dining", "shared"),
+    ("スシロー", "Dining", "shared"),
+    ("リンガーハット", "Dining", "shared"),
+    ("チェゴヤ", "Dining", "shared"),
+    ("KOLLABO", "Dining", "shared"),
+    ("ナマステ", "Dining", "shared"),
+    ("HAINANJIFAN", "Dining", "shared"),
 ]
 
 # Whatever matched nothing at all.
 FALLBACK = ("Other", "shared")
 
+# A category the config tab does not list renders as a blank picker, so a typo in a
+# rule is caught here rather than in somebody's spreadsheet.
+assert all(
+    category in CATEGORIES
+    for _, category, mode in RULES
+    if mode not in ("skip", "settlement")
+)
+assert FALLBACK[0] in CATEGORIES
 
 # Fixed so re-running the script produces the same ids: a second import of the
 # same statement then reconciles against the first instead of duplicating it.
@@ -322,28 +271,30 @@ CURRENCY_RE = re.compile(r"^[A-Z]{3}$")
 VISA_PREFIX_RE = re.compile(r"^Visa\s*デビット\s*\d+\s*\d*\s*")
 AMOUNT_RE = re.compile(r"^\d{1,3}(?:,\d{3})*(?:\.\d+)?$|^\d+(?:\.\d+)?$")
 
-_SMALL_KANA = str.maketrans("ァィゥェォャュョッヮヵヶ", "アイウエオヤユヨツワカケ")
-# Every dash-like character the bank uses, including the katakana long vowel
-# mark, collapsed onto one. Folding rather than dropping: without the mark
-# オーケー becomes the two-character オケ and matches names it has nothing to do with.
-_DASHES = str.maketrans("‐‑–—−ー－-", "--------")
-_DROP = set(" 　・･/,、。()＊*'’\"`&＆")
+# Hiragana onto katakana, so まいばすけっと and マイバスケット are one pattern rather than two.
+_KANA = {code: code + 0x60 for code in range(0x3041, 0x3097)}
+_FOLD = {
+    # Small kana onto their full-size form: the bank writes both ッ and ツ.
+    **{ord(small): big for small, big in zip("ァィゥェォャュョッヮヵヶ", "アイウエオヤユヨツワカケ")},
+    # Every dash-like character the bank uses, including the katakana long vowel
+    # mark, collapsed onto one. Folded rather than dropped: without the mark
+    # オーケー becomes the two-character オケ and matches names it has nothing to do with.
+    **{ord(dash): "-" for dash in "‐‑–—−ー－-"},
+    **{ord(drop): None for drop in " 　・･/,、。()＊*'’\"`&＆"},
+}
 
 
 def loose(text: str) -> str:
     """Fold every way the bank might spell a name down to one comparable key."""
-    folded = unicodedata.normalize("NFKC", text).upper()
-    folded = folded.translate(_SMALL_KANA).translate(_DASHES)
-    return "".join(ch for ch in folded if ch not in _DROP)
+    return unicodedata.normalize("NFKC", text).upper().translate(_KANA).translate(_FOLD)
 
 
-LOOSE_RULES = [(loose(pattern), *rest) for pattern, *rest in RULES]
+LOOSE_RULES = [(loose(pattern), category, mode) for pattern, category, mode in RULES]
 
 
 @dataclass
 class Txn:
     line_no: int
-    raw: str
     date: str  # ISO
     description: str  # NFKC-normalized, Visa prefix stripped
     credit: int  # whole yen in
@@ -428,40 +379,22 @@ def parse_line(line: str, line_no: int) -> Txn | None:
     if not credit and not debit:
         raise ValueError(f"line {line_no}: no amount")
 
-    return Txn(line_no, line, date, description, credit, debit, balance, note)
+    return Txn(line_no, date, description, credit, debit, balance, note)
 
 
 def classify(txn: Txn) -> tuple[str | None, str, bool]:
     """
     (category, mode, matched) for a transaction. Never guesses silently.
 
-    Three passes, in this order:
-
-      1. `skip` rules against the merchant AND your note, because an exclusion
-         is always deliberate and is sometimes only identifiable from the note
-         (the laptop bought for someone who transferred the money straight back
-         is an APPLE.COM row like any other).
-      2. every rule against the merchant name alone.
-      3. every rule against the merchant plus the note.
-
-    The merchant gets a pass of its own before the note is consulted at all:
-    notes are written loosely, and an OK Mart row noted "ozeki groceries" would
-    otherwise be classified by a shop it was not bought at.
-
-    `matched` is returned rather than inferred from the values, because a rule
-    is allowed to answer exactly what the fallback answers — and "no rule
-    matched" is the line in the summary that tells you to write a new one.
+    `matched` is returned rather than inferred from the values, because a rule is
+    allowed to answer exactly what the fallback answers — and "no rule matched" is
+    the line in the summary that tells you to write a new one.
     """
+    merchant = loose(txn.description)
     with_note = loose(txn.description + " " + txn.note)
     for pattern, category, mode in LOOSE_RULES:
-        if mode == "skip" and pattern in with_note:
+        if pattern in (with_note if mode == "skip" else merchant):
             return category, mode, True
-
-    for key in (loose(txn.description), with_note):
-        for pattern, category, mode in LOOSE_RULES:
-            if pattern in key:
-                return category, mode, True
-
     return (*FALLBACK, False)
 
 
@@ -566,7 +499,7 @@ def main() -> int:
     skipped: dict[str, list[Txn]] = defaultdict(list)
     unmatched: dict[str, list[Txn]] = defaultdict(list)
     by_category: dict[str, list[Txn]] = defaultdict(list)
-    emitted: list[tuple[Txn, str, int, float, str]] = []  # txn, type, amount, share, category
+    emitted: list[tuple[Txn, str, float, str]] = []  # txn, mode, share, category
 
     for txn in debits:
         category, mode, matched = classify(txn)
@@ -578,14 +511,13 @@ def main() -> int:
             unmatched[txn.description].append(txn)
 
         if mode == "settlement":
-            entry_type, share, category_out = "settlement", 0.0, ""
+            share, category_out = 0.0, ""
         else:
-            entry_type = "expense"
-            share = {"personal": 1.0, "even": 0.5}.get(mode, args.share)
-            category_out = category or "Other"
+            share = 1.0 if mode == "personal" else args.share
+            category_out = category or FALLBACK[0]
 
-        # The bank's own text, and the note only when it adds something the name
-        # does not already say.
+        # The bank's own text, and the note only when it adds something the name does
+        # not already say. Neither is ever rewritten or translated.
         description = txn.description
         if txn.note and loose(txn.note) not in loose(description):
             description = f"{description} · {txn.note}"
@@ -599,7 +531,7 @@ def main() -> int:
 
         # One list per tab, because the two layouts differ: a settlement carries the
         # payer it cannot get from its tab, and carries no category or share.
-        if entry_type == "settlement":
+        if mode == "settlement":
             settlement_out.append(
                 [txn.date, description, str(txn.debit), args.payer, "", entry_id]
             )
@@ -615,9 +547,8 @@ def main() -> int:
                     entry_id,
                 ]
             )
-        emitted.append((txn, entry_type, txn.debit, share, category_out))
-        if entry_type == "expense":
             by_category[category_out].append(txn)
+        emitted.append((txn, mode, share, category_out))
 
     destination = args.output or args.input.with_suffix(args.input.suffix + ".ledger.csv")
 
@@ -659,7 +590,7 @@ def main() -> int:
     skipped_all = [txn for group in skipped.values() for txn in group]
     skipped_total = totals(skipped_all)
 
-    expense_rows = [row for row in emitted if row[1] == "expense"]
+    expense_rows = [row for row in emitted if row[1] != "settlement"]
     settlement_rows = [row for row in emitted if row[1] == "settlement"]
     expense_total = totals(txn for txn, *_ in expense_rows)
     settlement_total = totals(txn for txn, *_ in settlement_rows)
@@ -717,7 +648,7 @@ def main() -> int:
         print(f"  {len(settlement_out)} settlement row(s) NOT written (stdout is one tab)", file=out)
 
     def by_size(groups):
-        return sorted(groups.items(), key=lambda kv: -sum(t.debit for t in kv[1]))
+        return sorted(groups.items(), key=lambda kv: -sum(txn.debit for txn in kv[1]))
 
     if skipped:
         print("\nExcluded as not a purchase", file=out)
@@ -725,16 +656,14 @@ def main() -> int:
             print(f"  {len(group):>4} × {yen_text(totals(group)):>14}  {description}", file=out)
 
     if by_category:
-        print("\nExpense categories written (add any missing ones to the config tab)", file=out)
-        ranked = sorted(by_category.items(), key=lambda kv: -sum(t.debit for t in kv[1]))
-        for category, group in ranked:
+        print("\nExpense categories written", file=out)
+        for category, group in by_size(by_category):
             print(f"  {len(group):>4} × {yen_text(totals(group)):>14}  {category}", file=out)
 
     if settlement_rows:
         print("\nSettlements written", file=out)
         for txn, *_ in settlement_rows:
-            amount = yen_text(txn.debit)
-            print(f"  {txn.date}  {amount:>14}  {txn.description}", file=out)
+            print(f"  {txn.date}  {yen_text(txn.debit):>14}  {txn.description}", file=out)
 
     if unmatched:
         print("\nNo rule matched — written as a shared 'Other' expense", file=out)
@@ -748,10 +677,12 @@ def main() -> int:
         )
         if big:
             print(f"\nWorth a look — over ¥{args.review_over:,}", file=out)
-            for txn, entry_type, _, share, category in big:
-                kind = "settlement" if entry_type == "settlement" else f"{category} @ {share}"
-                amount = yen_text(txn.debit)
-                print(f"  {txn.date}  {amount:>14}  {kind:<18}  {txn.description}", file=out)
+            for txn, mode, share, category in big:
+                kind = "settlement" if mode == "settlement" else f"{category} @ {share}"
+                print(
+                    f"  {txn.date}  {yen_text(txn.debit):>14}  {kind:<18}  {txn.description}",
+                    file=out,
+                )
 
     print("", file=out)
     return 0 if balanced and counted else 1

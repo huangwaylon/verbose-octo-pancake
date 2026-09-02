@@ -22,6 +22,7 @@ import {
   isActive,
 } from '../src/schema.js'
 import { expense, settlement, row as rawRow, settlementRow } from './support/entries.js'
+import { DEFAULT_CONFIG } from '../src/config.js'
 
 const P1 = expenseTab(PERSON.P1)
 const P2 = expenseTab(PERSON.P2)
@@ -583,12 +584,16 @@ describe('validateEntryCodes', () => {
  * can catch the two disagreeing: the script keeps emitting its old order and width, the
  * rows paste in looking plausible, and every value lands under the neighbouring field.
  *
+ * It carries its own copy of the CATEGORY list for the same reason, and a disagreement
+ * there is quieter still: a category the config tab does not offer renders the picker
+ * blank on every imported row someone opens.
+ *
  * Parsed out of the source rather than executed, so this needs no Python on the machine.
  */
 describe('the importer script agrees about the column list', () => {
-  const pythonList = (name) => {
+  const pythonList = (name, [open, close] = '[]') => {
     const source = readFileSync(new URL('../scripts/bank_to_ledger.py', import.meta.url), 'utf8')
-    const match = source.match(new RegExp(`^${name} = \\[$([\\s\\S]*?)^\\]$`, 'm'))
+    const match = source.match(new RegExp(`^${name} = \\${open}$([\\s\\S]*?)^\\${close}$`, 'm'))
     expect(match, `${name} not found in bank_to_ledger.py`).toBeTruthy()
     return [...match[1].matchAll(/"([^"]+)"/g)].map((found) => found[1])
   }
@@ -601,6 +606,13 @@ describe('the importer script agrees about the column list', () => {
   // list can drift independently of the one above.
   it('carries the same settlement columns in the same order', () => {
     expect(pythonList('SETTLEMENT_COLUMNS')).toEqual(SETTLEMENT_COLUMNS)
+  })
+
+  // Order included: the app pre-selects `categories[0]` on a new entry, so the two
+  // lists reading the same names in a different order is still a disagreement worth
+  // seeing. The script's own assert is what pins each RULE to this vocabulary.
+  it('classifies into the categories a fresh config offers', () => {
+    expect(pythonList('CATEGORIES', '()')).toEqual(DEFAULT_CONFIG.categories)
   })
 })
 
