@@ -168,9 +168,9 @@ Without this step **Settings → Recurring costs** still lists every recurring c
 is the whole feature for anyone happy to confirm the figure.
 [README.md](README.md#recurring-tab) describes the tab.
 
-Set up at least one cost first, or a run has nothing to do. Note that the poster only
-posts a cost whose **amount and split are both filled in**: anything left blank is a
-figure a person is meant to confirm, so it stays on the page.
+Set up at least one cost first, or a run has nothing to do. Every cost with an **amount**
+posts itself; one with a blank amount — a utility bill whose figure changes — cannot, so
+those stay on the page with a Record button.
 
 Same script project as the token minter: it already holds `SHEET_ID` and the
 `spreadsheets` authorization, and `postRecurring` is already in the `Code.gs` from step 3.

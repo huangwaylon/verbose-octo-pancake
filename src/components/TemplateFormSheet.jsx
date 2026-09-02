@@ -25,11 +25,26 @@ import { RetireIcon } from './icons.jsx'
  * the whole row and a form that dropped them would silently turn a quarterly cost into a
  * monthly one.
  *
- * There is no delete. Retiring sets `active_to`, which keeps the row and therefore the instance
- * id: `retiredTemplate` says what a deleted row would cost. Being reversible is also why it
- * needs no confirmation dialog — and why the control is not `btn--danger`.
+ * TWO ways to stop a cost, and the footer holds the safe one. Retiring sets `active_to`, which
+ * keeps the row and therefore the instance id, so every month it has already posted stays
+ * recorded — `retiredTemplate` says why that matters. Being reversible is also why it needs no
+ * confirmation and is not `btn--danger`.
+ *
+ * Deleting the row is the other, and it sits LAST IN THE BODY behind a confirmation, where
+ * `SettingsSheet` puts "Forget key" and for the same reasons: reachable, explained, and not the
+ * button a thumb lands on by default. Its own `Field` carries what it costs, because the cost is
+ * not guessable from the word "delete".
  */
-export function TemplateFormSheet({ draft, config, me, onSubmit, onRetire, onRestore, onClose }) {
+export function TemplateFormSheet({
+  draft,
+  config,
+  me,
+  onSubmit,
+  onRetire,
+  onRestore,
+  onDelete,
+  onClose,
+}) {
   const { t } = useT()
   const money = useMoney()
   const { mode, template } = draft
@@ -297,6 +312,24 @@ export function TemplateFormSheet({ draft, config, me, onSubmit, onRetire, onRes
         {editing && <p className="field__hint">{t('recurring.editScopeHint')}</p>}
 
         {saveError && <FieldError id={saveErrorId}>{saveError}</FieldError>}
+
+        {/* Last in the body, where the irreversible thing belongs. The description is the
+            whole guard: what a deleted row costs is the sheet's memory of which months this
+            cost already covered, and nothing about the word "delete" says that. */}
+        {editing && (
+          <Field label={t('recurring.deleteTitle')} description={t('recurring.deleteHint')}>
+            <div className="row">
+              <button
+                type="button"
+                className="btn btn--danger btn--sm"
+                onClick={() => onDelete(template)}
+                disabled={busy}
+              >
+                {t('recurring.delete')}
+              </button>
+            </div>
+          </Field>
+        )}
       </form>
     </BottomSheet>
   )

@@ -143,6 +143,15 @@ export default {
     'Quarterly and annual schedules live in the recurring tab of your sheet, and this form keeps them.',
   'recurring.editScopeHint': 'Months already recorded keep the figures they were recorded with.',
   'recurring.retire': 'Stop this cost',
+  'recurring.delete': 'Delete for good',
+  'recurring.deleteTitle': 'Delete this recurring cost?',
+  // The description is the whole guard. "Delete" does not tell anyone that what is lost is
+  // the sheet's record of which months this cost already covered — and that adding it back
+  // afterwards can therefore post a month that was already paid.
+  'recurring.deleteHint':
+    'Removes the row from the recurring tab. The entries it already added stay in your ledger, but the sheet forgets which months it covered — so adding this cost again could record a month twice. Stopping it keeps that memory.',
+  'recurring.deleteBody':
+    '{name} is removed from the recurring tab for good. The entries it already added stay in your ledger. If you add it again later, check this month has not already been recorded.',
   'recurring.restore': 'Start this cost again',
   'recurring.saveError': 'Could not save that.',
 

@@ -113,12 +113,16 @@ Desktop is a convenience. Every layout decision is made at 320px first.
   is what makes them safe to coexist and a re-run a no-op. Never key it on category or
   description: both are fields a person edits, so `Rent (Aug)` posts a second rent and two
   templates sharing a category and a note collapse into one.
-- **A template's id is minted once and NEVER changes, and there is NO delete.** Retiring sets
-  `active_to`; `retiredTemplate` carries the reason and it is not caution. The id is the only
-  link to the instances a template has already posted, so a deleted row orphans them —
-  re-create the cost under a new id and the month already paid reads as unrecorded, which is
-  enough for the unattended poster to append a second rent that night. Keeping the row also
-  makes stopping reversible, which is why nothing about it needs a confirmation dialog.
+- **A template's id is minted once and NEVER changes.** Every month it has posted is keyed on
+  it, so an id that moved would have the poster post them all again.
+- **There are TWO ways to stop a cost, and retiring is the one to reach for.** `active_to` keeps
+  the row, therefore the id, therefore the record of which months are handled — and it is
+  reversible, which is why it needs no confirmation and is not `btn--danger`. `deleteTemplate`
+  removes the row because it was asked for, and it ORPHANS every instance the template posted:
+  the ledger rows stay, the sheet's memory of them does not, so adding the cost back under a new
+  id can post a month that was already paid. That cost is stated in the confirmation and in
+  `recurring.deleteHint` — do not shorten either to just "this cannot be undone", which is the
+  part a person can already guess.
 - **`recurringRows` is the ONE derivation of "due", and it answers four states, not two.**
   `recorded`, `due`, `scheduled` — rendered as two, rent-on-the-27th viewed on the 3rd is
   indistinguishable from rent already paid, so every row says which it is in words. Do not add
@@ -172,9 +176,13 @@ Desktop is a convenience. Every layout decision is made at 320px first.
   through a schema reader and it is restored in a `useState` initializer, so a bad cached row
   white-screens the first render; a reminder loses nothing by arriving one round trip late.
   Adding them means a validator of their own and a `VERSION` bump.
-- **`postRecurring` only posts a template that spells out BOTH its amount and its share.**
-  Anything blank is the card's job, where a person confirms. That is what keeps the percentage-
-  versus-fraction rule out of `Code.gs` and the config tab out of the trigger's reads.
+- **`postRecurring` posts anything with an AMOUNT, and resolves a blank share itself.** A blank
+  `payer_share` means "follow that payer's `default_split`", so `defaultShares` reads the config
+  tab and `readShare` carries the same above-1-is-a-percentage rule the app does — a fourth home
+  for three lines, pinned by `test/apps-script.test.js`. Refusing a blank share instead put a
+  cliff under the form's own default state: the Split control starts on "Default", which writes
+  blank, so the most likely cost anyone set up would silently never post. A blank AMOUNT is the
+  one thing that genuinely cannot post — there is no figure — and those stay tap-to-record.
 - **`doPost` must be incapable of throwing; `postRecurring` must be allowed to.** A throw in
   the web app returns Google's HTML error page, which `connection.js` classifies as transient;
   an uncaught throw in a TRIGGER mails the owner, and that mail is the only channel reporting
@@ -295,8 +303,11 @@ Desktop is a convenience. Every layout decision is made at 320px first.
 - **Store the cause, never the sentence.** `useLedger` keeps the thrown error and `App` calls
   `errorMessage` at the render; `SettingsSheet` keeps the compact *outcome*. A translated string
   is frozen in the language current when it was built, and both of these outlive a change.
-- **Every delete goes through `ConfirmDeleteSheet`**: `App` owns `pendingDelete` and nothing
-  else calls `removeEntry`. Recovery is the collapsed `DeletedList`, never a toast action.
+- **Every destructive confirmation goes through `ConfirmSheet`**, which is the one home of
+  "Cancel first in the DOM" and of being content-sized rather than `full`. `ConfirmDeleteSheet`
+  is its entry-shaped wrapper — `App` owns `pendingDelete` and nothing else calls `removeEntry`,
+  and recovery is the collapsed `DeletedList`, never a toast action. The caller supplies the
+  BODY, because only the caller knows whether the thing can be recovered.
 - **The deleted list is scoped to the month on screen**; settings' count stays sheet-wide,
   because that is what `compact` acts on.
 - **Nothing in the UI creates a settlement**, so the balance in `Header` carries no action and

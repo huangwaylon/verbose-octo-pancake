@@ -959,8 +959,8 @@ describe('template writes', () => {
     expect(writes(calls)).toHaveLength(0)
   })
 
-  /** Retiring is an ordinary update with `active_to` set — there is no delete path at all. */
-  it('retires through active_to, and never deletes a row', async () => {
+  /** Retiring is an ordinary update with `active_to` set, and shifts no row. */
+  it('retires through active_to, without touching a row position', async () => {
     const calls = installSheets((call) =>
       call.url.includes(RECURRING.dataRange)
         ? values([recurringRow({ id: 'rent', payer: 'p1' })])
@@ -970,9 +970,68 @@ describe('template writes', () => {
     await sheets.saveTemplate(SHEET, { ...RENT, activeTo: '2026-08' })
 
     expect(sentRow(writes(calls)[0]).active_to).toBe('2026-08')
-    // A deleted row would orphan every instance this template has posted, and the poster
-    // would re-post the current month under a re-created id.
+    // No `deleteDimension`: retiring is what keeps the id, and the id is what keeps every
+    // month this cost has already posted recorded.
     expect(calls.some((call) => call.body?.requests)).toBe(false)
+  })
+
+  /**
+   * The one hard delete outside `compact`, and the assertion that matters is the row INDEX:
+   * `deleteDimension` shifts every row below it, so being one out removes a different cost.
+   */
+  it('deletes the row the id sits on, and only that row', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes(RECURRING.dataRange)
+        ? values([
+            recurringRow({ id: 'gym', payer: 'p2' }),
+            recurringRow({ id: 'rent', payer: 'p1' }),
+            recurringRow({ id: 'gas', payer: 'p1' }),
+          ])
+        : {},
+    )
+
+    await sheets.deleteTemplate(SHEET, 555, 'rent')
+
+    const requests = writes(calls)[0].body.requests
+    expect(requests).toHaveLength(1)
+    // Sheet row 3 — header plus the second data row — which is 0-based index 2.
+    expect(requests[0].deleteDimension.range).toEqual({
+      sheetId: 555,
+      dimension: 'ROWS',
+      startIndex: 2,
+      endIndex: 3,
+    })
+  })
+
+  it('does nothing when the row is already gone, rather than failing', async () => {
+    // Deleted from the other phone, or in the Sheets UI. The outcome asked for is the outcome
+    // already in place, so interrupting somebody over it would be noise.
+    const calls = installSheets((call) =>
+      call.url.includes(RECURRING.dataRange)
+        ? values([recurringRow({ id: 'gym', payer: 'p2' })])
+        : {},
+    )
+
+    await expect(sheets.deleteTemplate(SHEET, 555, 'rent')).resolves.toBeUndefined()
+    expect(writes(calls)).toHaveLength(0)
+  })
+
+  it('refuses to delete when two rows share the id', async () => {
+    // The same reason a write refuses: nothing here can tell which of them was meant, and
+    // guessing removes a cost somebody still wanted.
+    const calls = installSheets((call) =>
+      call.url.includes(RECURRING.dataRange)
+        ? values([
+            recurringRow({ id: 'rent', payer: 'p1' }),
+            recurringRow({ id: 'rent', payer: 'p2' }),
+          ])
+        : {},
+    )
+
+    await expect(sheets.deleteTemplate(SHEET, 555, 'rent')).rejects.toMatchObject({
+      i18nKey: 'error.duplicateTemplate',
+    })
+    expect(writes(calls)).toHaveLength(0)
   })
 })
 

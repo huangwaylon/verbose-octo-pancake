@@ -142,6 +142,10 @@ var RECURRING_COLUMNS = [
 ]
 
 var RECURRING_TAB = 'recurring'
+var CONFIG_TAB = 'config'
+
+/** Fallback when the config tab says nothing about a person. Mirrors `EVEN_SHARE`. */
+var EVEN_SHARE = 0.5
 
 /** Person -> their own expenses tab. Pinned to `DATA_TABS` by the same test. */
 var EXPENSE_TABS = { p1: 'expenses_p1', p2: 'expenses_p2' }
@@ -186,6 +190,8 @@ function postRecurringFor(monthKey, dayOfMonth) {
   var ss = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SHEET_ID'))
   var handled = readHandledIds(ss)
   var templates = readTemplates(ss)
+  // Once per run, not per row: three reads total, whatever the tab holds.
+  var shares = defaultShares(ss)
   var posted = 0
 
   for (var i = 0; i < templates.length; i += 1) {
@@ -201,7 +207,9 @@ function postRecurringFor(monthKey, dayOfMonth) {
     var id = template.id + '#' + monthKey
     if (handled[id]) continue
 
-    appendInstance(ss, template, id, monthKey + '-' + pad2(day))
+    var share = template.payerShare
+    if (share == null) share = shares[template.payer] != null ? shares[template.payer] : EVEN_SHARE
+    appendInstance(ss, template, id, monthKey + '-' + pad2(day), share)
     posted += 1
   }
   return posted
@@ -264,14 +272,15 @@ function cellAt(row, field) {
 /**
  * A `recurring` row -> what this poster needs, or null for a row it must not post.
  *
- * Stricter than the client's `rowToTemplate` in exactly two places, and both are
- * one rule: **the poster only writes a template that spells out BOTH its amount
- * and its share.** A blank amount is recurring-but-variable — a utility bill — and
- * there is nothing to write. A blank share means "follow the payer's default",
- * which lives in the config tab; resolving it here would put a fourth copy of the
- * percentage-versus-fraction rule in this repo, and getting it wrong splits every
- * rent 50/50 on a household running 80/20. Anything left blank is the card's job,
- * where a person confirms the figure before it is written.
+ * Stricter than the client's `rowToTemplate` in exactly ONE place: a blank amount
+ * is recurring-but-variable — a utility bill — and there is no figure to write, so
+ * that row belongs to the recurring page where a person types it. Everything else
+ * posts itself, which is the whole promise of the feature.
+ *
+ * A blank SHARE is not a refusal: it means "follow the payer's `default_split`",
+ * and `defaultShares` reads it. Refusing it instead put a cliff under the form's
+ * own default state — the Split control starts on "Default", which writes blank —
+ * so the most likely cost anyone set up would silently never post.
  *
  * A row this cannot use is SKIPPED rather than thrown on, unlike an unexpected
  * failure: one typo in a gym row must not stop rent posting. The client counts and
@@ -287,13 +296,13 @@ function toTemplate(row) {
   var amount = Math.round(Number(cellAt(row, 'amount').replace(/[\s,]/g, '')))
   if (!(amount > 0)) return null
 
+  // null means "follow the payer's default", resolved at append time by `defaultShares`.
   var shareText = cellAt(row, 'payer_share')
-  if (!shareText) return null
-  var share = Number(shareText)
-  if (!(share >= 0 && share <= 100)) return null
-  // Above 1 reads as a percentage, exactly as `parseShare` reads it: a spreadsheet
-  // is where people write 80 rather than 0.8.
-  if (share > 1) share = share / 100
+  var share = null
+  if (shareText) {
+    share = readShare(shareText)
+    if (share == null) return null
+  }
 
   var day = Number(cellAt(row, 'day_of_month') || '1')
   if (!(day >= 1 && day <= 31)) return null
@@ -327,6 +336,49 @@ function toTemplate(row) {
     activeFrom: activeFrom,
     activeTo: activeTo,
   }
+}
+
+/**
+ * A hand-typed share as a fraction, or null.
+ *
+ * Above 1 reads as a percentage, exactly as `parseShare` does in the app: a spreadsheet
+ * is where people write 80 rather than 0.8. Both places a share can be typed — the
+ * `payer_share` column and the two `default_split_p*` config rows — go through this one
+ * rule here, for the same reason the app has one: with two readings, the same `50` would
+ * mean "half" in one place and "the payer covers all of it" in the other.
+ */
+function readShare(text) {
+  if (!text) return null
+  var value = Number(text)
+  if (!(value >= 0 && value <= 100)) return null
+  return value > 1 ? value / 100 : value
+}
+
+/**
+ * Each person's default share from the config tab, for the templates that leave
+ * `payer_share` blank.
+ *
+ * The FIRST usable value per key wins, exactly as `parseConfigRows` does in the app: a
+ * stale duplicate `default_split_p1` lower down the tab would move money on every
+ * expense that person is posted for. A key the tab does not carry falls back to
+ * `EVEN_SHARE`, which is what `defaultSplitFor` does.
+ */
+function defaultShares(ss) {
+  var shares = {}
+  var sheet = ss.getSheetByName(CONFIG_TAB)
+  if (!sheet) return shares
+  var last = sheet.getLastRow()
+  if (last < 1) return shares
+
+  var rows = sheet.getRange(1, 1, last, 2).getValues()
+  for (var i = 0; i < rows.length; i += 1) {
+    var key = cellText(rows[i][0]).toLowerCase()
+    var person = key === 'default_split_p1' ? 'p1' : key === 'default_split_p2' ? 'p2' : null
+    if (!person || shares[person] != null) continue
+    var share = readShare(cellText(rows[i][1]))
+    if (share != null) shares[person] = share
+  }
+  return shares
 }
 
 /** Month keys compare as strings, which is what makes the window two comparisons. */
@@ -368,8 +420,11 @@ function pad2(value) {
  * The row number comes from `getLastRow()` immediately before the write. A client
  * `values.append` landing in the same instant would resolve the same row, which is
  * last-write-wins — the accepted design, and vanishingly unlikely at 3am.
+ *
+ * `share` arrives RESOLVED rather than read off the template, because a blank
+ * `payer_share` means "the payer's default" and only `defaultShares` knows that.
  */
-function appendInstance(ss, template, id, date) {
+function appendInstance(ss, template, id, date, share) {
   var sheet = ss.getSheetByName(EXPENSE_TABS[template.payer])
   if (!sheet) return
 
@@ -378,7 +433,7 @@ function appendInstance(ss, template, id, date) {
     description: template.description,
     amount: String(template.amountYen),
     category: template.category,
-    payer_share: String(template.payerShare),
+    payer_share: String(share),
     deleted_at: '',
     id: id,
   }

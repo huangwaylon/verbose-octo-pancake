@@ -12,6 +12,7 @@ import { newTemplate, restoredTemplate, retiredTemplate } from './lib/recurring.
 import { LedgerScreen } from './components/LedgerScreen.jsx'
 import { EntryFormSheet } from './components/EntryFormSheet.jsx'
 import { ConfirmDeleteSheet } from './components/ConfirmDeleteSheet.jsx'
+import { ConfirmSheet } from './components/ConfirmSheet.jsx'
 import { SettingsSheet } from './components/SettingsSheet.jsx'
 import { RecurringSheet } from './components/RecurringSheet.jsx'
 import { TemplateFormSheet } from './components/TemplateFormSheet.jsx'
@@ -122,6 +123,19 @@ export default function App() {
     saveTemplate(retiredTemplate(input, currentMonthKey()), 'toast.retired')
 
   const restoreTemplate = (input) => saveTemplate(restoredTemplate(input), 'toast.restored')
+
+  /**
+   * Deleting a cost's row, which is irreversible and the only recurring path that is. The form
+   * closes and the confirmation opens in its place — one sheet at a time — and confirming
+   * returns to the list rather than to the form, which no longer has anything to edit.
+   *
+   * Reported through a toast rather than rethrown, unlike the form's own writes: by the time it
+   * runs there is no form left to show a message against.
+   */
+  const deleteTemplate = (template) => {
+    setRecurring('list')
+    return report(() => ledger.deleteTemplate(template), 'toast.deleted', 'toast.deleteFailed')
+  }
 
   /**
    * The write paths that report to a toast. `useLedger` has already reverted the
@@ -259,7 +273,14 @@ export default function App() {
 
       {/* One ternary, not two independent guards: the list and the form are two views of
           one surface and must never both be mounted. See `recurring`'s own comment. */}
-      {recurring === 'list' ? (
+      {recurring?.mode === 'delete' ? (
+        <ConfirmSheet
+          title={t('recurring.deleteTitle')}
+          body={t('recurring.deleteBody', { name: recurring.template.description })}
+          onConfirm={() => deleteTemplate(recurring.template)}
+          onClose={() => setRecurring({ mode: 'edit', template: recurring.template })}
+        />
+      ) : recurring === 'list' ? (
         <RecurringSheet
           templates={ledger.templates}
           entries={ledger.entries}
@@ -282,6 +303,7 @@ export default function App() {
           onSubmit={submitTemplate}
           onRetire={retireTemplate}
           onRestore={restoreTemplate}
+          onDelete={(template) => setRecurring({ mode: 'delete', template })}
           onClose={() => setRecurring('list')}
         />
       ) : null}

@@ -285,6 +285,7 @@ const templateForm = (template, pageConfig, mode = 'edit') => (
     onSubmit={noop}
     onRetire={noop}
     onRestore={noop}
+    onDelete={noop}
     onClose={noop}
   />
 )

@@ -22,6 +22,7 @@ import { EntryList } from '../src/components/EntryList.jsx'
 import { EntryFormSheet } from '../src/components/EntryFormSheet.jsx'
 import { TemplateFormSheet } from '../src/components/TemplateFormSheet.jsx'
 import { ConfirmDeleteSheet } from '../src/components/ConfirmDeleteSheet.jsx'
+import { ConfirmSheet } from '../src/components/ConfirmSheet.jsx'
 import { DeletedList } from '../src/components/DeletedList.jsx'
 
 /** The locale is a module singleton, so every test that changes it restores it. */
@@ -333,6 +334,7 @@ describe('recurring form', () => {
         onSubmit={noop}
         onRetire={noop}
         onRestore={noop}
+        onDelete={noop}
         onClose={noop}
         {...props}
       />,
@@ -418,6 +420,41 @@ describe('delete confirmation', () => {
     const markup = render({ ...target, type: ENTRY_TYPE.SETTLEMENT, category: '', description: '' })
     expect(markup).toContain('Settled up')
     expect(markup).not.toContain('Expense')
+  })
+})
+
+/**
+ * The generic destructive dialog, which both confirmations now go through. Cancel first in the
+ * DOM is the rule that matters and the one nothing else can see: `BottomSheet` focuses the
+ * first control it finds, so on a destructive dialog that has to be the way out.
+ */
+describe('confirm dialog', () => {
+  const render = (props) =>
+    renderToStaticMarkup(
+      <ConfirmSheet
+        title="Delete this?"
+        body="It cannot be undone."
+        onConfirm={noop}
+        onClose={noop}
+        {...props}
+      />,
+    )
+
+  it('puts Cancel before the destructive button in the DOM', () => {
+    const markup = render()
+    expect(markup.indexOf('Cancel')).toBeLessThan(markup.indexOf('btn--danger'))
+  })
+
+  it('is content-sized, never full screen', () => {
+    // `full` is a claim about the CONTENT: one sentence in a full-screen panel is 600px of
+    // white asking whether to delete a ¥480 coffee.
+    expect(render()).not.toContain('sheet__panel--full')
+  })
+
+  it('says what the caller gave it, including a custom confirm label', () => {
+    const markup = render({ body: 'Rent goes for good.', confirmLabel: 'Delete for good' })
+    expect(markup).toContain('Rent goes for good.')
+    expect(markup).toContain('Delete for good')
   })
 })
 

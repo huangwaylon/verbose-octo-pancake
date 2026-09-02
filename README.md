@@ -137,12 +137,16 @@ documented failure mode — the consent screen lapsing — is silent, so a month
 misses its one run does nothing for 30 days. The recurring page is also what tells you the
 poster has died, since a row it should have written still shows a Record button there.
 
-**Stopping a cost sets `active_to`; it does not delete the row**, and that is correctness
-rather than caution. The instance id is the only link between a declaration and the rows it
-has already posted, so a deleted row orphans them: re-create the cost under a new id and the
-month already paid reads as unrecorded, which is enough for the trigger to append a second
-rent that night. Keeping the row keeps every month it has handled handled — and makes
-stopping reversible. Removing a row for good is a Sheets action.
+There are **two ways to stop a cost**, and they differ in what the sheet remembers.
+
+**Stopping it** sets `active_to`. The row stays, so its id stays, so every month it has already
+posted stays recorded — and it is reversible from the same control. This is the one to use.
+
+**Deleting it** removes the row. The entries it already added stay in your ledger, correctly;
+what is lost is the sheet's memory of *which months it covered*. Add the same cost back
+afterwards — necessarily under a new id — and a month already paid reads as unrecorded, which is
+enough for the trigger to post it a second time. The confirmation says so. Both live on the
+cost's own form: stopping in the footer, deleting last in the body behind that sentence.
 
 ### `config` tab
 

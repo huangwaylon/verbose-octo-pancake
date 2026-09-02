@@ -109,6 +109,12 @@ export default {
     '四半期ごと・年ごとの設定はシートの recurring タブにあり、この画面では変更されません。',
   'recurring.editScopeHint': 'すでに記録した月は、記録した時点の金額のままです。',
   'recurring.retire': 'この支出を止める',
+  'recurring.delete': '完全に削除',
+  'recurring.deleteTitle': 'この定期の支出を削除しますか？',
+  'recurring.deleteHint':
+    'recurring タブから行を削除します。すでに追加された記録は台帳に残りますが、どの月を記録したかはシートから失われるため、同じ支出を再度追加すると同じ月を二重に記録することがあります。「止める」ならその記録は残ります。',
+  'recurring.deleteBody':
+    '{name}を recurring タブから完全に削除します。すでに追加された記録は台帳に残ります。あとで追加し直す場合は、今月がすでに記録されていないか確認してください。',
   'recurring.restore': 'この支出を再開する',
   'recurring.saveError': '保存できませんでした。',
 

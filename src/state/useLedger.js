@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { mergeConfig } from '../config.js'
 import { i18nError } from '../i18n/index.js'
-import { tabOf } from '../schema.js'
+import { RECURRING, tabOf } from '../schema.js'
 import * as sheets from '../lib/sheets.js'
 import {
   acknowledge,
@@ -364,6 +364,24 @@ export function useLedger(spreadsheetId) {
     [spreadsheetId, refresh],
   )
 
+  /**
+   * Remove a recurring cost's row for good.
+   *
+   * Reads the gids fresh through `readSheetGids`, never `ensureStructure`, for exactly the
+   * reason `compact` does: that path WRITES, and on a ledger whose config tab has been deleted
+   * it would re-seed this build's defaults. Loud rather than a silent no-op when the gid is
+   * missing — `deleteDimension` takes nothing but a gid, so there is no guess to make.
+   */
+  const deleteTemplate = useCallback(
+    async (template) => {
+      const gids = await sheets.readSheetGids(spreadsheetId)
+      if (gids[RECURRING.title] == null) throw i18nError('error.missingTabs')
+      await sheets.deleteTemplate(spreadsheetId, gids[RECURRING.title], template.id)
+      await refresh()
+    },
+    [spreadsheetId, refresh],
+  )
+
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
   const compact = useCallback(async () => {
     // Both refusals — a write in flight, and nothing to remove — live in `lib` where a
@@ -412,6 +430,7 @@ export function useLedger(spreadsheetId) {
     removeEntry,
     restoreEntry,
     saveTemplate,
+    deleteTemplate,
     compact,
   }
 }

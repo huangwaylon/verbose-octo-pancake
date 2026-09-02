@@ -396,9 +396,9 @@ export async function setDeletedAt(spreadsheetId, tab, id, deletedAtIso) {
  *
  * Separate from the entry paths above rather than generalised with them, because almost
  * nothing is shared: a template has no `deleted_at` and no payer-driven tab, so there is no
- * soft delete, no row to move between tabs and no `tabOf` decision. There is no HARD delete
- * either — `retiredTemplate` says why the row has to stay — so ONE function is the whole write
- * surface, and it never shifts a row.
+ * soft delete, no row to move between tabs and no `tabOf` decision. `saveTemplate` is almost
+ * the whole surface: `deleteTemplate` is the one destructive path, kept apart because it is the
+ * only thing here that shifts a row and the only one that needs a gid.
  *
  * What IS shared is the rule that matters: a row number is never cached, and the write
  * re-resolves id -> row against a fresh read immediately beforehand.
@@ -459,6 +459,48 @@ export async function saveTemplate(spreadsheetId, template) {
     return
   }
   await updateValues(spreadsheetId, RECURRING.rowRange(rowNumber), [templateToRow(template)])
+}
+
+/**
+ * Remove a template's row for good.
+ *
+ * The one hard delete outside `compact`, and it exists because a person asked for it rather
+ * than because it is the safe path — `retiredTemplate` is. What it costs is stated where a
+ * person can read it, in the confirmation: the instance id is the only link between a
+ * declaration and the rows it has already posted, so deleting the row ORPHANS them. The rows
+ * stay in the ledger, correctly; what is lost is the sheet's memory that those months were
+ * handled. Add the same cost back afterwards — necessarily under a new id — and a month
+ * already paid reads as unrecorded again.
+ *
+ * The row number comes from a read immediately beforehand, for the same reason `compact`
+ * refuses to trust a cached one: `deleteDimension` shifts every row below it. Two phones
+ * deleting at the same instant is the one case that can still land on the wrong row, and it is
+ * the accepted last-write-wins design applied to a four-row tab that two people can talk about.
+ */
+export async function deleteTemplate(spreadsheetId, sheetGid, id) {
+  const rowNumber = await findTemplateRow(spreadsheetId, id)
+  // Already gone — from the other phone, or from the Sheets UI. Nothing to do, and nothing
+  // worth interrupting somebody over: the outcome they asked for is the outcome they have.
+  if (rowNumber == null) return
+
+  await request(`/${encodeURIComponent(spreadsheetId)}:batchUpdate`, {
+    method: 'POST',
+    body: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId: sheetGid,
+              dimension: 'ROWS',
+              // 0-based and half-open: sheet row N is index N-1.
+              startIndex: rowNumber - 1,
+              endIndex: rowNumber,
+            },
+          },
+        },
+      ],
+    },
+  })
 }
 
 /**

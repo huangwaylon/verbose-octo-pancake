@@ -13,31 +13,34 @@
  */
 import { readFileSync } from 'node:fs'
 
-/** A sheet holding rows below a header, recording every write it is given. */
-function fakeSheet(rows) {
+/**
+ * One sheet as a real GRID, header row included.
+ *
+ * Row 1 is the header and `rows` starts at row 1, deliberately: the poster reads the
+ * expenses and recurring tabs from row 2 but the CONFIG tab from row 1, and a harness that
+ * modelled "the data below the header" would silently shift one of those by a row — which is
+ * the exact class of bug this file exists to catch.
+ */
+function fakeSheet(grid) {
   return {
-    rows,
+    grid,
     /** What was appended, so a test can assert the row rather than re-read the grid. */
     appended: [],
     /** Which ranges were set to plain text, and when. See the format-before-write trap. */
     formats: [],
 
     getLastRow() {
-      return rows.length + 1
+      return grid.length
     },
 
     getRange(startRow, startColumn, numRows, numColumns) {
-      const index = startRow - 2
+      const first = startRow - 1
       return {
         getValues() {
-          const out = []
-          for (let offset = 0; offset < numRows; offset += 1) {
-            const source = rows[index + offset] ?? []
-            out.push(
-              Array.from({ length: numColumns }, (_, at) => source[startColumn - 1 + at] ?? ''),
-            )
-          }
-          return out
+          return Array.from({ length: numRows }, (_, offset) => {
+            const source = grid[first + offset] ?? []
+            return Array.from({ length: numColumns }, (_, at) => source[startColumn - 1 + at] ?? '')
+          })
         },
         setNumberFormat: (format) => {
           this.formats.push({ row: startRow, format })
@@ -46,10 +49,10 @@ function fakeSheet(rows) {
           // Recorded per row rather than as a flag, because "was it formatted first" is
           // the whole assertion and a later format would satisfy a flag just as well.
           const already = this.formats.some((entry) => entry.row === startRow)
-          for (const value of written) {
-            this.appended.push({ row: startRow, values: value, textFormatted: already })
-            rows[startRow - 2] = value
-          }
+          written.forEach((value, offset) => {
+            this.appended.push({ row: startRow + offset, values: value, textFormatted: already })
+            grid[first + offset] = value
+          })
         },
       }
     },
@@ -59,12 +62,15 @@ function fakeSheet(rows) {
 /**
  * Evaluate `Code.gs` against fake Google globals and return its functions plus the sheets.
  *
- * @param {{tabs: Record<string, {rows: any[][]}>, sheetId?: string}} setup
+ * Each tab is given its HEADER as well as its rows, because a real one has one and the
+ * poster has to skip it — for two of the three tabs and not the third.
+ *
+ * @param {{tabs: Record<string, {header: any[], rows: any[][]}>, sheetId?: string}} setup
  */
 export function loadPoster({ tabs, sheetId = 'sheet-under-test' }) {
   const sheets = {}
-  for (const [title, { rows }] of Object.entries(tabs)) {
-    sheets[title] = fakeSheet(rows.map((row) => [...row]))
+  for (const [title, { header, rows }] of Object.entries(tabs)) {
+    sheets[title] = fakeSheet([[...header], ...rows.map((row) => [...row])])
   }
 
   const globals = {

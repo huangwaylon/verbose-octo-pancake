@@ -41,12 +41,15 @@ const GYM = {
 }
 
 /** A ledger with the given recurring rows and, optionally, rows already in a tab. */
-const poster = ({ recurring = [], p1 = [], p2 = [] } = {}) =>
+const poster = ({ recurring = [], p1 = [], p2 = [], config = null } = {}) =>
   loadPoster({
     tabs: {
-      expenses_p1: { rows: p1 },
-      expenses_p2: { rows: p2 },
-      recurring: { rows: recurring },
+      expenses_p1: { header: EXPENSE_COLUMNS, rows: p1 },
+      expenses_p2: { header: EXPENSE_COLUMNS, rows: p2 },
+      recurring: { header: RECURRING_COLUMNS, rows: recurring },
+      // The config tab's header is data as far as `defaultShares` is concerned — it reads
+      // from row 1 and no key matches 'key', which is how `parseConfigRows` ignores it too.
+      ...(config ? { config: { header: ['key', 'value'], rows: config } } : {}),
     },
   })
 
@@ -125,24 +128,16 @@ describe('what it writes', () => {
 
 describe('what it refuses to write', () => {
   /**
-   * The poster's own rule, and the reason it is stricter than the client's decoder: **it only
-   * posts a template that spells out BOTH its amount and its share.** A blank amount is a
-   * variable cost with nothing to write; a blank share means "the payer's default", which
-   * lives in the config tab, and resolving it here would put a fourth copy of the
-   * percentage-versus-fraction rule in the repo — one that splits every rent 50/50 if it is
-   * wrong. Both belong to the card, where a person confirms the figure.
+   * The ONE thing that cannot post itself: a blank amount is recurring-but-variable, a
+   * utility bill, and there is no figure to write. Everything else posts — including a blank
+   * share, which is what the form's own default state writes.
    */
-  it('skips a template with no amount, and one with no share', () => {
-    const app = poster({
-      recurring: [
-        template({ ...RENT, amount: '' }),
-        template({ ...GYM, payer_share: '' }),
-        template(RENT),
-      ],
-    })
+  it('skips a template with no amount, because there is nothing to write', () => {
+    const app = poster({ recurring: [template({ ...RENT, amount: '' }), template(GYM)] })
 
     expect(app.postRecurringFor('2026-09', 27)).toBe(1)
-    expect(app.sheets.expenses_p2.appended).toHaveLength(0)
+    expect(app.sheets.expenses_p1.appended).toHaveLength(0)
+    expect(appendedAt(app.sheets.expenses_p2).id).toBe('gym#2026-09')
   })
 
   /**
@@ -206,6 +201,77 @@ describe('what it refuses to write', () => {
     expect(app.postRecurringFor('2026-09', 28)).toBe(0)
     expect(app.postRecurringFor('2026-07', 28)).toBe(1)
     expect(appendedAt(app.sheets.expenses_p1).id).toBe('tax#2026-07')
+  })
+})
+
+/**
+ * A blank `payer_share` means "follow that payer's `default_split`", and resolving it is the
+ * poster's job. Refusing it instead — which is what this file used to assert — put a cliff
+ * under the form's own default state: the Split control starts on "Default", which writes a
+ * blank cell, so the most likely cost anyone set up would silently never post.
+ */
+describe('a blank share follows the payer’s default', () => {
+  const CONFIG = [
+    ['default_split_p1', '80'],
+    ['default_split_p2', '20'],
+  ]
+
+  it('reads the config tab, taking a percentage above 1 as a percentage', () => {
+    const app = poster({
+      recurring: [template({ ...RENT, payer_share: '' }), template({ ...GYM, payer_share: '' })],
+      config: CONFIG,
+    })
+
+    expect(app.postRecurringFor('2026-09', 27)).toBe(2)
+    expect(appendedAt(app.sheets.expenses_p1).payer_share).toBe('0.8')
+    // The PAYER's own key, not one household number: 80/20 has to not invert when p2 pays.
+    expect(appendedAt(app.sheets.expenses_p2).payer_share).toBe('0.2')
+  })
+
+  it('reads a fraction as a fraction', () => {
+    const app = poster({
+      recurring: [template({ ...RENT, payer_share: '' })],
+      config: [['default_split_p1', '0.7']],
+    })
+
+    app.postRecurringFor('2026-09', 27)
+    expect(appendedAt(app.sheets.expenses_p1).payer_share).toBe('0.7')
+  })
+
+  it('takes the FIRST usable value for a key, like the app does', () => {
+    // Somebody added a row at the top and forgot the old one lower down. Last-wins would run
+    // every posted rent at an even split.
+    const app = poster({
+      recurring: [template({ ...RENT, payer_share: '' })],
+      config: [
+        ['default_split_p1', '80'],
+        ['default_split_p1', '50'],
+      ],
+    })
+
+    app.postRecurringFor('2026-09', 27)
+    expect(appendedAt(app.sheets.expenses_p1).payer_share).toBe('0.8')
+  })
+
+  it('falls back to an even split when the tab is missing or says nothing usable', () => {
+    for (const config of [null, [['default_split_p1', 'half']], [['note_presets', 'Life']]]) {
+      const app = poster({ recurring: [template({ ...RENT, payer_share: '' })], config })
+      app.postRecurringFor('2026-09', 27)
+      expect(appendedAt(app.sheets.expenses_p1).payer_share).toBe('0.5')
+    }
+  })
+
+  it('leaves an explicit share alone, whatever the config says', () => {
+    const app = poster({ recurring: [template(RENT)], config: CONFIG })
+
+    app.postRecurringFor('2026-09', 27)
+    // RENT spells out 80, which happens to match — so use a value that cannot be confused.
+    const pinned = poster({
+      recurring: [template({ ...RENT, payer_share: '30' })],
+      config: CONFIG,
+    })
+    pinned.postRecurringFor('2026-09', 27)
+    expect(appendedAt(pinned.sheets.expenses_p1).payer_share).toBe('0.3')
   })
 })
 
@@ -305,8 +371,8 @@ describe('a ledger the poster cannot use', () => {
   it('does nothing at all when there is no recurring tab', () => {
     const app = loadPoster({
       tabs: {
-        expenses_p1: { rows: [] },
-        expenses_p2: { rows: [] },
+        expenses_p1: { header: EXPENSE_COLUMNS, rows: [] },
+        expenses_p2: { header: EXPENSE_COLUMNS, rows: [] },
       },
     })
 
@@ -316,8 +382,8 @@ describe('a ledger the poster cannot use', () => {
   it('does not fabricate a tab for a payer whose tab is missing', () => {
     const app = loadPoster({
       tabs: {
-        expenses_p1: { rows: [] },
-        recurring: { rows: [template(GYM)] },
+        expenses_p1: { header: EXPENSE_COLUMNS, rows: [] },
+        recurring: { header: RECURRING_COLUMNS, rows: [template(GYM)] },
       },
     })
 

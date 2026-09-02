@@ -403,16 +403,38 @@ describe('the recurring form renders', () => {
         onSubmit={noop}
         onRetire={noop}
         onRestore={noop}
+        onDelete={noop}
         onClose={noop}
         {...props}
       />,
     )
 
-  it('renders an add form with no retire control', () => {
+  it('renders an add form with neither way to stop a cost', () => {
+    // Nothing to stop yet, and a delete control on a row that does not exist is a trap.
     const markup = render()
     expect(markup).toContain('Add a recurring cost')
     expect(markup).toContain('id="template-name"')
     expect(markup).not.toContain('Stop this cost')
+    expect(markup).not.toContain('Delete for good')
+  })
+
+  /**
+   * Two ways to stop a cost, and which one a thumb lands on matters. The safe, reversible one
+   * is the footer icon; the irreversible one is last in the body behind prose that says what it
+   * costs — the same placement `SettingsSheet` gives "Forget key".
+   */
+  it('puts the reversible stop in the footer and the irreversible one last, explained', () => {
+    const markup = render({
+      draft: { mode: 'edit', template: { ...newTemplate(PERSON.P1), description: 'Rent' } },
+    })
+    expect(markup).toContain('Stop this cost')
+    expect(markup).toContain('Delete for good')
+    // After the split control, which is the last field — so it is not among the form's inputs.
+    expect(markup.indexOf('Delete for good')).toBeGreaterThan(markup.indexOf('name="split"'))
+    // And the cost of it is stated, because "delete" does not imply losing the sheet's record
+    // of which months this cost covered.
+    expect(markup).toContain('the sheet forgets which months it covered')
+    expect(markup).toContain('btn--danger')
   })
 
   /**
