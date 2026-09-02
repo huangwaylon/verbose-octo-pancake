@@ -14,8 +14,13 @@ the existing header. Settlements have their own tab and their own columns, so th
 their own `.settlements.csv` beside it — written only when there are any.
 `test/schema.test.js` pins this copy of that list against the real one, because
 this file cannot import it and a silent disagreement writes every value under the
-wrong field. Amounts are whole yen exactly as `entryToRow` writes them, and
-nothing is localized.
+wrong field. Amounts are whole yen exactly as `entryToRow` writes them.
+
+A description is the bank's own text, never rewritten: the merchant name as
+exported, plus your note when the note says something the name does not. A rule
+decides the category, the share and whether the row is a purchase at all — it
+never renames anything, so a row in the ledger can always be found in the
+statement by searching for what it says.
 
 Everything the script decides is decided by RULES below: first match wins, and
 whatever matches nothing becomes a shared "Other" expense AND is listed in the
@@ -46,7 +51,7 @@ from pathlib import Path
 # Rules. First match wins, so put the specific one above the general one
 # (ライフドラッグ is a drugstore; ライフ is the supermarket next door).
 #
-#   (pattern, category, mode, label)
+#   (pattern, category, mode)
 #
 # mode: "personal"   -> payer_share 1.0
 #       "shared"     -> payer_share --share (default 0.8)
@@ -54,7 +59,8 @@ from pathlib import Path
 #       "settlement" -> a settlement row, no category
 #       "skip"       -> not a purchase; dropped and counted
 #
-# `label` replaces the merchant name in the description when it is set.
+# A rule never touches the description. The row keeps the name the bank exported,
+# so it stays greppable back to the statement.
 #
 # Patterns are matched loosely: case, ASCII/full-width, spaces, punctuation and
 # small kana are all folded away first, and every kind of dash — including the
@@ -69,220 +75,220 @@ from pathlib import Path
 # ("ozeki groceries" written against an OK Mart row) cannot outvote the merchant.
 # ---------------------------------------------------------------------------
 
-RULES: list[tuple[str, str | None, str, str | None]] = [
+RULES: list[tuple[str, str | None, str]] = [
     # -- not purchases -------------------------------------------------------
-    ("給与振込", None, "skip", None),
-    ("決算利息", None, "skip", None),
-    ("利息特典", None, "skip", None),
-    ("デビットリョウキャッシュバック", None, "skip", None),
-    ("セブンATM", None, "skip", None),
-    ("IBショウケン", None, "skip", None),
-    ("ラクテンカードサービス", None, "skip", None),
-    ("シバゼイムショ", None, "skip", None),
-    ("エスケーエナジー", None, "skip", None),
+    ("給与振込", None, "skip"),
+    ("決算利息", None, "skip"),
+    ("利息特典", None, "skip"),
+    ("デビットリョウキャッシュバック", None, "skip"),
+    ("セブンATM", None, "skip"),
+    ("IBショウケン", None, "skip"),
+    ("ラクテンカードサービス", None, "skip"),
+    ("シバゼイムショ", None, "skip"),
+    ("エスケーエナジー", None, "skip"),
     # Bought for someone who paid it straight back, so both halves of the pair
     # are dropped: the note is what identifies the debit side.
-    ("アンドリュー", None, "skip", None),
-    ("ANDREW", None, "skip", None),
+    ("アンドリュー", None, "skip"),
+    ("ANDREW", None, "skip"),
     # -- settlements ---------------------------------------------------------
-    ("ウメダ アスカ", None, "settlement", None),
-    ("シノケンコミュニケーションズ", None, "settlement", "Rent"),
-    ("カイコーポレーション", None, "settlement", "Rent"),
+    ("ウメダ アスカ", None, "settlement"),
+    ("シノケンコミュニケーションズ", None, "settlement"),
+    ("カイコーポレーション", None, "settlement"),
     # -- paid in full by me --------------------------------------------------
-    ("六本木ヒルズ", "Work lunch", "personal", None),
-    ("ROPPONGI HILLS", "Work lunch", "personal", None),
-    ("ROPPONGIHIRUZU", "Work lunch", "personal", None),
-    ("森ビル関連施設", "Work lunch", "personal", None),
-    ("CAFF MACS", "Work lunch", "personal", None),
-    ("CAFFE MACS", "Work lunch", "personal", None),
-    ("海南鶏飯食堂", "Work lunch", "personal", None),
-    ("HAINANJIFANSYOKUDO", "Work lunch", "personal", None),
-    ("大戸屋 六本木", "Work lunch", "personal", None),
-    ("ポンパドウル六本木", "Work lunch", "personal", None),
-    ("フリホーレス 六本木", "Work lunch", "personal", None),
-    ("モバイルSUICA", "Transport", "personal", "Suica top-up"),
-    ("AMAZON.CO.JP", "Shopping", "personal", None),
-    ("APPLE COM BILL", "Shopping", "personal", None),
-    ("APPLE.COM", "Shopping", "personal", None),
-    ("AF大崎", "Health", "personal", "Gym"),
+    ("六本木ヒルズ", "Dining", "personal"),
+    ("ROPPONGI HILLS", "Dining", "personal"),
+    ("ROPPONGIHIRUZU", "Dining", "personal"),
+    ("森ビル関連施設", "Dining", "personal"),
+    ("CAFF MACS", "Dining", "personal"),
+    ("CAFFE MACS", "Dining", "personal"),
+    ("海南鶏飯食堂", "Dining", "personal"),
+    ("HAINANJIFANSYOKUDO", "Dining", "personal"),
+    ("大戸屋 六本木", "Dining", "personal"),
+    ("ポンパドウル六本木", "Dining", "personal"),
+    ("フリホーレス 六本木", "Dining", "personal"),
+    ("モバイルSUICA", "Transport", "personal"),
+    ("AMAZON.CO.JP", "Shopping", "personal"),
+    ("APPLE COM BILL", "Shopping", "personal"),
+    ("APPLE.COM", "Shopping", "personal"),
+    ("AF大崎", "Health", "personal"),
     # -- health / pharmacy (before the supermarkets) -------------------------
-    ("ライフドラッグ", "Health", "shared", None),
-    ("マツモトキヨシ", "Health", "shared", None),
-    ("ツルハドラッグ", "Health", "shared", None),
-    ("スギ薬局", "Health", "shared", None),
-    ("トモズ", "Health", "shared", None),
-    ("ココカラファイン", "Health", "shared", None),
+    ("ライフドラッグ", "Health", "shared"),
+    ("マツモトキヨシ", "Health", "shared"),
+    ("ツルハドラッグ", "Health", "shared"),
+    ("スギ薬局", "Health", "shared"),
+    ("トモズ", "Health", "shared"),
+    ("ココカラファイン", "Health", "shared"),
     # -- groceries -----------------------------------------------------------
-    ("ライフ", "Groceries", "shared", None),
-    ("LIFE CORPORATION", "Groceries", "shared", None),
-    ("京急ストア", "Groceries", "shared", None),
-    ("KEIKYU STORE", "Groceries", "shared", None),
-    ("オオゼキ", "Groceries", "shared", None),
-    ("OZEKI", "Groceries", "shared", None),
-    ("オーケー", "Groceries", "shared", None),
-    ("OK TOGOSHI", "Groceries", "shared", None),
-    ("リンコス", "Groceries", "shared", None),
-    ("LINCOS", "Groceries", "shared", None),
-    ("ピーコックストア", "Groceries", "shared", None),
-    ("マルエツ", "Groceries", "shared", None),
-    ("サミット", "Groceries", "shared", None),
-    ("成城石井", "Groceries", "shared", None),
-    ("東急ストア", "Groceries", "shared", None),
-    ("TOKYU STORE", "Groceries", "shared", None),
-    ("ビッグ・エー", "Groceries", "shared", None),
-    ("リブレ京成", "Groceries", "shared", None),
-    ("まいばすけっと", "Groceries", "shared", None),
-    ("旬八青果店", "Groceries", "shared", None),
-    ("韓国広場", "Groceries", "shared", None),
-    ("中島水産", "Groceries", "shared", None),
-    ("ヒカリ屋", "Groceries", "shared", None),
-    ("フードスタイル", "Groceries", "shared", None),
-    ("フードワン", "Groceries", "shared", None),
-    ("カルディ", "Groceries", "shared", None),
-    ("KALDI", "Groceries", "shared", None),
-    ("おかしのまちおか", "Groceries", "shared", None),
-    ("ほしのベーカリー", "Groceries", "shared", None),
-    ("AMBIKA", "Groceries", "shared", None),
-    ("セブンイレブン", "Groceries", "shared", None),
-    ("ローソン", "Groceries", "shared", None),
-    ("LAWSON", "Groceries", "shared", None),
-    ("ファミリーマート", "Groceries", "shared", None),
-    ("ミニストップ", "Groceries", "shared", None),
+    ("ライフ", "Groceries", "shared"),
+    ("LIFE CORPORATION", "Groceries", "shared"),
+    ("京急ストア", "Groceries", "shared"),
+    ("KEIKYU STORE", "Groceries", "shared"),
+    ("オオゼキ", "Groceries", "shared"),
+    ("OZEKI", "Groceries", "shared"),
+    ("オーケー", "Groceries", "shared"),
+    ("OK TOGOSHI", "Groceries", "shared"),
+    ("リンコス", "Groceries", "shared"),
+    ("LINCOS", "Groceries", "shared"),
+    ("ピーコックストア", "Groceries", "shared"),
+    ("マルエツ", "Groceries", "shared"),
+    ("サミット", "Groceries", "shared"),
+    ("成城石井", "Groceries", "shared"),
+    ("東急ストア", "Groceries", "shared"),
+    ("TOKYU STORE", "Groceries", "shared"),
+    ("ビッグ・エー", "Groceries", "shared"),
+    ("リブレ京成", "Groceries", "shared"),
+    ("まいばすけっと", "Groceries", "shared"),
+    ("旬八青果店", "Groceries", "shared"),
+    ("韓国広場", "Groceries", "shared"),
+    ("中島水産", "Groceries", "shared"),
+    ("ヒカリ屋", "Groceries", "shared"),
+    ("フードスタイル", "Groceries", "shared"),
+    ("フードワン", "Groceries", "shared"),
+    ("カルディ", "Groceries", "shared"),
+    ("KALDI", "Groceries", "shared"),
+    ("おかしのまちおか", "Groceries", "shared"),
+    ("ほしのベーカリー", "Groceries", "shared"),
+    ("AMBIKA", "Groceries", "shared"),
+    ("セブンイレブン", "Groceries", "shared"),
+    ("ローソン", "Groceries", "shared"),
+    ("LAWSON", "Groceries", "shared"),
+    ("ファミリーマート", "Groceries", "shared"),
+    ("ミニストップ", "Groceries", "shared"),
     # -- household -----------------------------------------------------------
-    ("ダイソー", "Household", "shared", None),
-    ("DAISO", "Household", "shared", None),
-    ("セリア", "Household", "shared", None),
-    ("3COINS", "Household", "shared", None),
-    ("コーナン", "Household", "shared", None),
-    ("ドン・キホーテ", "Household", "shared", None),
-    ("ニトリ", "Household", "shared", None),
-    ("クロネコヤマト", "Household", "shared", None),
-    ("日本郵便", "Household", "shared", None),
+    ("ダイソー", "Household", "shared"),
+    ("DAISO", "Household", "shared"),
+    ("セリア", "Household", "shared"),
+    ("3COINS", "Household", "shared"),
+    ("コーナン", "Household", "shared"),
+    ("ドン・キホーテ", "Household", "shared"),
+    ("ニトリ", "Household", "shared"),
+    ("クロネコヤマト", "Household", "shared"),
+    ("日本郵便", "Household", "shared"),
     # -- shopping ------------------------------------------------------------
-    ("ユニクロ", "Shopping", "shared", None),
-    ("UNIQLO", "Shopping", "shared", None),
-    ("ジーユー", "Shopping", "shared", None),
-    ("エービーシーマート", "Shopping", "shared", None),
-    ("OWNDAYS", "Shopping", "shared", None),
-    ("ソフマップ", "Shopping", "shared", None),
-    ("BOOKOFF", "Shopping", "shared", None),
-    ("ブックスタマ", "Shopping", "shared", None),
-    ("NOMA BOOKS", "Shopping", "shared", None),
-    ("ホビーオフ", "Shopping", "shared", None),
-    ("モンベル", "Shopping", "shared", None),
-    ("アンドレザー", "Shopping", "shared", None),
-    ("やまよ", "Shopping", "shared", None),
-    ("ウィットスポーツ", "Shopping", "shared", None),
-    ("イオンモール", "Shopping", "shared", None),
-    ("五反田東急スクエア", "Shopping", "shared", None),
-    ("スクランブルスクエア", "Shopping", "shared", None),
-    ("渋谷ストリーム", "Shopping", "shared", None),
-    ("コクミン", "Shopping", "shared", None),
+    ("ユニクロ", "Shopping", "shared"),
+    ("UNIQLO", "Shopping", "shared"),
+    ("ジーユー", "Shopping", "shared"),
+    ("エービーシーマート", "Shopping", "shared"),
+    ("OWNDAYS", "Shopping", "shared"),
+    ("ソフマップ", "Shopping", "shared"),
+    ("BOOKOFF", "Shopping", "shared"),
+    ("ブックスタマ", "Shopping", "shared"),
+    ("NOMA BOOKS", "Shopping", "shared"),
+    ("ホビーオフ", "Shopping", "shared"),
+    ("モンベル", "Shopping", "shared"),
+    ("アンドレザー", "Shopping", "shared"),
+    ("やまよ", "Shopping", "shared"),
+    ("ウィットスポーツ", "Shopping", "shared"),
+    ("イオンモール", "Shopping", "shared"),
+    ("五反田東急スクエア", "Shopping", "shared"),
+    ("スクランブルスクエア", "Shopping", "shared"),
+    ("渋谷ストリーム", "Shopping", "shared"),
+    ("コクミン", "Shopping", "shared"),
     # -- travel --------------------------------------------------------------
-    ("DELTA AIR", "Travel", "shared", None),
-    ("成田国際空港", "Travel", "shared", None),
-    ("羽田空港", "Travel", "shared", None),
-    ("東急ハーヴェストクラブ", "Travel", "shared", None),
-    ("ホテル天坊", "Travel", "shared", None),
-    ("赤倉観光ホテル", "Travel", "shared", None),
-    ("スキージョウ", "Travel", "shared", None),
-    ("サービスエリア", "Travel", "shared", None),
-    ("パーキングエリア", "Travel", "shared", None),
-    ("双葉SA", "Travel", "shared", None),
-    ("道の駅", "Travel", "shared", None),
-    ("食の駅", "Travel", "shared", None),
-    ("国営昭和記念公園", "Travel", "shared", None),
-    ("ケンバイキ", "Travel", "shared", None),
-    ("新江ノ島水族館", "Travel", "shared", None),
-    ("クロスステーション", "Travel", "shared", None),
+    ("DELTA AIR", "Travel", "shared"),
+    ("成田国際空港", "Travel", "shared"),
+    ("羽田空港", "Travel", "shared"),
+    ("東急ハーヴェストクラブ", "Travel", "shared"),
+    ("ホテル天坊", "Travel", "shared"),
+    ("赤倉観光ホテル", "Travel", "shared"),
+    ("スキージョウ", "Travel", "shared"),
+    ("サービスエリア", "Travel", "shared"),
+    ("パーキングエリア", "Travel", "shared"),
+    ("双葉SA", "Travel", "shared"),
+    ("道の駅", "Travel", "shared"),
+    ("食の駅", "Travel", "shared"),
+    ("国営昭和記念公園", "Travel", "shared"),
+    ("ケンバイキ", "Travel", "shared"),
+    ("新江ノ島水族館", "Travel", "shared"),
+    ("クロスステーション", "Travel", "shared"),
     # -- dining --------------------------------------------------------------
-    ("とんかつ神楽坂さくら", "Dining", "shared", None),
-    ("はま寿司", "Dining", "shared", None),
-    ("スシロー", "Dining", "shared", None),
-    ("くら寿司", "Dining", "shared", None),
-    ("KURA戸越", "Dining", "shared", None),
-    ("焼肉ライク", "Dining", "shared", None),
-    ("リンガーハット", "Dining", "shared", None),
-    ("マクドナルド", "Dining", "shared", None),
-    ("MCDONALDS", "Dining", "shared", None),
-    ("七宝麻辣湯", "Dining", "shared", None),
-    ("麻辣先生", "Dining", "shared", None),
-    ("大戸屋", "Dining", "shared", None),
-    ("味四川", "Dining", "shared", None),
-    ("中国料理百番", "Dining", "shared", None),
-    ("ダイニー", "Dining", "shared", None),
-    ("ヨプトッポッキ", "Dining", "shared", None),
-    ("一芳", "Dining", "shared", None),
-    ("大久保園", "Dining", "shared", None),
-    ("ちゃんこ江戸沢", "Dining", "shared", None),
-    ("東京ソラマチ", "Dining", "shared", None),
-    ("銀だこ", "Dining", "shared", None),
-    ("チェゴヤ", "Dining", "shared", None),
-    ("魚がし日本一", "Dining", "shared", None),
-    ("KOLLABO", "Dining", "shared", None),
-    ("しんぱち食堂", "Dining", "shared", None),
-    ("ダンダダン", "Dining", "shared", None),
-    ("台湾甜商店", "Dining", "shared", None),
-    ("東京豆漿生活", "Dining", "shared", None),
-    ("香家", "Dining", "shared", None),
-    ("KITADE TACOS", "Dining", "shared", None),
-    ("GUZMAN Y GOMEZ", "Dining", "shared", None),
-    ("カオマンガイ", "Dining", "shared", None),
-    ("SAIGON PAN", "Dining", "shared", None),
-    ("ジェラート", "Dining", "shared", None),
-    ("五代目花山うどん", "Dining", "shared", None),
-    ("さわやか", "Dining", "shared", None),
-    ("松の家", "Dining", "shared", None),
-    ("らっか家", "Dining", "shared", None),
-    ("大澤屋", "Dining", "shared", None),
-    ("ぷるりん", "Dining", "shared", None),
-    ("THE DEN", "Dining", "shared", None),
-    ("SUPER RAW", "Dining", "shared", None),
-    ("HEY'S DINER", "Dining", "shared", None),
-    ("GRASS HOUSE", "Dining", "shared", None),
-    ("SEA BIRDS CAFE", "Dining", "shared", None),
-    ("回転寿司", "Dining", "shared", None),
-    ("燻製工房", "Dining", "shared", None),
-    ("ナマステ", "Dining", "shared", None),
-    ("PIKE PLACE CHOWDER", "Dining", "shared", None),
-    ("BREADANDCOFFEE", "Dining", "shared", None),
-    ("サンマルクカフェ", "Dining", "shared", None),
-    ("サンマルクカフェ", "Dining", "shared", None),
-    ("SANMARUKUKAFUE", "Dining", "shared", None),
-    ("コージーコーナー", "Dining", "shared", None),
-    ("カツマタ", "Dining", "shared", None),
-    ("MAHALO", "Dining", "shared", None),
-    ("スイーツバンク", "Dining", "shared", None),
-    ("麦の家", "Dining", "shared", None),
-    ("サニーヒルズ", "Dining", "shared", None),
-    ("SQUARE", "Dining", "shared", None),
-    ("花エリカ", "Other", "shared", None),
-    ("GEIHINKAN", "Wedding", "shared", None),
-    ("SQ*PASO", "Other", "shared", None),
-    ("株式会社トムス", "Other", "shared", None),
-    ("クロスステーショ", "Groceries", "shared", None),
-    ("チイキセンタ", "Other", "shared", None),
+    ("とんかつ神楽坂さくら", "Dining", "shared"),
+    ("はま寿司", "Dining", "shared"),
+    ("スシロー", "Dining", "shared"),
+    ("くら寿司", "Dining", "shared"),
+    ("KURA戸越", "Dining", "shared"),
+    ("焼肉ライク", "Dining", "shared"),
+    ("リンガーハット", "Dining", "shared"),
+    ("マクドナルド", "Dining", "shared"),
+    ("MCDONALDS", "Dining", "shared"),
+    ("七宝麻辣湯", "Dining", "shared"),
+    ("麻辣先生", "Dining", "shared"),
+    ("大戸屋", "Dining", "shared"),
+    ("味四川", "Dining", "shared"),
+    ("中国料理百番", "Dining", "shared"),
+    ("ダイニー", "Dining", "shared"),
+    ("ヨプトッポッキ", "Dining", "shared"),
+    ("一芳", "Dining", "shared"),
+    ("大久保園", "Dining", "shared"),
+    ("ちゃんこ江戸沢", "Dining", "shared"),
+    ("東京ソラマチ", "Dining", "shared"),
+    ("銀だこ", "Dining", "shared"),
+    ("チェゴヤ", "Dining", "shared"),
+    ("魚がし日本一", "Dining", "shared"),
+    ("KOLLABO", "Dining", "shared"),
+    ("しんぱち食堂", "Dining", "shared"),
+    ("ダンダダン", "Dining", "shared"),
+    ("台湾甜商店", "Dining", "shared"),
+    ("東京豆漿生活", "Dining", "shared"),
+    ("香家", "Dining", "shared"),
+    ("KITADE TACOS", "Dining", "shared"),
+    ("GUZMAN Y GOMEZ", "Dining", "shared"),
+    ("カオマンガイ", "Dining", "shared"),
+    ("SAIGON PAN", "Dining", "shared"),
+    ("ジェラート", "Dining", "shared"),
+    ("五代目花山うどん", "Dining", "shared"),
+    ("さわやか", "Dining", "shared"),
+    ("松の家", "Dining", "shared"),
+    ("らっか家", "Dining", "shared"),
+    ("大澤屋", "Dining", "shared"),
+    ("ぷるりん", "Dining", "shared"),
+    ("THE DEN", "Dining", "shared"),
+    ("SUPER RAW", "Dining", "shared"),
+    ("HEY'S DINER", "Dining", "shared"),
+    ("GRASS HOUSE", "Dining", "shared"),
+    ("SEA BIRDS CAFE", "Dining", "shared"),
+    ("回転寿司", "Dining", "shared"),
+    ("燻製工房", "Dining", "shared"),
+    ("ナマステ", "Dining", "shared"),
+    ("PIKE PLACE CHOWDER", "Dining", "shared"),
+    ("BREADANDCOFFEE", "Dining", "shared"),
+    ("サンマルクカフェ", "Dining", "shared"),
+    ("サンマルクカフェ", "Dining", "shared"),
+    ("SANMARUKUKAFUE", "Dining", "shared"),
+    ("コージーコーナー", "Dining", "shared"),
+    ("カツマタ", "Dining", "shared"),
+    ("MAHALO", "Dining", "shared"),
+    ("スイーツバンク", "Dining", "shared"),
+    ("麦の家", "Dining", "shared"),
+    ("サニーヒルズ", "Dining", "shared"),
+    ("SQUARE", "Dining", "shared"),
+    ("花エリカ", "Other", "shared"),
+    ("GEIHINKAN", "Wedding", "shared"),
+    ("SQ*PASO", "Other", "shared"),
+    ("株式会社トムス", "Other", "shared"),
+    ("クロスステーショ", "Groceries", "shared"),
+    ("チイキセンタ", "Other", "shared"),
     # -- last resort: shape of the name, not the name ------------------------
-    ("薬局", "Health", "shared", None),
-    ("ドラッグ", "Health", "shared", None),
-    ("スーパー", "Groceries", "shared", None),
-    ("青果", "Groceries", "shared", None),
-    ("ストア", "Groceries", "shared", None),
-    ("マート", "Groceries", "shared", None),
-    ("寿司", "Dining", "shared", None),
-    ("ラーメン", "Dining", "shared", None),
-    ("うどん", "Dining", "shared", None),
-    ("食堂", "Dining", "shared", None),
-    ("居酒屋", "Dining", "shared", None),
-    ("レストラン", "Dining", "shared", None),
-    ("カフェ", "Dining", "shared", None),
-    ("CAFE", "Dining", "shared", None),
-    ("ベーカリー", "Dining", "shared", None),
-    ("ホテル", "Travel", "shared", None),
+    ("薬局", "Health", "shared"),
+    ("ドラッグ", "Health", "shared"),
+    ("スーパー", "Groceries", "shared"),
+    ("青果", "Groceries", "shared"),
+    ("ストア", "Groceries", "shared"),
+    ("マート", "Groceries", "shared"),
+    ("寿司", "Dining", "shared"),
+    ("ラーメン", "Dining", "shared"),
+    ("うどん", "Dining", "shared"),
+    ("食堂", "Dining", "shared"),
+    ("居酒屋", "Dining", "shared"),
+    ("レストラン", "Dining", "shared"),
+    ("カフェ", "Dining", "shared"),
+    ("CAFE", "Dining", "shared"),
+    ("ベーカリー", "Dining", "shared"),
+    ("ホテル", "Travel", "shared"),
 ]
 
 # Whatever matched nothing at all.
-FALLBACK = ("Other", "shared", None)
+FALLBACK = ("Other", "shared")
 
 
 # Fixed so re-running the script produces the same ids: a second import of the
@@ -425,9 +431,9 @@ def parse_line(line: str, line_no: int) -> Txn | None:
     return Txn(line_no, line, date, description, credit, debit, balance, note)
 
 
-def classify(txn: Txn) -> tuple[str | None, str, str | None, bool]:
+def classify(txn: Txn) -> tuple[str | None, str, bool]:
     """
-    (category, mode, label, matched) for a transaction. Never guesses silently.
+    (category, mode, matched) for a transaction. Never guesses silently.
 
     Three passes, in this order:
 
@@ -447,14 +453,14 @@ def classify(txn: Txn) -> tuple[str | None, str, str | None, bool]:
     matched" is the line in the summary that tells you to write a new one.
     """
     with_note = loose(txn.description + " " + txn.note)
-    for pattern, category, mode, label in LOOSE_RULES:
+    for pattern, category, mode in LOOSE_RULES:
         if mode == "skip" and pattern in with_note:
-            return category, mode, label, True
+            return category, mode, True
 
     for key in (loose(txn.description), with_note):
-        for pattern, category, mode, label in LOOSE_RULES:
+        for pattern, category, mode in LOOSE_RULES:
             if pattern in key:
-                return category, mode, label, True
+                return category, mode, True
 
     return (*FALLBACK, False)
 
@@ -563,7 +569,7 @@ def main() -> int:
     emitted: list[tuple[Txn, str, int, float, str]] = []  # txn, type, amount, share, category
 
     for txn in debits:
-        category, mode, label, matched = classify(txn)
+        category, mode, matched = classify(txn)
         if mode == "skip":
             skipped[txn.description].append(txn)
             continue
@@ -578,7 +584,9 @@ def main() -> int:
             share = {"personal": 1.0, "even": 0.5}.get(mode, args.share)
             category_out = category or "Other"
 
-        description = label or txn.description
+        # The bank's own text, and the note only when it adds something the name
+        # does not already say.
+        description = txn.description
         if txn.note and loose(txn.note) not in loose(description):
             description = f"{description} · {txn.note}"
 
