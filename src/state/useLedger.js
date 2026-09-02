@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { mergeConfig } from '../config.js'
 import { i18nError } from '../i18n/index.js'
+import { tabOf } from '../schema.js'
 import * as sheets from '../lib/sheets.js'
 import {
   acknowledge,
@@ -10,7 +11,7 @@ import {
   hasPendingWrite,
   looksUninitialized,
   mergeLoaded,
-  missingExpenseGid,
+  missingDataGid,
   reverted,
   settled,
   shouldRefresh,
@@ -33,8 +34,8 @@ const EMPTY_EXTRAS = {
   supersededRows: 0,
   undecodedRows: 0,
   undatedRows: 0,
+  unattributedRows: 0,
   configMissing: false,
-  currencyDefaulted: false,
 }
 
 /**
@@ -67,10 +68,11 @@ export function useLedger(spreadsheetId) {
   const [status, setStatus] = useState(() => (seed ? 'stale' : 'idle'))
   const [error, setError] = useState(null)
   /**
-   * What the last read found in the sheet and could not put in `entries`:
-   * tombstones `reconcileById` hid behind a live row, and rows whose amount is
-   * unreadable. Both are things the person needs told about, and neither can be
-   * recovered from the entry list, because being absent from it is the point.
+   * What the last read found in the sheet and could not put in `entries`: tombstones
+   * `reconcileById` hid behind a live row, rows whose amount is unreadable, rows with no
+   * real date, and settlements whose payer cell names neither person. All of them are
+   * things the person needs told about, and none can be recovered from the entry list,
+   * because being absent from it is the point.
    */
   const [sheetExtras, setSheetExtras] = useState(EMPTY_EXTRAS)
 
@@ -112,10 +114,6 @@ export function useLedger(spreadsheetId) {
 
   const applyLoad = useCallback((data) => {
     setEntries((current) => mergeLoaded(current, data.entries ?? []))
-    // Config before amounts, always: the balance and the month totals format
-    // at `config.currency`, so entries seeded against a stale currency render
-    // at the wrong scale. Same ordering rule as `loadAll`.
-    //
     // Kept as the SAME object when the tab said the same thing, because the config's
     // identity is what every `memo` keyed on it compares — a fresh but equal one
     // re-renders the whole ledger on a resume that changed nothing. `mergeConfig`
@@ -127,8 +125,8 @@ export function useLedger(spreadsheetId) {
       supersededRows: data.supersededRows,
       undecodedRows: data.undecodedRows,
       undatedRows: data.undatedRows,
+      unattributedRows: data.unattributedRows,
       configMissing: data.configMissing,
-      currencyDefaulted: data.currencyDefaulted,
     })
     setError(null)
     setStatus('ready')
@@ -319,7 +317,7 @@ export function useLedger(spreadsheetId) {
 
       setEntries((current) => withPendingDeletedAt(current, id, deletedAt))
       try {
-        await sheets.setDeletedAt(spreadsheetId, previous.payer, id, deletedAt)
+        await sheets.setDeletedAt(spreadsheetId, tabOf(previous), id, deletedAt)
         setEntries((current) => settled(current, id))
       } catch (cause) {
         setEntries((current) => reverted(current, id, previous))
@@ -339,14 +337,14 @@ export function useLedger(spreadsheetId) {
     const refusal = compactRefusal(entriesRef.current, sheetExtras.supersededRows)
     if (refusal) return refusal
 
-    // Read the gids, never `ensureStructure`: that path writes, and it would seed a
-    // deleted config tab with the default currency — silently taking away the notice
-    // that said the sheet's own currency was unknown. `values.batchGet` cannot carry a
+    // Read the gids, never `ensureStructure`: that path writes, and it would re-seed a
+    // deleted config tab with this build's defaults — silently taking away the notice
+    // that said the sheet's own values were unknown. `values.batchGet` cannot carry a
     // gid, so this read is unavoidable and happens every time.
     const gids = await sheets.readSheetGids(spreadsheetId)
     // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab
     // it cannot name, which is right for it and wrong to leave unsaid here.
-    if (missingExpenseGid(gids)) throw i18nError('error.missingTabs')
+    if (missingDataGid(gids)) throw i18nError('error.missingTabs')
 
     const result = await sheets.compact(spreadsheetId, gids)
     await refresh()

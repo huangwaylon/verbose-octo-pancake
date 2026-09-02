@@ -1,8 +1,8 @@
-import { EntryAmount } from './EntryAmount.jsx'
+import { useMoney } from '../i18n/index.js'
 
 /**
- * One line in an entry list: the description and its meta line, the amount at the
- * entry's own currency, and one trailing control.
+ * One line in an entry list: the description and its meta line, the amount, and one
+ * trailing control.
  *
  * Both lists render this — the month's and the deleted one — and what they disagree
  * about is whether the left side is a control. That difference is load-bearing rather
@@ -16,7 +16,6 @@ import { EntryAmount } from './EntryAmount.jsx'
  */
 export function EntryLine({
   entry,
-  currency,
   description,
   meta,
   icon = null,
@@ -24,6 +23,9 @@ export function EntryLine({
   onOpen,
   children,
 }) {
+  // Safe inside the memoised row components: `useMoney`'s identity only changes with
+  // the language.
+  const money = useMoney()
   const className = `entry${settlement ? ' entry--settlement' : ''}${
     entry.pending ? ' entry--pending' : ''
   }`
@@ -47,7 +49,7 @@ export function EntryLine({
       ) : (
         <span className="entry__main">{body}</span>
       )}
-      <EntryAmount entry={entry} currency={currency} />
+      <span className="entry__amount tnum">{money(entry.amountYen)}</span>
       {children}
     </li>
   )

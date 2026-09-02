@@ -9,12 +9,12 @@
 
 import { DEFAULT_CONFIG } from '../config.js'
 import { cellText } from '../schema.js'
-import { normalizeCurrency, parseShare } from './money.js'
+import { parseShare } from './money.js'
 
 /**
  * Sheet key <-> config field, plus how to read the value. One list so the two
- * directions cannot drift. `list`, `fraction` and `code` values are not plain
- * strings, so they need explicit parsers; everything else is text.
+ * directions cannot drift. `list` and `fraction` values are not plain strings, so
+ * they need explicit parsers; everything else is text.
  *
  * There are deliberately no email keys. The access token belongs to the account
  * that owns the sheet rather than to either person, so nothing can produce an
@@ -24,7 +24,6 @@ import { normalizeCurrency, parseShare } from './money.js'
 const CONFIG_FIELDS = [
   ['person1_name', 'person1Name', 'text'],
   ['person2_name', 'person2Name', 'text'],
-  ['currency', 'currency', 'code'],
   ['categories', 'categories', 'list'],
   ['default_split_p1', 'defaultSplitP1', 'fraction'],
   ['default_split_p2', 'defaultSplitP2', 'fraction'],
@@ -37,7 +36,6 @@ const BY_KEY = new Map(CONFIG_FIELDS.map(([key, field, kind]) => [key, { field, 
 /** Each kind answers null for a value it cannot use, so the default wins. */
 const PARSERS = {
   text: (value) => value,
-  code: (value) => normalizeCurrency(value) || null,
   fraction: parseShare,
   list: (value) => {
     const list = value
@@ -55,9 +53,9 @@ const PARSERS = {
  *
  * A key that is absent, or present with a blank or unparseable value, is omitted
  * so the caller's defaults win. The FIRST usable value for a key wins: a tab where
- * someone added `currency, USD` at the top and forgot an old `currency, JPY` lower
- * down would otherwise run the whole sheet at JPY, which is a 100x error on every
- * row with a blank currency cell.
+ * someone added `default_split_p1, 80` at the top and forgot an old
+ * `default_split_p1, 50` lower down would otherwise run the whole sheet at the even
+ * split, moving money on every expense that person paid for.
  */
 export function parseConfigRows(rows) {
   const parsed = {}

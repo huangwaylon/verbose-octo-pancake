@@ -43,21 +43,23 @@ const config = {
 const noop = () => {}
 
 /**
- * The shared expense in USD, which is the currency every markup assertion below is
- * written in. The amounts stay at the call sites: the figures in the assertions —
- * $42.10, the $83.59 month total, the $0.70 balance — are derived from them.
+ * The shared expense. Amounts stay at the call sites: every figure in the assertions
+ * below — ¥4,210, the ¥8,359 month total, the ¥70 balance — is derived from them.
+ *
+ * `en` renders the halfwidth ¥; `ja` renders fullwidth ￥. These render at the default
+ * locale, so halfwidth is what the markup carries.
  */
 const entry = (overrides) =>
-  expense({ date: '2026-08-04', currency: 'USD', now: '2026-08-04T10:00:00.000Z', ...overrides })
+  expense({ date: '2026-08-04', now: '2026-08-04T10:00:00.000Z', ...overrides })
 
 const entries = [
-  entry({ id: 'a', amountCents: 4210, category: 'Groceries', description: "Trader Joe's" }),
-  entry({ id: 'b', amountCents: 2350, category: 'Dining', payer: PERSON.P2, date: '2026-08-03' }),
-  entry({ id: 'c', amountCents: 1799, category: 'Household', payerShare: 1 }),
+  entry({ id: 'a', amountYen: 4210, category: 'Groceries', description: "Trader Joe's" }),
+  entry({ id: 'b', amountYen: 2350, category: 'Dining', payer: PERSON.P2, date: '2026-08-03' }),
+  entry({ id: 'c', amountYen: 1799, category: 'Household', payerShare: 1 }),
   entry({
     id: 'd',
     type: ENTRY_TYPE.SETTLEMENT,
-    amountCents: 1000,
+    amountYen: 1000,
     payerShare: 0,
     payer: PERSON.P2,
     category: '',
@@ -151,7 +153,6 @@ describe('the header carries the balance', () => {
         balance={computeBalance(entries)}
         config={config}
         me={PERSON.P1}
-        currency="USD"
         onRefresh={noop}
         onOpenSettings={noop}
         {...props}
@@ -170,36 +171,25 @@ describe('the header carries the balance', () => {
   })
 
   it('speaks the whole fact once: named on the heading, hidden on the line below', () => {
-    // The visible composition is digits in spans; a heading that reads "$0.70" says
+    // The visible composition is digits in spans; a heading that reads "¥70" says
     // nothing in a screen reader's heading list, and read span by span it announces
-    // as "dollar zero point seven zero". The visible copy of the sentence is then
-    // hidden, or it is announced twice over. The span assertions are what stop the
-    // whole composition collapsing to a flat string, which every other check here
-    // would survive.
+    // as "yen seven zero". The visible copy of the sentence is then hidden, or it is
+    // announced twice over. The span assertion is what stops the whole composition
+    // collapsing to a flat string, which every other check here would survive.
     const markup = render()
-    expect(markup).toContain('<h1 class="balance__amount" aria-label="You owe Sam $0.70">')
+    expect(markup).toContain('<h1 class="balance__amount" aria-label="You owe Sam ¥70">')
     expect(markup).toContain('<p class="balance__direction" aria-hidden="true">You owe Sam</p>')
-    expect(markup).toContain('<span class="balance__symbol">$</span>')
-    expect(markup).toContain('<span class="balance__fraction">.</span>')
-  })
-
-  it('names the heading even for a currency it cannot compose', () => {
-    // An unusable code from the config tab makes `formatCentsParts` answer null.
-    // Asserted on the heading's own content, not just its name: the fallback painting
-    // nothing leaves a valid `aria-label` above an empty hero.
-    const markup = render({ currency: '' })
-    expect(markup).toMatch(/aria-label="You owe Sam [^"]+"/)
-    expect(markup).toContain('">0.70</h1>')
+    expect(markup).toContain('<span class="balance__symbol">¥</span>')
   })
 
   it('says settled when nothing is owed, with no figure at all', () => {
     const markup = render({
-      balance: { netCents: 0, debtor: null, creditor: null, amountCents: 0 },
+      balance: { netYen: 0, debtor: null, creditor: null, amountYen: 0 },
     })
     expect(markup).toContain('All settled up')
     // Not `not.toContain('You owe')`: with a null debtor the non-settled branch reads
-    // "Alex owes you $0.00", so only the absent currency catches losing the branch.
-    expect(markup).not.toContain('$')
+    // "Alex owes you ¥0", so only the absent symbol catches losing the branch.
+    expect(markup).not.toContain('¥')
   })
 
   // Settling happens by wire transfer outside the app, so the balance carries no
@@ -232,7 +222,6 @@ describe('summary card renders', () => {
         byPerson={spendByPerson(entries)}
         config={config}
         me={PERSON.P1}
-        currency="USD"
       />,
     )
     expect(markup).toContain('Groceries')
@@ -241,9 +230,9 @@ describe('summary card renders', () => {
     expect(markup).toContain('You paid')
     // The settlement must not be counted as spending. Asserted as the total that
     // is right and the total that would be wrong: the fixture's settlement is
-    // $10.00, so a "not $100.00" check passes either way and proves nothing.
-    expect(markup).toContain('$83.59')
-    expect(markup).not.toContain('$93.59')
+    // ¥1,000, so a "not ¥9,359" check has to name the settlement-inclusive figure.
+    expect(markup).toContain('¥8,359')
+    expect(markup).not.toContain('¥9,359')
   })
 
   it('renders nothing at all for a month with no spend', () => {
@@ -254,7 +243,6 @@ describe('summary card renders', () => {
         byPerson={{ p1: 0, p2: 0 }}
         config={config}
         me={PERSON.P1}
-        currency="USD"
       />,
     )
     expect(markup).toBe('')
@@ -268,25 +256,23 @@ describe('entry list renders', () => {
         groups={groupByDate(entries)}
         config={config}
         me={PERSON.P1}
-        currency="USD"
         onEdit={noop}
         onDelete={noop}
       />,
     )
     expect(markup).toContain('Trader Joe&#x27;s') // React escapes the apostrophe
     expect(markup).toContain('Settled up')
-    expect(markup).toContain('$42.10')
-    expect(markup).toContain('$23.50')
+    expect(markup).toContain('¥4,210')
+    expect(markup).toContain('¥2,350')
   })
 
   it('labels a one-person expense rather than implying it was split', () => {
-    const solo = [entry({ id: 'solo', amountCents: 900, category: 'Household', payerShare: 1 })]
+    const solo = [entry({ id: 'solo', amountYen: 900, category: 'Household', payerShare: 1 })]
     const markup = renderToStaticMarkup(
       <EntryList
         groups={groupByDate(solo)}
         config={config}
         me={PERSON.P1}
-        currency="USD"
         onEdit={noop}
         onDelete={noop}
       />,
@@ -299,14 +285,7 @@ describe('entry list renders', () => {
     // named accent buttons on one screen read as two different actions, and in a
     // screen reader's control list they are indistinguishable.
     const markup = renderToStaticMarkup(
-      <EntryList
-        groups={[]}
-        config={config}
-        me={PERSON.P1}
-        currency="USD"
-        onEdit={noop}
-        onDelete={noop}
-      />,
+      <EntryList groups={[]} config={config} me={PERSON.P1} onEdit={noop} onDelete={noop} />,
     )
     expect(markup).toContain('Nothing logged this month')
     expect(markup).toContain('Add a grocery run')
@@ -333,7 +312,6 @@ describe('the signed-in surface renders', () => {
     <LedgerScreen
       config={config}
       me={PERSON.P1}
-      currency="USD"
       view={view}
       monthKey="2026-08"
       notices={['Showing saved data.']}
@@ -403,7 +381,7 @@ describe('settings renders', () => {
     // The config tab's values, shown so nobody has to open the spreadsheet to
     // check what the app thinks they are.
     expect(markup).toContain('Groceries')
-    expect(markup).toContain('JPY')
+    expect(markup).toContain('Dining')
   })
 
   it('links to the spreadsheet it is actually connected to', () => {

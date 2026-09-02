@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
-import { centsToSheetString, minorDigits, parseAmountToCents, splitCents } from '../lib/money.js'
+import { parseAmountToYen, splitYen, yenToSheetString } from '../lib/money.js'
 import { ENTRY_TYPE, PEOPLE, PERSON, otherPerson } from '../schema.js'
 import { errorMessage, usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { Field, FieldError } from './Field.jsx'
@@ -25,20 +25,14 @@ import { TrashIcon } from './icons.jsx'
  * sit either side of the payer and date controls, which is why there are two
  * `!isSettlement` blocks and not one.
  */
-export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete, onClose }) {
+export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose }) {
   const { t } = useT()
   const { mode, entry } = draft
   const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
 
-  // The entry's own currency where it has one, so editing an old row keeps its
-  // scale rather than being reinterpreted at the config currency's.
-  const entryCurrency = entry.currency || currency
-  const digits = minorDigits(entryCurrency)
-  const money = useMoney(entryCurrency)
+  const money = useMoney()
 
-  const [amount, setAmount] = useState(
-    entry.amountCents ? centsToSheetString(entry.amountCents, entryCurrency) : '',
-  )
+  const [amount, setAmount] = useState(entry.amountYen ? yenToSheetString(entry.amountYen) : '')
   const [payer, setPayer] = useState(entry.payer ?? me ?? PERSON.P1)
   const [date, setDate] = useState(entry.date)
   const [category, setCategory] = useState(entry.category || config.categories[0] || '')
@@ -51,7 +45,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
   const amountInput = useRef(null)
 
   const split = useEntrySplit(entry, config, payer)
-  const cents = parseAmountToCents(amount, entryCurrency)
+  const yen = parseAmountToYen(amount)
   const payerShare = isSettlement ? 0 : split.payerShare
 
   /**
@@ -63,9 +57,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
    * shifts the field below it and re-announces itself on each keystroke.
    */
   const amountError =
-    rejected != null && amount === rejected
-      ? t('form.amountError', { example: digits ? '42.10' : '1250' })
-      : null
+    rejected != null && amount === rejected ? t('form.amountError', { example: '1250' }) : null
 
   /**
    * The stored category first, even if the config tab no longer lists it. A
@@ -83,14 +75,14 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
 
   // Two integer operations and a lookup, so it is recomputed rather than memoised;
   // every value it reads changes while the sheet is open anyway.
-  const shares = cents == null || isSettlement ? null : splitCents(cents, payerShare)
+  const shares = yen == null || isSettlement ? null : splitYen(yen, payerShare)
   const breakdown =
     shares &&
     t('form.breakdown', {
       payer: payerLabel,
-      payerAmount: money(shares.payerCents),
+      payerAmount: money(shares.payerYen),
       other: otherLabel,
-      otherAmount: money(shares.otherCents),
+      otherAmount: money(shares.otherYen),
     })
 
   async function handleSubmit(event) {
@@ -99,7 +91,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
     // not still failing, and leaving it set would put two errors on screen at once —
     // one of them describing a write this submit never attempted.
     setSaveError(null)
-    if (cents == null) {
+    if (yen == null) {
       setRejected(amount)
       // Focus follows the refusal. The error is a newly INSERTED `role="status"`,
       // which iOS announces unreliably, and the button that was pressed is at the
@@ -115,8 +107,7 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
         ...entry,
         date,
         payer,
-        amountCents: cents,
-        currency: entryCurrency,
+        amountYen: yen,
         category: isSettlement ? '' : category,
         description: description.trim(),
         payerShare,
@@ -197,10 +188,11 @@ export function EntryFormSheet({ draft, config, me, currency, onSubmit, onDelete
                a time, and proportional ones shift every glyph as the value grows. */
             className="input tnum"
             type="text"
-            /* A zero-decimal currency should get a plain numeric pad. */
-            inputMode={digits ? 'decimal' : 'numeric'}
+            /* The yen has no sub-unit, so a decimal point on the pad would only
+               invite an amount 100x wrong. */
+            inputMode="numeric"
             autoComplete="off"
-            placeholder={digits ? '0.00' : '0'}
+            placeholder={t('form.amountPlaceholder')}
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             aria-invalid={amountError ? 'true' : undefined}

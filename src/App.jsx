@@ -38,9 +38,8 @@ export default function App() {
   // owns the sheet, not to either person — so identity is this device's own choice.
   const me = identityChoice
   const config = ledger.config
-  const currency = config.currency
 
-  const view = useLedgerView(ledger.entries, currency, monthKey)
+  const view = useLedgerView(ledger.entries, monthKey)
   useInitialMonth(ledger.status, view.active, setMonthKey)
 
   const setMe = useCallback((person) => {
@@ -147,9 +146,6 @@ export default function App() {
   const notices = noticeKeys({
     status: ledger.status,
     error: ledger.error,
-    mixedCurrencies: view.mixedCurrencies,
-    // The scale amounts are being read at, so the notice can name it.
-    currency,
     ...ledger.sheetExtras,
   }).map(({ key, vars }) => t(key, vars))
 
@@ -158,7 +154,6 @@ export default function App() {
       <LedgerScreen
         config={config}
         me={me}
-        currency={currency}
         view={view}
         monthKey={monthKey}
         notices={notices}
@@ -177,7 +172,6 @@ export default function App() {
           draft={draft}
           config={config}
           me={me}
-          currency={currency}
           onSubmit={submitDraft}
           onDelete={setPendingDelete}
           onClose={() => setDraft(null)}
@@ -189,7 +183,6 @@ export default function App() {
       {pendingDelete && (
         <ConfirmDeleteSheet
           entry={pendingDelete}
-          currency={currency}
           onConfirm={() => removeEntry(pendingDelete)}
           onClose={() => setPendingDelete(null)}
         />

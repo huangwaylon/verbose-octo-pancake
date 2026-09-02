@@ -15,14 +15,21 @@ import { isPerson } from '../schema.js'
  * A drop marker, never a migration. An unrecognised version means the snapshot is
  * ignored and re-fetched, which is free — the sheet is the source of truth and
  * this is only a cache. Bump it whenever the stored shape changes.
+ *
+ * One bump covers the currency column, both timestamp columns and the settlements
+ * split, because they ship as a single deploy. Shipping any of those separately would
+ * need a bump each: `isRestorable` checks the id, amount, share and payer only, so a
+ * snapshot written by an intermediate build restores and paints one stale frame — with
+ * extra keys that defeat `sameEntry`'s key-count check — which is the whole reason the
+ * cache exists.
  */
-const VERSION = 1
+const VERSION = 2
 
 /**
- * Roughly 2000 entries. WebKit charges localStorage in UTF-16 code units, so the
- * stored cost is about twice the byte length of this string; the cap keeps a very
- * long history from silently blowing the origin's quota, since `writeStored`
- * swallows the resulting error and the app would just stay slow forever.
+ * Roughly 5,000 entries at the current row shape. WebKit charges localStorage in
+ * UTF-16 code units, so the stored cost is about twice the byte length of this string;
+ * the cap keeps a very long history from silently blowing the origin's quota, since
+ * `writeStored` swallows the resulting error and the app would just stay slow forever.
  */
 const MAX_CHARS = 800_000
 
@@ -31,8 +38,8 @@ const MAX_CHARS = 800_000
  *
  * The cache is the one input the app trusts without having decoded it through
  * `rowToEntry`, and it is restored in a `useState` initializer, so it paints during the
- * FIRST render — before any network call. `splitCents` throws on a non-numeric share and
- * `sumCents` on a non-integer amount, and those run inside `useLedgerView`'s memos, so a
+ * FIRST render — before any network call. `splitYen` throws on a non-numeric share and
+ * `sumYen` on a non-integer amount, and those run inside `useLedgerView`'s memos, so a
  * single bad row from an un-bumped `VERSION` would white-screen the app with no way in
  * to clear it. Cheaper to check here and re-fetch: the sheet is the source of truth.
  */
@@ -42,11 +49,10 @@ function isRestorable(entry) {
     typeof entry === 'object' &&
     typeof entry.id === 'string' &&
     entry.id.length > 0 &&
-    Number.isInteger(entry.amountCents) &&
+    Number.isInteger(entry.amountYen) &&
     // Not `Number(...)`: that accepts null, '' and false, all of which coerce to 0
-    // and then throw in `splitCents`, which is the crash this guard exists to stop.
+    // and then throw in `splitYen`, which is the crash this guard exists to stop.
     Number.isFinite(entry.payerShare) &&
-    typeof entry.currency === 'string' &&
     // The payer decides the SIGN of the balance, so a junk one is a wrong number
     // rather than a crash — which is worse.
     isPerson(entry.payer)

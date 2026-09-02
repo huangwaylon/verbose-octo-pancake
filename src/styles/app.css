@@ -109,9 +109,9 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Symbol and minor units recede; the integer part carries the weight. */
-.balance__symbol,
-.balance__fraction {
+/* The symbol recedes; the integer part carries the weight. The yen has no minor
+   units, so the symbol is the only recessive part Intl ever emits here. */
+.balance__symbol {
   color: var(--ink-3);
   font-size: 0.6em;
   font-weight: 500;

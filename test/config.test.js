@@ -14,29 +14,27 @@ import { PERSON } from '../src/schema.js'
 const rows = (pairs) => pairs.map(([k, v]) => [k, v])
 
 describe('text and list keys', () => {
-  it('reads names, currency and categories', () => {
+  it('reads names and categories', () => {
     const parsed = parseConfigRows(
       rows([
         ['person1_name', 'Waylon'],
         ['person2_name', 'Yuki'],
-        ['currency', 'JPY'],
         ['categories', '食費, 外食 , 日用品'],
       ]),
     )
     expect(parsed).toEqual({
       person1Name: 'Waylon',
       person2Name: 'Yuki',
-      currency: 'JPY',
       categories: ['食費', '外食', '日用品'],
     })
   })
 
   it('is case-insensitive on the key', () => {
-    expect(parseConfigRows(rows([['CURRENCY', 'USD']]))).toEqual({ currency: 'USD' })
+    expect(parseConfigRows(rows([['PERSON1_NAME', 'Waylon']]))).toEqual({ person1Name: 'Waylon' })
   })
 
   it('omits blank values so the defaults win', () => {
-    expect(parseConfigRows(rows([['currency', '   ']]))).toEqual({})
+    expect(parseConfigRows(rows([['person1_name', '   ']]))).toEqual({})
   })
 
   it('omits a list that is only separators, rather than returning an empty list', () => {
@@ -50,28 +48,13 @@ describe('text and list keys', () => {
   })
 })
 
-describe('the currency code', () => {
-  it('normalises case and padding to one spelling', () => {
-    // Everything downstream compares codes with `!==`: an entry carries whatever
-    // its cell said, so a lowercase config cell latches the mixed-currency warning
-    // on over totals that are perfectly homogeneous.
-    expect(parseConfigRows(rows([['currency', ' jpy ']]))).toEqual({ currency: 'JPY' })
-    expect(parseConfigRows(rows([['currency', 'Usd']]))).toEqual({ currency: 'USD' })
-  })
-
-  it('omits anything that is not a three-letter code, so the default wins', () => {
-    // A code decides the minor-unit scale, and an unrecognised one silently
-    // answers 2 digits — a 100x error on a yen sheet.
-    for (const value of ['JP', 'YENS', '¥', '123', 'JP¥']) {
-      expect(parseConfigRows(rows([['currency', value]]))).toEqual({})
-    }
-  })
-})
-
 describe('mergeConfig', () => {
   it('layers the sheet over the defaults, keeping unspecified keys', () => {
-    const merged = mergeConfig({ currency: 'USD' })
-    expect(merged.currency).toBe('USD')
+    // A key the defaults actually HOLD, so this tests the override rather than
+    // merely spreading an unknown one past them.
+    const merged = mergeConfig({ defaultSplitP1: 0.8 })
+    expect(merged.defaultSplitP1).toBe(0.8)
+    expect(merged.defaultSplitP2).toBe(DEFAULT_CONFIG.defaultSplitP2)
     expect(merged.categories).toEqual(DEFAULT_CONFIG.categories)
   })
 
@@ -136,7 +119,7 @@ describe('default split', () => {
   })
 
   it('omits junk rather than producing NaN', () => {
-    // NaN would reach splitCents and throw, or worse, move money incorrectly.
+    // NaN would reach splitYen and throw, or worse, move money incorrectly.
     for (const junk of ['abc', '', '-20', 'fifty']) {
       expect(p1(junk)).toBeUndefined()
     }
@@ -199,7 +182,6 @@ describe('comparing two reads of the tab', () => {
   it('answers true for two reads of an identical tab', () => {
     const pairs = [
       ['person1_name', 'Waylon'],
-      ['currency', 'USD'],
       ['categories', 'Groceries, Dining'],
       ['default_split_p1', '80'],
       ['note_presets', 'Ozeki'],
@@ -215,18 +197,18 @@ describe('comparing two reads of the tab', () => {
   })
 
   it('answers false when a value changed', () => {
-    expect(sameSheetConfig(parsed([['currency', 'USD']]), parsed([['currency', 'JPY']]))).toBe(
-      false,
-    )
+    expect(
+      sameSheetConfig(parsed([['person1_name', 'Waylon']]), parsed([['person1_name', 'Yuki']])),
+    ).toBe(false)
     expect(
       sameSheetConfig(parsed([['default_split_p1', '80']]), parsed([['default_split_p1', '20']])),
     ).toBe(false)
   })
 
   it('answers false when a key was added or removed', () => {
-    const one = parsed([['currency', 'USD']])
+    const one = parsed([['person1_name', 'Waylon']])
     const two = parsed([
-      ['currency', 'USD'],
+      ['person1_name', 'Waylon'],
       ['person2_name', 'Yuki'],
     ])
     expect(sameSheetConfig(one, two)).toBe(false)

@@ -5,7 +5,6 @@ import {
   deletedEntries,
   filterByMonth,
   groupByDate,
-  hasMixedCurrencies,
   initialMonthKey,
   spendByCategory,
   spendByPerson,
@@ -16,14 +15,14 @@ import { currentMonthKey } from '../lib/dates.js'
 /**
  * Everything the signed-in screen shows, derived from the raw ledger.
  *
- * Split out of `App` because it is the only part of it that is arithmetic: eight
- * values, all of them a pure function of the entries, the sheet's currency and
- * which month is on screen. `App` is then just gates, sheets and layout.
+ * Split out of `App` because it is the only part of it that is arithmetic: seven
+ * values, all of them a pure function of the entries and which month is on screen.
+ * `App` is then just gates, sheets and layout.
  *
  * Memoised in a chain — `active` feeds the balance, `monthEntries` feeds the four
  * month figures — so typing in a form re-runs none of it.
  */
-export function useLedgerView(entries, currency, monthKey) {
+export function useLedgerView(entries, monthKey) {
   const active = useMemo(() => entries.filter(isActive), [entries])
   const monthEntries = useMemo(() => filterByMonth(active, monthKey), [active, monthKey])
 
@@ -37,7 +36,6 @@ export function useLedgerView(entries, currency, monthKey) {
     monthSpend: useMemo(() => totalSpend(monthEntries), [monthEntries]),
     byCategory: useMemo(() => spendByCategory(monthEntries), [monthEntries]),
     byPerson: useMemo(() => spendByPerson(monthEntries), [monthEntries]),
-    mixedCurrencies: useMemo(() => hasMixedCurrencies(active, currency), [active, currency]),
   }
 }
 

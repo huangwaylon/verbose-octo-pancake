@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { ENTRY_ERROR, ENTRY_TYPE, PERSON, expensesTab, isPerson } from '../src/schema.js'
-import { expense, tombstone, FIXED_NOW as NOW } from './support/entries.js'
+import { DATA_TABS, ENTRY_ERROR, ENTRY_TYPE, PERSON, isPerson } from '../src/schema.js'
+import { expense, tombstone } from './support/entries.js'
 import {
   gateFor,
   acknowledge,
@@ -11,7 +11,7 @@ import {
   hasPendingWrite,
   looksUninitialized,
   mergeLoaded,
-  missingExpenseGid,
+  missingDataGid,
   newDraftEntry,
   noticeKeys,
   reconcileById,
@@ -66,13 +66,10 @@ describe('mergeLoaded', () => {
       type: 'settlement',
       date: '2026-08-04',
       payer: 'p2',
-      amountCents: 1251,
-      currency: 'USD',
+      amountYen: 1251,
       category: 'Dining',
       description: 'theirs',
       payerShare: 1,
-      createdAt: '2026-08-01T00:00:00.000Z',
-      updatedAt: '2026-08-07T00:00:00.000Z',
       deletedAt: '2026-08-07T00:00:00.000Z',
     }
     // Every field but the id, which is what the two rows are matched BY.
@@ -136,11 +133,11 @@ describe('mergeLoaded', () => {
 
   it('does not roll back an edit that is still in flight', () => {
     const editing = withPendingEdit(
-      [entry('a', { amountCents: 1000 })],
-      entry('a', { amountCents: 9000 }),
+      [entry('a', { amountYen: 1000 })],
+      entry('a', { amountYen: 9000 }),
     )
-    const merged = mergeLoaded(editing, [entry('a', { amountCents: 1000 })])
-    expect(merged[0].amountCents).toBe(9000)
+    const merged = mergeLoaded(editing, [entry('a', { amountYen: 1000 })])
+    expect(merged[0].amountYen).toBe(9000)
   })
 
   it('keeps the sheet’s order, with a fresh append last', () => {
@@ -189,13 +186,13 @@ describe('an append', () => {
 })
 
 describe('an edit', () => {
-  const original = entry('a', { description: 'shop', amountCents: 1000 })
-  const edited = entry('a', { description: 'Ozeki', amountCents: 2000 })
+  const original = entry('a', { description: 'shop', amountYen: 1000 })
+  const edited = entry('a', { description: 'Ozeki', amountYen: 2000 })
 
   it('replaces the whole entry, not a patch of it', () => {
     const [next] = withPendingEdit([original], edited)
     expect(next.description).toBe('Ozeki')
-    expect(next.amountCents).toBe(2000)
+    expect(next.amountYen).toBe(2000)
     expect(next.pending).toBe(true)
   })
 
@@ -212,7 +209,7 @@ describe('an edit', () => {
     const pendingRow = withPendingEdit([original], edited)
     const [next] = reverted(pendingRow, 'a', original)
     expect(next.description).toBe('shop')
-    expect(next.amountCents).toBe(1000)
+    expect(next.amountYen).toBe(1000)
     expect(next.pending).toBeUndefined()
   })
 
@@ -365,30 +362,54 @@ describe('reconcileById', () => {
     ])
     // Both map by id, so an unreconciled list would put two of the same expense
     // on screen and count it twice in the balance.
-    expect(withPendingEdit(entries, entry('moved', { amountCents: 500 }))).toHaveLength(1)
+    expect(withPendingEdit(entries, entry('moved', { amountYen: 500 }))).toHaveLength(1)
     expect(withPendingDeletedAt(entries, 'moved', 'now')).toHaveLength(1)
   })
 
-  it('breaks a tie between two tombstones on the later edit', () => {
-    const older = dead('moved', { payer: PERSON.P1 })
-    const newer = { ...dead('moved', { payer: PERSON.P2 }), updatedAt: '2026-09-01T00:00:00.000Z' }
+  /**
+   * The tie-break is `deletedAt`, NOT array order — and array order is tab order, so
+   * the two disagree. p1's rows are all decoded before p2's, so "last seen" would keep
+   * p1's copy here regardless of when either was actually retired.
+   *
+   * Asserted both ways round for exactly that reason: the answer must follow the
+   * stamps, not the input order, and a rule that read position instead would pass one
+   * of these two and fail the other.
+   */
+  it('breaks a tie between two tombstones on the later deletion', () => {
+    const older = dead('moved', { payer: PERSON.P1, deletedAt: '2026-08-06T00:00:00.000Z' })
+    const newer = dead('moved', { payer: PERSON.P2, deletedAt: '2026-09-01T00:00:00.000Z' })
     expect(reconcileById([older, newer])[0].payer).toBe(PERSON.P2)
     expect(reconcileById([newer, older])[0].payer).toBe(PERSON.P2)
   })
 
+  /**
+   * The case the old array-order rule got backwards, spelled out: an entry created
+   * under p2, moved to p1, then deleted. p2's row was tombstoned by the MOVE and p1's
+   * by the delete, so p1's stamp is later and p1's is the copy to keep — even though
+   * p1's is the one decoded first.
+   *
+   * Getting this wrong is silent and it moves money: `deletedEntries` offers the stale
+   * pre-move copy, and restoring it revives the entry under the wrong payer, flipping
+   * the sign of its contribution to the balance.
+   */
+  it('keeps the copy retired last after a payer move and then a delete', () => {
+    const movedAway = dead('moved', { payer: PERSON.P2, deletedAt: '2026-08-06T00:00:00.000Z' })
+    const thenDeleted = dead('moved', { payer: PERSON.P1, deletedAt: '2026-08-09T00:00:00.000Z' })
+    // Decoded order: p1's tab first, exactly as `loadAll` reads them.
+    expect(reconcileById([thenDeleted, movedAway])[0].payer).toBe(PERSON.P1)
+  })
+
   it('keeps the FIRST of two tombstones stamped at the same moment', () => {
     /**
-     * `supersedes` compares timestamps with `>`, so an exact tie leaves the incumbent
-     * in place — and the incumbent is p1's row, because `loadAll` reads p1's tab
-     * first. That decides which payer `useLedger` then hands `updateEntry` as the
-     * tab the row lives in NOW, so it is a real answer rather than a don't-care: a
-     * `>=` here would name p2's tab instead, and the next edit would append into it.
-     * Two rows one second apart is a payer change and a delete in one sitting, which
-     * `updatedAt` records to the second.
+     * `supersedes` compares with `>`, so an exact tie leaves the incumbent in place —
+     * and the incumbent is p1's row, because `loadAll` reads p1's tab first. That
+     * decides which payer `useLedger` then hands `updateEntry` as the tab the row lives
+     * in NOW, so it is a real answer rather than a don't-care: a `>=` here would name
+     * p2's tab instead, and the next edit would append into it.
      */
     const first = dead('moved', { payer: PERSON.P1 })
     const second = dead('moved', { payer: PERSON.P2 })
-    expect(first.updatedAt).toBe(second.updatedAt) // the tie itself, not an accident
+    expect(first.deletedAt).toBe(second.deletedAt) // the tie itself, not an accident
     expect(reconcileById([first, second])[0].payer).toBe(PERSON.P1)
     // Stated as "the first one wins" rather than "p1 wins": reversed, the answer
     // reverses with it, which is what pins the comparison rather than the fixture.
@@ -422,17 +443,16 @@ describe('entryFromInput', () => {
     id: 'a',
     date: '2026-08-05',
     payer: PERSON.P1,
-    amountCents: 1000,
-    currency: 'JPY',
+    amountYen: 1000,
     category: 'Groceries',
   }
 
   it('returns a complete entry for valid input', () => {
-    expect(entryFromInput(input, NOW)).toMatchObject({
+    expect(entryFromInput(input)).toMatchObject({
       id: 'a',
       payer: PERSON.P1,
-      amountCents: 1000,
-      currency: 'JPY',
+      amountYen: 1000,
+      category: 'Groceries',
     })
   })
 
@@ -445,9 +465,8 @@ describe('entryFromInput', () => {
         return cause.i18nKey
       }
     }
-    expect(thrown({ amountCents: 0 })).toBe(`error.${ENTRY_ERROR.BAD_AMOUNT}`)
+    expect(thrown({ amountYen: 0 })).toBe(`error.${ENTRY_ERROR.BAD_AMOUNT}`)
     expect(thrown({ payer: 'nobody' })).toBe(`error.${ENTRY_ERROR.BAD_PAYER}`)
-    expect(thrown({ currency: '' })).toBe(`error.${ENTRY_ERROR.MISSING_CURRENCY}`)
     expect(thrown({ category: '' })).toBe(`error.${ENTRY_ERROR.MISSING_CATEGORY}`)
     expect(thrown({ date: '2026-02-31' })).toBe(`error.${ENTRY_ERROR.BAD_DATE}`)
   })
@@ -457,7 +476,7 @@ describe('entryFromInput', () => {
     // Note MISSING_ID is not among them and cannot be: `makeEntry` mints an id for
     // a new entry, so the date is the first thing a person can actually get wrong.
     try {
-      entryFromInput({ ...input, date: 'nope', amountCents: 0, payer: 'x', currency: '' })
+      entryFromInput({ ...input, date: 'nope', amountYen: 0, payer: 'x' })
       throw new Error('should have thrown')
     } catch (cause) {
       expect(cause.i18nKey).toBe(`error.${ENTRY_ERROR.BAD_DATE}`)
@@ -466,19 +485,27 @@ describe('entryFromInput', () => {
 })
 
 describe('the gids compact needs', () => {
-  it('is satisfied only when both expenses tabs have one', () => {
-    const both = { [expensesTab(PERSON.P1)]: 1, [expensesTab(PERSON.P2)]: 2 }
-    expect(missingExpenseGid(both)).toBe(false)
-    expect(missingExpenseGid({ ...both, [expensesTab(PERSON.P2)]: undefined })).toBe(true)
-    expect(missingExpenseGid({})).toBe(true)
-    expect(missingExpenseGid(undefined)).toBe(true)
+  /** A gid for every data tab, built from the same list `compact` iterates. */
+  const allGids = (over = {}) => ({
+    ...Object.fromEntries(DATA_TABS.map((tab, index) => [tab.title, index + 1])),
+    ...over,
+  })
+
+  it('is satisfied only when EVERY data tab has one', () => {
+    expect(missingDataGid(allGids())).toBe(false)
+    expect(missingDataGid({})).toBe(true)
+    expect(missingDataGid(undefined)).toBe(true)
+    // One per tab, dropped in turn: the settlements tab counts exactly as much as the
+    // two expenses ones, or `compact` silently leaves every tombstoned settlement in
+    // place while the settings count goes on offering to remove them.
+    for (const tab of DATA_TABS) {
+      expect(missingDataGid(allGids({ [tab.title]: undefined })), tab.title).toBe(true)
+    }
   })
 
   it('accepts gid 0, which is what the first tab of a new spreadsheet gets', () => {
     // A truthiness check here would ask for the gids on every compact, forever.
-    expect(missingExpenseGid({ [expensesTab(PERSON.P1)]: 0, [expensesTab(PERSON.P2)]: 1 })).toBe(
-      false,
-    )
+    expect(missingDataGid(allGids({ [DATA_TABS[0].title]: 0 }))).toBe(false)
   })
 })
 
@@ -503,25 +530,8 @@ describe('noticeKeys', () => {
     expect(keysFor({ status: 'ready', error: 'boom' })).toEqual([])
   })
 
-  it('reports a missing config tab, which silently changes the currency', () => {
+  it('reports a missing config tab, which silently changes the default split', () => {
     expect(keysFor({ configMissing: true })).toEqual(['warning.configMissing'])
-  })
-
-  it('reports a config tab that names no currency, and says which one is assumed', () => {
-    // The same silent 100x risk as a missing tab, by a different route: `configMissing`
-    // can only be set by a FAILED read, so a tab whose `currency` row was deleted reads
-    // fine and runs the whole ledger on the default.
-    expect(noticeKeys({ currencyDefaulted: true, currency: 'JPY' })).toEqual([
-      { key: 'warning.currencyDefaulted', vars: { currency: 'JPY' } },
-    ])
-  })
-
-  it('says it once when the tab is missing, in the more specific way', () => {
-    // A missing tab defaults the currency too, so both flags are true — and two notices
-    // about one cause is noise stacked over the balance.
-    expect(keysFor({ configMissing: true, currencyDefaulted: true, currency: 'JPY' })).toEqual([
-      'warning.configMissing',
-    ])
   })
 
   it('counts the rows it cannot show, and passes the count for pluralisation', () => {
@@ -534,22 +544,29 @@ describe('noticeKeys', () => {
     expect(keysFor({ undecodedRows: 0, undatedRows: 0 })).toEqual([])
   })
 
+  it('reports settlements whose payer cell names nobody', () => {
+    expect(noticeKeys({ unattributedRows: 2 })).toEqual([
+      { key: 'warning.unattributedRows', vars: { count: 2 } },
+    ])
+    expect(keysFor({ unattributedRows: 0 })).toEqual([])
+  })
+
   it('stacks worst first, because the top one is the one that gets read', () => {
     expect(
       keysFor({
         status: 'stale',
         error: 'boom',
         configMissing: true,
-        mixedCurrencies: true,
         undecodedRows: 1,
         undatedRows: 1,
+        unattributedRows: 1,
       }),
     ).toEqual([
       'warning.staleData',
       'warning.configMissing',
-      'warning.mixedCurrencies',
       'warning.undecodedRows',
       'warning.undatedRows',
+      'warning.unattributedRows',
     ])
   })
 })
@@ -620,8 +637,7 @@ describe('newDraftEntry', () => {
     // paths call, and a draft carrying no id of its own would have `makeEntry` mint a
     // fresh one on each pass through it.
     const draft = newDraftEntry(PERSON.P1)
-    const submit = () =>
-      entryFromInput({ ...draft, amountCents: 1000, currency: 'JPY', category: 'Groceries' }, NOW)
+    const submit = () => entryFromInput({ ...draft, amountYen: 1000, category: 'Groceries' })
 
     expect(submit().id).toBe(draft.id)
     expect(submit().id).toBe(draft.id)
@@ -643,12 +659,12 @@ describe('newDraftEntry', () => {
     expect(newDraftEntry(PERSON.P1).payerShare).toBe(null)
   })
 
-  it('is an expense, and claims no timestamps it has not earned', () => {
+  it('is an expense, and is not tombstoned', () => {
     const draft = newDraftEntry(PERSON.P1)
     expect(draft.type).toBe(ENTRY_TYPE.EXPENSE)
-    // Not `makeEntry`: a draft has not been saved, so it must not look saved.
-    expect(draft.createdAt).toBeUndefined()
-    expect(draft.updatedAt).toBeUndefined()
+    // `deletedAt` is the one stamp a row carries, and a new draft has never been
+    // deleted — a truthy one here would hide the entry the moment it was saved.
+    expect(draft.deletedAt).toBeUndefined()
   })
 
   it('opens on a date that is a real ISO day', () => {

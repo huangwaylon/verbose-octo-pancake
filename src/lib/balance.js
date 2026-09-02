@@ -9,14 +9,14 @@
  *      through `isActive`.
  *
  *   2. `payerShare` is the fraction of an entry the payer is responsible for
- *      themselves, so the non-payer owes `amountCents * (1 - payerShare)`.
+ *      themselves, so the non-payer owes `amountYen * (1 - payerShare)`.
  *      A settlement is simply an entry with payerShare 0: the payer handed
  *      over money and the other person is 100% responsible for it. That is why
  *      settlements need no special-case balance math anywhere below.
  */
 
 import { PERSON, ENTRY_TYPE, isActive } from '../schema.js'
-import { splitCents, sumCents } from './money.js'
+import { splitYen, sumYen } from './money.js'
 import { isMonthKey } from './dates.js'
 
 /** Where a blank category lands. Exported so the UI labels exactly this bucket. */
@@ -36,52 +36,52 @@ function hasDate(entry) {
 }
 
 /**
- * What the non-payer owes the payer for a single entry, in cents.
+ * What the non-payer owes the payer for a single entry, in yen.
  *
- * Routed through splitCents so the payer's and the other person's portions
- * always add back up to amountCents exactly.
+ * Routed through splitYen so the payer's and the other person's portions
+ * always add back up to amountYen exactly.
  *
  * @param {object} entry
- * @returns {number} integer cents (0 when the payer covered their own share)
+ * @returns {number} whole yen (0 when the payer covered their own share)
  */
-export function owedToPayerCents(entry) {
+export function owedToPayerYen(entry) {
   // Coerced because `makeEntry` is the only thing that normalises a form's
   // '0.5' into a number, and this runs over rows straight from the sheet too.
-  // Genuinely non-numeric shares still throw in splitCents rather than
+  // Genuinely non-numeric shares still throw in splitYen rather than
   // silently becoming 0 and moving money.
-  return splitCents(entry.amountCents, Number(entry.payerShare)).otherCents
+  return splitYen(entry.amountYen, Number(entry.payerShare)).otherYen
 }
 
 /**
  * The single number the whole app exists to show.
  *
- * `netCents` is signed from p1's perspective: positive means p2 owes p1.
+ * `netYen` is signed from p1's perspective: positive means p2 owes p1.
  * Expenses and settlements both flow through the same formula, so recording a
- * settlement for exactly the outstanding amount drives netCents to 0.
+ * settlement for exactly the outstanding amount drives netYen to 0.
  *
  * @param {object[]} entries
- * @returns {{netCents: number, debtor: string|null, creditor: string|null, amountCents: number}}
+ * @returns {{netYen: number, debtor: string|null, creditor: string|null, amountYen: number}}
  */
 export function computeBalance(entries) {
-  let netCents = 0
+  let netYen = 0
   for (const entry of activeEntries(entries)) {
-    const owed = owedToPayerCents(entry)
-    netCents += entry.payer === PERSON.P1 ? owed : -owed
+    const owed = owedToPayerYen(entry)
+    netYen += entry.payer === PERSON.P1 ? owed : -owed
   }
 
-  if (netCents === 0) {
-    return { netCents: 0, debtor: null, creditor: null, amountCents: 0 }
+  if (netYen === 0) {
+    return { netYen: 0, debtor: null, creditor: null, amountYen: 0 }
   }
   return {
-    netCents,
-    debtor: netCents > 0 ? PERSON.P2 : PERSON.P1,
-    creditor: netCents > 0 ? PERSON.P1 : PERSON.P2,
-    amountCents: Math.abs(netCents),
+    netYen,
+    debtor: netYen > 0 ? PERSON.P2 : PERSON.P1,
+    creditor: netYen > 0 ? PERSON.P1 : PERSON.P2,
+    amountYen: Math.abs(netYen),
   }
 }
 
 /**
- * Total money that actually left the household, in cents.
+ * Total money that actually left the household, in yen.
  *
  * Settlements are transfers BETWEEN the two people, not spending, so they
  * never appear in spend totals or category breakdowns — counting them would
@@ -91,26 +91,11 @@ export function computeBalance(entries) {
  * `spendByCategory`, which is why this takes no filters.
  *
  * @param {object[]} entries
- * @returns {number} integer cents
+ * @returns {number} whole yen
  */
 export function totalSpend(entries) {
   const expenses = activeEntries(entries).filter(isExpense)
-  return sumCents(expenses.map((entry) => entry.amountCents))
-}
-
-/**
- * Whether any entry is priced in something other than the sheet's currency.
- *
- * Aggregates sum integers across scales, which is arithmetically meaningless,
- * and there are no FX rates anywhere in this app — so the UI says so rather than
- * presenting a confident wrong total.
- *
- * @param {object[]} entries
- * @param {string} currency the sheet's configured currency
- * @returns {boolean}
- */
-export function hasMixedCurrencies(entries, currency) {
-  return activeEntries(entries).some((entry) => entry.currency && entry.currency !== currency)
+  return sumYen(expenses.map((entry) => entry.amountYen))
 }
 
 /**
@@ -118,20 +103,20 @@ export function hasMixedCurrencies(entries, currency) {
  * with no category are grouped under 'Uncategorized'.
  *
  * @param {object[]} entries
- * @returns {{category: string, totalCents: number}[]}
+ * @returns {{category: string, totalYen: number}[]}
  */
 export function spendByCategory(entries) {
   const totals = new Map()
   for (const entry of activeEntries(entries)) {
     if (!isExpense(entry)) continue
     const key = entry.category || UNCATEGORIZED
-    totals.set(key, (totals.get(key) ?? 0) + entry.amountCents)
+    totals.set(key, (totals.get(key) ?? 0) + entry.amountYen)
   }
   return (
     [...totals.entries()]
-      .map(([category, totalCents]) => ({ category, totalCents }))
+      .map(([category, totalYen]) => ({ category, totalYen }))
       // Ties broken by name so the order is stable across reloads.
-      .sort((a, b) => b.totalCents - a.totalCents || a.category.localeCompare(b.category))
+      .sort((a, b) => b.totalYen - a.totalYen || a.category.localeCompare(b.category))
   )
 }
 
@@ -146,8 +131,8 @@ export function spendByPerson(entries) {
   const totals = { [PERSON.P1]: 0, [PERSON.P2]: 0 }
   for (const entry of activeEntries(entries)) {
     if (!isExpense(entry)) continue
-    if (entry.payer === PERSON.P2) totals[PERSON.P2] += entry.amountCents
-    else totals[PERSON.P1] += entry.amountCents
+    if (entry.payer === PERSON.P2) totals[PERSON.P2] += entry.amountYen
+    else totals[PERSON.P1] += entry.amountYen
   }
   return totals
 }
@@ -236,17 +221,23 @@ export function deletedEntries(entries, monthKey) {
 }
 
 /**
- * Entries grouped into day sections for the list view: newest day first, and
- * newest-entered first within a day.
+ * Entries grouped into day sections for the list view: newest day first, and a stable
+ * arbitrary order within a day.
  *
- * `totalCents` is the day's SPEND, so settlements are excluded from it for
+ * Within-day order is by id — arbitrary, but STABLE, and immune to the order the tabs
+ * were read in. Leaving the rows in the order they arrived would sort every one of p1's
+ * expenses above every one of p2's on the same day, and an optimistic row is appended so
+ * it would sit at the bottom of its day and then visibly jump when the next refresh
+ * returned the sheet's own order.
+ *
+ * `totalYen` is the day's SPEND, so settlements are excluded from it for
  * consistency with totalSpend — but the settlement entries themselves are
  * still listed, because the list is a ledger the user needs to see and be able
  * to tap. Entries with a blank date are kept under a '' date and sort last, so
  * a malformed row is visible and fixable rather than invisible.
  *
  * @param {object[]} entries
- * @returns {{date: string, entries: object[], totalCents: number}[]}
+ * @returns {{date: string, entries: object[], totalYen: number}[]}
  */
 export function groupByDate(entries) {
   const byDate = new Map()
@@ -259,14 +250,10 @@ export function groupByDate(entries) {
   return [...byDate.entries()]
     .map(([date, dayEntries]) => ({
       date,
-      entries: [...dayEntries].sort(
-        (a, b) =>
-          String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')) ||
-          String(b.id ?? '').localeCompare(String(a.id ?? '')),
-      ),
+      entries: [...dayEntries].sort((a, b) => String(b.id ?? '').localeCompare(String(a.id ?? ''))),
       // `totalSpend`, not a copy of it: the rule that a day's total is spend — and so
       // excludes settlements — then holds by construction rather than by agreement.
-      totalCents: totalSpend(dayEntries),
+      totalYen: totalSpend(dayEntries),
     }))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
 }

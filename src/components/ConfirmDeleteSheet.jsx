@@ -10,11 +10,9 @@ import { useEntryTitle, useMoney, useT } from '../i18n/index.js'
  * where the entry goes, because a delete someone can undo is a different
  * decision from one they cannot.
  */
-export function ConfirmDeleteSheet({ entry, currency, onConfirm, onClose }) {
+export function ConfirmDeleteSheet({ entry, onConfirm, onClose }) {
   const { t } = useT()
-  // The entry's own currency, like every other surface: a row from before a
-  // currency change is only priced correctly at its own scale.
-  const money = useMoney(entry.currency || currency)
+  const money = useMoney()
   const title = useEntryTitle(entry)
 
   return (
@@ -38,7 +36,7 @@ export function ConfirmDeleteSheet({ entry, currency, onConfirm, onClose }) {
       <p className="confirm__text">
         {t('confirm.deleteBody', {
           description: title,
-          amount: money(entry.amountCents),
+          amount: money(entry.amountYen),
         })}
       </p>
     </BottomSheet>

@@ -21,7 +21,7 @@ import { EVEN_SHARE, PERSON } from '../schema.js'
  * to 1 — only the payer's is ever read, so never mirror one from the other.
  *
  * The `Number.isFinite` guard is the last thing between an unparseable config cell
- * and `splitCents`, which moves money.
+ * and `splitYen`, which moves money.
  */
 export function defaultSplitFor(config, person) {
   const value = person === PERSON.P2 ? config?.defaultSplitP2 : config?.defaultSplitP1

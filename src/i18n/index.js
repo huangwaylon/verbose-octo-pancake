@@ -15,7 +15,7 @@
 import { useMemo, useSyncExternalStore } from 'react'
 import { STORAGE_KEYS, readStored, writeStored } from '../config.js'
 import { ENTRY_TYPE } from '../schema.js'
-import { formatCents } from '../lib/money.js'
+import { formatYen } from '../lib/money.js'
 import { nameOf } from '../lib/identity.js'
 import { CATALOGS, DEFAULT_LOCALE, SUPPORTED } from './catalogs.js'
 
@@ -268,19 +268,13 @@ export function useEntryTitle(entry) {
 }
 
 /**
- * A currency- and locale-bound money formatter, so call sites stop silently
- * inheriting the runtime locale. Pass the entry's own currency where one exists; a
- * mixed-currency sheet is only rendered correctly per row.
+ * A locale-bound money formatter, so call sites stop silently inheriting the
+ * runtime locale.
  *
- * A ".00" tail is always trimmed, because that IS the policy rather than an option:
- * every figure the app shows is in a dense list or a tight card, and the trim only
- * ever fires on a whole unit, where the cents carry nothing — including for the
- * spoken meter label, where "$50" and "$50.00" say the same thing.
+ * Stable per locale, which is what keeps it safe to call inside the `memo`ised row
+ * components: the identity only changes when the language does.
  */
-export function useMoney(currency) {
+export function useMoney() {
   const { locale } = useT()
-  return useMemo(
-    () => (cents) => formatCents(cents, currency, { locale, trimZeroCents: true }),
-    [locale, currency],
-  )
+  return useMemo(() => (yen) => formatYen(yen, { locale }), [locale])
 }

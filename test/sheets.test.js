@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { EXPENSE_COLUMNS, PERSON, columnIndex } from '../src/schema.js'
+import { DATA_TABS, PERSON, SETTLEMENTS, expenseTab } from '../src/schema.js'
 import { DEFAULT_CONFIG } from '../src/config.js'
-import { expense as entry, row } from './support/entries.js'
+import { expense as entry, row, settlement, settlementRow } from './support/entries.js'
 import {
   installSheets,
   removeSheets,
@@ -13,12 +13,10 @@ import {
 } from './support/sheets-api.js'
 
 /**
- * The Sheets layer. Four invariants live here and every one of them fails
+ * The Sheets layer. Three invariants live here and every one of them fails
  * silently: `compact` must delete bottom-up or it removes live expenses,
- * every write must be RAW or a note becomes a formula, ids must be re-resolved to
- * rows immediately before writing or a write lands on somebody else's expense, and
- * `loadAll` must resolve the config before mapping rows or a blank-currency row is
- * decoded at the wrong scale.
+ * every write must be RAW or a note becomes a formula, and ids must be re-resolved to
+ * rows immediately before writing or a write lands on somebody else's expense.
  *
  * The token is stubbed out: this file is about what gets sent to Google, not about
  * how the credential is obtained (`connection.test.js` owns that).
@@ -43,16 +41,30 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
-const GIDS = { expenses_p1: 111, expenses_p2: 222, config: 333 }
+const P1 = expenseTab(PERSON.P1)
+const P2 = expenseTab(PERSON.P2)
+
+const GIDS = { expenses_p1: 111, expenses_p2: 222, settlements: 444, config: 333 }
+
+/** Every tab a fully built ledger has, for the gid listing fixtures. */
+const ALL_TABS = [...DATA_TABS.map((tab) => tab.title), 'config']
+
+/** The four value ranges a read now asks for, in `loadAll`'s own order. */
+const FOUR_RANGES = [P1.dataRange, P2.dataRange, SETTLEMENTS.dataRange, 'config!A:B']
+
+/** A reply shaped for those four ranges: two expenses tabs, settlements, then config. */
+const ranges4 = ({ p1 = {}, p2 = {}, settlements = {}, config = {} } = {}) => ({
+  valueRanges: [p1, p2, settlements, config],
+})
 
 describe('every write is RAW', () => {
   it('never sends USER_ENTERED, on any path', async () => {
     const calls = installSheets((call) => {
-      // Checked before the row range: a batchGet's `ranges` never carry `!A2:K`
+      // Checked before the row range: a batchGet's `ranges` never carry `!A2:G`
       // (`ensureStructure` asks for header rows), but matching it first cannot go
       // wrong either way.
-      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}] }
-      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
+      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}, {}] }
+      if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
       if (call.url.includes('fields=sheets')) {
         return {
           sheets: Object.entries(GIDS).map(([title, sheetId]) => ({
@@ -65,7 +77,7 @@ describe('every write is RAW', () => {
 
     await sheets.appendEntry(SHEET, entry())
     await sheets.updateEntry(SHEET, entry(), PERSON.P1)
-    await sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', '2026-08-06T00:00:00.000Z')
+    await sheets.setDeletedAt(SHEET, P1, 'e1', '2026-08-06T00:00:00.000Z')
     await sheets.ensureStructure(SHEET)
 
     const mutating = writes(calls)
@@ -93,7 +105,7 @@ describe('resolving a row before writing to it', () => {
   it('writes to the row the sheet says, not to any cached position', async () => {
     // The id sits third in the tab, so the write must land on row 4 (header + 2).
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:K')) {
+      if (call.url.includes('!A2:G')) {
         return values([row({ id: 'other-1' }), row({ id: 'other-2' }), row({ id: 'e1' })])
       }
       return {}
@@ -105,33 +117,33 @@ describe('resolving a row before writing to it', () => {
     expect(read.method).toBe('GET')
     // The full row range, not the id column alone: an id is not unique within a tab,
     // so telling a live row from a tombstone needs `deleted_at` as well.
-    expect(read.url).toContain('expenses_p1!A2:K')
+    expect(read.url).toContain('expenses_p1!A2:G')
     expect(write.method).toBe('PUT')
-    expect(write.url).toContain('expenses_p1!A4:K4')
+    expect(write.url).toContain('expenses_p1!A4:G4')
   })
 
   it('stamps deleted_at on the resolved row, in the deleted_at column only', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
+      if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
       return {}
     })
 
-    await sheets.setDeletedAt(SHEET, PERSON.P2, 'e1', '2026-08-06T00:00:00.000Z')
+    await sheets.setDeletedAt(SHEET, P2, 'e1', '2026-08-06T00:00:00.000Z')
 
     const [, write] = calls
-    // The literal, not `columnLetter('deleted_at')` — deriving it from the module
-    // under test would only assert the module against a copy of its own arithmetic.
-    expect(write.url).toContain('expenses_p2!K2:K2')
+    // The literal, not `P2.letter('deleted_at')` — deriving it from the module under
+    // test would only assert the module against a copy of its own arithmetic.
+    expect(write.url).toContain('expenses_p2!F2:F2')
     expect(write.body.values).toEqual([['2026-08-06T00:00:00.000Z']])
   })
 
   it('clears the cell with an empty string when restoring', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
+      if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
       return {}
     })
 
-    await sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', null)
+    await sheets.setDeletedAt(SHEET, P1, 'e1', null)
 
     expect(writes(calls)[0].body.values).toEqual([['']])
   })
@@ -139,7 +151,7 @@ describe('resolving a row before writing to it', () => {
   it('refuses to write at all when the id is gone from the sheet', async () => {
     const calls = installSheets(() => values([row({ id: 'someone-else' })]))
 
-    await expect(sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', null)).rejects.toMatchObject({
+    await expect(sheets.setDeletedAt(SHEET, P1, 'e1', null)).rejects.toMatchObject({
       i18nKey: 'error.entryGone',
     })
     expect(writes(calls)).toHaveLength(0)
@@ -154,7 +166,7 @@ describe('resolving a row before writing to it', () => {
    */
   describe('when the same id appears twice in one tab', () => {
     const duplicated = (call) =>
-      call.url.includes('!A2:K')
+      call.url.includes('!A2:G')
         ? values([
             row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
             row({ id: 'other' }),
@@ -165,10 +177,10 @@ describe('resolving a row before writing to it', () => {
     it('stamps the LIVE row, so a delete is not silently a no-op', async () => {
       const calls = installSheets(duplicated)
 
-      await sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', '2026-08-06T00:00:00.000Z')
+      await sheets.setDeletedAt(SHEET, P1, 'e1', '2026-08-06T00:00:00.000Z')
 
       // Row 4, the live copy — not row 2, which is already tombstoned.
-      expect(writes(calls)[0].url).toContain('expenses_p1!K4:K4')
+      expect(writes(calls)[0].url).toContain('expenses_p1!F4:F4')
     })
 
     it('overwrites the LIVE row, so an edit does not resurrect the tombstone', async () => {
@@ -177,20 +189,20 @@ describe('resolving a row before writing to it', () => {
       await sheets.updateEntry(SHEET, entry(), PERSON.P1)
 
       // Writing row 2 would clear its `deleted_at` and leave TWO live rows for one id.
-      expect(writes(calls)[0].url).toContain('expenses_p1!A4:K4')
+      expect(writes(calls)[0].url).toContain('expenses_p1!A4:G4')
     })
 
     it('falls back to a tombstone when no copy in the tab is live', async () => {
       const calls = installSheets((call) =>
-        call.url.includes('!A2:K')
+        call.url.includes('!A2:G')
           ? values([row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' })])
           : {},
       )
 
       // The payer-move branch has to be able to stamp a row that is already dead.
-      await sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', '2026-08-06T00:00:00.000Z')
+      await sheets.setDeletedAt(SHEET, P1, 'e1', '2026-08-06T00:00:00.000Z')
 
-      expect(writes(calls)[0].url).toContain('expenses_p1!K2:K2')
+      expect(writes(calls)[0].url).toContain('expenses_p1!F2:F2')
     })
 
     /**
@@ -203,7 +215,7 @@ describe('resolving a row before writing to it', () => {
      */
     it('restores the LAST tombstone, not the first, when every copy is dead', async () => {
       const calls = installSheets((call) =>
-        call.url.includes('!A2:K')
+        call.url.includes('!A2:G')
           ? values([
               // The copy from before the payer moved away, carrying stale values.
               row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
@@ -214,9 +226,9 @@ describe('resolving a row before writing to it', () => {
           : {},
       )
 
-      await sheets.setDeletedAt(SHEET, PERSON.P1, 'e1', null)
+      await sheets.setDeletedAt(SHEET, P1, 'e1', null)
 
-      expect(writes(calls)[0].url).toContain('expenses_p1!K4:K4')
+      expect(writes(calls)[0].url).toContain('expenses_p1!F4:F4')
     })
   })
 })
@@ -226,7 +238,7 @@ describe('changing who paid moves the row between tabs', () => {
     // Ordering is the invariant: a failure between the two must leave the entry
     // visible under its old payer rather than gone from both tabs.
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
+      if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
       return {}
     })
 
@@ -235,13 +247,45 @@ describe('changing who paid moves the row between tabs', () => {
     const mutating = writes(calls)
     expect(mutating[0].url).toContain('expenses_p2:append')
     expect(mutating[1].method).toBe('PUT')
-    expect(mutating[1].url).toContain('expenses_p1!K')
-    expect(mutating[1].body.values).toEqual([[entry().updatedAt]])
+    expect(mutating[1].url).toContain('expenses_p1!F')
+    // A real ISO stamp, not merely something non-empty: `reconcileById` breaks a
+    // tombstone-vs-tombstone tie by comparing exactly this cell, so a marker like 'x'
+    // would silently make that comparison meaningless. Asserted as a shape because the
+    // value comes from the clock — an entry carries no timestamp to copy it from.
+    const [[stamp]] = mutating[1].body.values
+    expect(stamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+  })
+
+  /**
+   * A settlement's payer is a CELL in the one settlements tab, so changing it must NOT
+   * move the row. Both tabs come from `tabOf`, which answers the same tab either way —
+   * so this is one PUT, with no append and no tombstone.
+   *
+   * The move branch here would append a duplicate settlement and tombstone the original,
+   * double-counting the transfer in the balance until a compact ran.
+   */
+  it('overwrites a settlement in place when its payer changes, without moving it', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes(SETTLEMENTS.dataRange)
+        ? values([settlementRow({ id: 's1', amount: '400', payer: 'p1' })])
+        : {},
+    )
+
+    const paid = settlement({ id: 's1', amountYen: 400, payer: PERSON.P2 })
+    await sheets.updateEntry(SHEET, paid, PERSON.P1)
+
+    const mutating = writes(calls)
+    expect(mutating).toHaveLength(1)
+    expect(mutating[0].method).toBe('PUT')
+    expect(mutating[0].url).toContain('settlements!A2:F2')
+    expect(mutating[0].url).not.toContain(':append')
+    // And the payer landed in its cell, which is the whole point of the column.
+    expect(mutating[0].body.values[0][SETTLEMENTS.index('payer')]).toBe(PERSON.P2)
   })
 
   it('overwrites in place when the payer is unchanged', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('!A2:K')) return values([row({ id: 'e1' })])
+      if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
       return {}
     })
 
@@ -254,7 +298,7 @@ describe('changing who paid moves the row between tabs', () => {
 
   it('refuses a previousPayer that is not one of the two people', async () => {
     // Without the guard, `undefined` means "append a duplicate, then look for the
-    // original in whichever tab expensesTab guessed".
+    // original in whichever tab `tabOf` guessed".
     const calls = installSheets(() => ({}))
     await expect(sheets.updateEntry(SHEET, entry(), undefined)).rejects.toThrow(TypeError)
     expect(writes(calls)).toHaveLength(0)
@@ -268,35 +312,133 @@ describe('appendEntry', () => {
     await sheets.appendEntry(SHEET, entry({ payer: PERSON.P2 }))
 
     expect(calls[0].url).toContain('expenses_p2:append')
-    expect(calls[0].body.values[0][columnIndex('id')]).toBe('e1')
+    expect(calls[0].body.values[0][P2.index('id')]).toBe('e1')
   })
 })
 
 describe('loadAll', () => {
   it('asks for both tabs and the config, in the order it maps them back', async () => {
-    const calls = installSheets(() => ({ valueRanges: [{}, {}, {}] }))
+    const calls = installSheets(() => ({ valueRanges: [{}, {}, {}, {}] }))
 
     await sheets.loadAll(SHEET)
 
-    expect(rangesOf(calls[0])).toEqual(['expenses_p1!A2:K', 'expenses_p2!A2:K', 'config!A:B'])
+    expect(rangesOf(calls[0])).toEqual(FOUR_RANGES)
   })
 
-  it('decodes a blank-currency row at the sheet’s currency, which it reads first', async () => {
-    // The silent 100x: "1250" is ¥1250 at JPY and $12.50 at USD. If the rows were
-    // mapped before the config range was parsed, this would come back as 125000.
+  it('parses the config from the LAST range, not a hardcoded index', async () => {
+    // The index is derived from `ranges.length`, so adding a data range cannot start
+    // feeding ledger rows to the config parser — where no key matches, every value
+    // silently falls back to a default, and `configMissing` stays false because the
+    // read succeeded.
     installSheets(() => ({
       valueRanges: [
-        values([row({ id: 'a', type: 'expense', date: '2026-08-05', amount: '1250' })]),
+        values([row({ id: 'a', date: '2026-08-05', amount: '1250' })]),
         {},
-        values([['currency', 'JPY']]),
+        {},
+        values([['categories', 'Groceries, Dining']]),
       ],
     }))
 
-    const { entries, config } = await sheets.loadAll(SHEET)
+    const { entries, config, configMissing } = await sheets.loadAll(SHEET)
 
-    expect(config.currency).toBe('JPY')
-    expect(entries[0].amountCents).toBe(1250)
-    expect(entries[0].currency).toBe('JPY')
+    expect(config.categories).toEqual(['Groceries', 'Dining'])
+    expect(configMissing).toBe(false)
+    expect(entries[0].amountYen).toBe(1250)
+  })
+
+  /**
+   * An existing ledger predates the settlements tab, so its first read under this build
+   * asks for a range that does not exist and the whole batch 400s. That has to reach
+   * `useLedger`, where `looksUninitialized` turns it into an `ensureStructure` call that
+   * BUILDS the tab — so the retry here must not quietly succeed by dropping it.
+   *
+   * The retry slices from the END, which is why it drops only the config range. Sliced
+   * to a literal 2 it would drop the settlements range as well: the read would succeed,
+   * `configMissing` would be reported over a config tab that is perfectly fine, and the
+   * settlements tab would never be created — leaving every settlement out of the balance
+   * permanently, while the screen blamed the wrong thing.
+   */
+  it('lets a missing DATA range fail, so the tab gets built rather than dropped', async () => {
+    // 400 for any batch that asks for the settlements range, and success for one that
+    // does not — so a retry which DROPPED that range would succeed here, and this test
+    // fails only if it does.
+    const calls = installSheets((call) =>
+      call.url.includes(SETTLEMENTS.dataRange) ? { __status: 400 } : ranges4(),
+    )
+
+    await expect(sheets.loadAll(SHEET)).rejects.toMatchObject({ status: 400 })
+    // Both attempts still asked for it: the retry slices the CONFIG range off the end.
+    expect(calls).toHaveLength(2)
+    for (const call of calls) expect(call.url).toContain(SETTLEMENTS.dataRange)
+  })
+
+  it('reads the settlements tab, at its own layout', async () => {
+    installSheets(() =>
+      ranges4({
+        p1: values([row({ id: 'e1', date: '2026-08-05', amount: '1000' })]),
+        settlements: values([
+          settlementRow({ id: 's1', date: '2026-08-06', amount: '400', payer: 'p2' }),
+        ]),
+      }),
+    )
+
+    const { entries, unattributedRows } = await sheets.loadAll(SHEET)
+
+    const settlement = entries.find((item) => item.id === 's1')
+    // Type from the tab, payer from the cell, share 0 by definition — none of which the
+    // row itself spells out beyond the payer.
+    expect(settlement).toMatchObject({
+      type: 'settlement',
+      payer: PERSON.P2,
+      amountYen: 400,
+      payerShare: 0,
+      category: '',
+    })
+    expect(unattributedRows).toBe(0)
+  })
+
+  /**
+   * The payer decides the SIGN of a settlement's contribution, so a cell naming nobody
+   * is a wrong balance rather than a missing row — and it is the ONE payer cell in the
+   * schema, since an expense takes its payer from the tab it sits in.
+   *
+   * Counted apart from `undecodedRows` because the cell to go and fix is a different
+   * one: the amount here reads perfectly well.
+   */
+  it('counts a settlement whose payer names neither person, rather than guessing', async () => {
+    installSheets(() =>
+      ranges4({
+        settlements: values([
+          settlementRow({ id: 'ok', date: '2026-08-06', amount: '400', payer: 'p1' }),
+          settlementRow({ id: 'who', date: '2026-08-06', amount: '900', payer: 'Waylon' }),
+          settlementRow({ id: 'blank', date: '2026-08-06', amount: '900', payer: '' }),
+          // Tombstoned, so it is correctly out of the totals already and says nothing.
+          settlementRow({ id: 'dead', amount: '900', payer: 'nope', deleted_at: 'x' }),
+        ]),
+      }),
+    )
+
+    const { entries, unattributedRows, undecodedRows } = await sheets.loadAll(SHEET)
+
+    expect(entries.map((item) => item.id)).toEqual(['ok'])
+    expect(unattributedRows).toBe(2)
+    // Not folded into the other count: the amount read fine in both cases.
+    expect(undecodedRows).toBe(0)
+  })
+
+  it('still counts a settlement whose AMOUNT is the unreadable part as undecoded', async () => {
+    installSheets(() =>
+      ranges4({
+        settlements: values([
+          settlementRow({ id: 'bad', date: '2026-08-06', amount: 'about ten', payer: 'p1' }),
+        ]),
+      }),
+    )
+
+    expect(await sheets.loadAll(SHEET)).toMatchObject({
+      undecodedRows: 1,
+      unattributedRows: 0,
+    })
   })
 
   it('attributes each tab’s rows to that tab’s person', async () => {
@@ -304,7 +446,8 @@ describe('loadAll', () => {
       valueRanges: [
         values([row({ id: 'a', date: '2026-08-05', amount: '100' })]),
         values([row({ id: 'b', date: '2026-08-05', amount: '200' })]),
-        values([['currency', 'JPY']]),
+        {},
+        {},
       ],
     }))
 
@@ -321,15 +464,19 @@ describe('loadAll', () => {
     const calls = installSheets(() => {
       attempt += 1
       if (attempt === 1) return { __status: 400 }
-      return { valueRanges: [values([row({ id: 'a', date: '2026-08-05', amount: '4210' })]), {}] }
+      return {
+        valueRanges: [values([row({ id: 'a', date: '2026-08-05', amount: '4210' })]), {}, {}],
+      }
     })
 
     const { entries, config } = await sheets.loadAll(SHEET)
 
-    expect(rangesOf(calls[1])).toEqual(['expenses_p1!A2:K', 'expenses_p2!A2:K'])
-    // Defaults win, and the amount is decoded at the default currency's scale.
-    expect(config.currency).toBe('JPY')
-    expect(entries[0].amountCents).toBe(4210)
+    // Sliced from the END of the range list, so a data range added later still gets
+    // requested on the retry rather than silently dropping out of it.
+    expect(rangesOf(calls[1])).toEqual(FOUR_RANGES.slice(0, -1))
+    // Defaults win for every config value.
+    expect(config.categories).toEqual(DEFAULT_CONFIG.categories)
+    expect(entries[0].amountYen).toBe(4210)
   })
 
   it('propagates a failure that is not a missing tab', async () => {
@@ -387,7 +534,8 @@ describe('loadAll', () => {
           row({ id: 'moved', date: '2026-08-05', amount: '1000', deleted_at: '2026-08-06T00:00Z' }),
         ]),
         values([row({ id: 'moved', date: '2026-08-05', amount: '1000' })]),
-        values([['currency', 'JPY']]),
+        {},
+        {},
       ],
     }))
 
@@ -414,7 +562,8 @@ describe('loadAll', () => {
           row({ amount: '999' }),
         ]),
         {},
-        values([['currency', 'JPY']]),
+        {},
+        {},
       ],
     }))
 
@@ -433,7 +582,8 @@ describe('loadAll', () => {
       valueRanges: [
         values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
         values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
-        values([['currency', 'JPY']]),
+        {},
+        {},
       ],
     }))
 
@@ -452,7 +602,8 @@ describe('loadAll', () => {
           row({ id: 'bad', date: '2026-08-05', amount: 'nonsense', deleted_at: '2026-08-06' }),
         ]),
         {},
-        values([['currency', 'JPY']]),
+        {},
+        {},
       ],
     }))
 
@@ -464,7 +615,8 @@ describe('loadAll', () => {
       valueRanges: [
         values([row({ id: 'a', date: '2026-08-05', amount: '100' })]),
         values([row({ id: 'b', date: '2026-08-05', amount: '200' })]),
-        values([['currency', 'JPY']]),
+        {},
+        {},
       ],
     }))
 
@@ -483,16 +635,16 @@ describe('loadAll', () => {
    * flag below could be deleted from `sheets.js` with a green suite.
    */
   describe('what it reports about the sheet', () => {
-    it('flags a missing config tab, so the default currency is never silent', async () => {
+    it('flags a missing config tab, so its defaults are never silent', async () => {
       let attempt = 0
       installSheets(() => {
         attempt += 1
         if (attempt === 1) return { __status: 400 }
-        return { valueRanges: [{}, {}] }
+        return { valueRanges: [{}, {}, {}] }
       })
 
       // Without this the app runs the whole sheet on JPY with nothing said, which on a
-      // USD sheet reads every blank-currency row 100x wrong.
+      // every expense divides at an even split nobody chose.
       expect(await sheets.loadAll(SHEET)).toMatchObject({ configMissing: true })
     })
 
@@ -507,7 +659,8 @@ describe('loadAll', () => {
             row({ id: 'ok', date: '2026-08-05', amount: '100' }),
           ]),
           {},
-          values([['currency', 'JPY']]),
+          {},
+          {},
         ],
       }))
 
@@ -518,66 +671,44 @@ describe('loadAll', () => {
 
     it('does not count a blank date as an unreadable one', async () => {
       installSheets(() => ({
-        valueRanges: [values([row({ id: 'a', amount: '100' })]), {}, values([['currency', 'JPY']])],
+        valueRanges: [values([row({ id: 'a', amount: '100' })]), {}, {}, {}],
       }))
 
       // The cell has to have held SOMETHING for the notice to be true.
       expect(await sheets.loadAll(SHEET)).toMatchObject({ undatedRows: 0 })
     })
 
-    it('flags a config tab that is readable but names no currency', async () => {
-      installSheets(() => ({
-        // The tab is there and parses; it just has no `currency` row any more.
-        valueRanges: [{}, {}, values([['categories', 'Groceries, Dining']])],
-      }))
-
-      // `configMissing` cannot catch this — it is only set when the READ fails — so
-      // without its own flag the whole sheet runs on the default scale in silence.
-      expect(await sheets.loadAll(SHEET)).toMatchObject({
-        configMissing: false,
-        currencyDefaulted: true,
-      })
-    })
-
-    it('does not flag a sheet whose config names a currency', async () => {
-      installSheets(() => ({ valueRanges: [{}, {}, values([['currency', 'USD']])] }))
-
-      expect(await sheets.loadAll(SHEET)).toMatchObject({ currencyDefaulted: false })
-    })
-
     it('returns the sheet’s own partial config, not the merged one', async () => {
       installSheets(() => ({
-        valueRanges: [{}, {}, values([['currency', 'USD']])],
+        valueRanges: [{}, {}, {}, values([['default_split_p1', '80']])],
       }))
 
       const { sheetConfig, config } = await sheets.loadAll(SHEET)
       // The snapshot stores this, and it must be the pre-merge copy: a merged one
-      // freezes the building build's defaults into every future cold launch, so the
-      // balance can come back at the wrong scale.
-      expect(sheetConfig).toEqual({ currency: 'USD' })
-      expect(config.currency).toBe('USD')
+      // freezes the building build's defaults into every future cold launch.
+      expect(sheetConfig).toEqual({ defaultSplitP1: 0.8 })
+      expect(config.defaultSplitP1).toBe(0.8)
       expect(config.categories).toEqual(DEFAULT_CONFIG.categories)
     })
 
     it('takes the FIRST usable value for a config key', async () => {
       installSheets(() => ({
         valueRanges: [
-          values([row({ id: 'a', date: '2026-08-05', amount: '1250' })]),
+          {},
+          {},
           {},
           // Somebody added a row at the top and forgot the old one lower down.
           values([
-            ['currency', 'USD'],
-            ['currency', 'JPY'],
+            ['default_split_p1', '80'],
+            ['default_split_p1', '50'],
           ]),
         ],
       }))
 
-      const { config, entries } = await sheets.loadAll(SHEET)
-      // Last-wins would run the sheet at JPY, where this blank-currency row decodes
-      // as ¥1250 instead of $1250.00 — a 100x error on every row like it.
-      expect(config.currency).toBe('USD')
-      expect(entries[0].currency).toBe('USD')
-      expect(entries[0].amountCents).toBe(125000)
+      const { config } = await sheets.loadAll(SHEET)
+      // Last-wins would run the sheet at an even split, moving money on every expense
+      // this person paid for.
+      expect(config.defaultSplitP1).toBe(0.8)
     })
   })
 })
@@ -588,7 +719,7 @@ describe('compact', () => {
     // would make each request after the first target the wrong row — and the rows
     // it would then delete are live expenses.
     installSheets((call) => {
-      if (call.url.includes('expenses_p1!A2:K')) {
+      if (call.url.includes('expenses_p1!A2:G')) {
         return values([
           row({ id: 'a' }),
           row({ id: 'b', deleted_at: 'x' }),
@@ -599,7 +730,7 @@ describe('compact', () => {
           row({ id: 'g', deleted_at: 'x' }),
         ])
       }
-      if (call.url.includes('expenses_p2!A2:K')) {
+      if (call.url.includes('expenses_p2!A2:G')) {
         return values([row({ id: 'h', deleted_at: 'x' }), row({ id: 'i' })])
       }
       return {}
@@ -631,21 +762,62 @@ describe('compact', () => {
    * the app's only hard delete, where being one row out removes somebody else's
    * expense. One extra round trip on a rare manual action is the cheaper mistake.
    */
-  it('reads each tab on its own rather than batching the two', async () => {
+  it('reads each tab on its own rather than batching them', async () => {
     const calls = installSheets((call) =>
-      call.url.includes('!A2:K') ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
+      call.url.includes('!A2:') ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
     )
 
     await sheets.compact(SHEET, GIDS)
 
     expect(calls.filter((call) => call.url.includes('values:batchGet'))).toHaveLength(0)
-    const reads = calls.filter((call) => call.url.includes('!A2:K'))
-    expect(reads.map((call) => call.url.includes('expenses_p1'))).toEqual([true, false])
+    const reads = calls.filter((call) => call.url.includes('!A2:'))
+    // One per data tab, in order, each at its own range.
+    // The harness records decoded URLs, so the range reads back as written — minus the
+    // query string, which is not part of what is being asserted.
+    expect(reads.map((call) => call.url.split('/values/')[1].split('?')[0])).toEqual(
+      DATA_TABS.map((tab) => tab.dataRange),
+    )
+  })
+
+  /**
+   * The settlements tab is compacted too, and its `deleted_at` is at a DIFFERENT index
+   * from the expenses one. This is the test that catches the whole reason the positional
+   * lookups hang off a tab: with one module-wide index, `compact` reads the settlements
+   * tab's `id` column instead — non-empty on every row — and hard-deletes every live
+   * settlement in the sheet.
+   *
+   * So the fixture gives the settlements tab one LIVE row and one tombstoned one, and
+   * asserts exactly one deletion, at the tombstone's position.
+   */
+  it('removes tombstoned settlements, and only those', async () => {
+    installSheets((call) => {
+      if (call.url.includes(SETTLEMENTS.dataRange)) {
+        return values([
+          settlementRow({ id: 'live', amount: '100', payer: 'p1' }),
+          settlementRow({ id: 'dead', amount: '200', payer: 'p2', deleted_at: 'x' }),
+          settlementRow({ id: 'live2', amount: '300', payer: 'p1' }),
+        ])
+      }
+      return {}
+    })
+
+    const { removed } = await sheets.compact(SHEET, GIDS)
+
+    expect(removed).toBe(1)
+    const batch = globalThis.fetch.mock.calls.find(([url]) => String(url).includes(':batchUpdate'))
+    const requests = JSON.parse(batch[1].body).requests
+    expect(requests).toHaveLength(1)
+    // Sheet row 3, which is 0-based index 2 — the second data row, not the first.
+    expect(requests[0].deleteDimension.range).toMatchObject({
+      sheetId: GIDS.settlements,
+      startIndex: 2,
+      endIndex: 3,
+    })
   })
 
   it('deletes exactly one row per request', async () => {
     installSheets((call) =>
-      call.url.includes('expenses_p1!A2:K') ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
+      call.url.includes(P1.dataRange) ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
     )
 
     await sheets.compact(SHEET, GIDS)
@@ -661,7 +833,7 @@ describe('compact', () => {
 
   it('writes nothing when there is nothing tombstoned', async () => {
     const calls = installSheets((call) =>
-      call.url.includes('!A2:K') ? values([row({ id: 'a' })]) : {},
+      call.url.includes('!A2:') ? values([row({ id: 'a' })]) : {},
     )
 
     expect(await sheets.compact(SHEET, GIDS)).toEqual({ removed: 0 })
@@ -672,7 +844,7 @@ describe('compact', () => {
     // `useLedger` throws before it gets here; this is the second line of defence,
     // and the reason that throw must not be removed as redundant.
     installSheets((call) =>
-      call.url.includes('!A2:K') ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
+      call.url.includes('!A2:') ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
     )
 
     const { removed } = await sheets.compact(SHEET, { expenses_p1: 111 })
@@ -707,7 +879,7 @@ describe('ensureStructure', () => {
   it('adopts a freshly created spreadsheet, which has exactly one tab', async () => {
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(['Sheet1'])
-      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}] }
+      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}, {}] }
       return {}
     })
 
@@ -717,22 +889,23 @@ describe('ensureStructure', () => {
     expect(added.body.requests.map((request) => request.addSheet.properties.title)).toEqual([
       'expenses_p1',
       'expenses_p2',
+      'settlements',
       'config',
     ])
   })
 
   it('writes a header row only when it does not already match', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('fields=sheets'))
-        return sheetList(['expenses_p1', 'expenses_p2', 'config'])
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       if (call.url.includes('values:batchGet')) {
         return {
           valueRanges: [
-            values([EXPENSE_COLUMNS]), // p1 already correct
-            values([['id', 'type']]), // p2 truncated
+            values([P1.columns]), // already correct
+            values([['id', 'date']]), // truncated
+            values([SETTLEMENTS.columns]), // already correct
             values([
               ['key', 'value'],
-              ['currency', 'JPY'],
+              ['person1_name', 'Waylon'],
             ]),
           ],
         }
@@ -743,19 +916,17 @@ describe('ensureStructure', () => {
     await sheets.ensureStructure(SHEET)
 
     const write = writes(calls).find((call) => call.body?.data)
-    expect(write.body.data.map((item) => item.range)).toEqual(['expenses_p2!A1:K1'])
+    expect(write.body.data.map((item) => item.range)).toEqual(['expenses_p2!A1:G1'])
     expect(write.body.valueInputOption).toBe('RAW')
   })
 
   it('never reseeds a config tab that already has values', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('fields=sheets'))
-        return sheetList(['expenses_p1', 'expenses_p2', 'config'])
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       if (call.url.includes('values:batchGet')) {
         return {
           valueRanges: [
-            values([EXPENSE_COLUMNS]),
-            values([EXPENSE_COLUMNS]),
+            ...DATA_TABS.map((tab) => values([tab.columns])),
             values([
               ['key', 'value'],
               ['person1_name', 'Waylon'],
@@ -773,10 +944,9 @@ describe('ensureStructure', () => {
 
   it('seeds the config tab, unlocalized, when it is empty', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('fields=sheets'))
-        return sheetList(['expenses_p1', 'expenses_p2', 'config'])
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       if (call.url.includes('values:batchGet')) {
-        return { valueRanges: [values([EXPENSE_COLUMNS]), values([EXPENSE_COLUMNS]), {}] }
+        return { valueRanges: [...DATA_TABS.map((tab) => values([tab.columns])), {}] }
       }
       return {}
     })
@@ -788,7 +958,8 @@ describe('ensureStructure', () => {
     expect(data.values[0]).toEqual(['key', 'value'])
     const asObject = Object.fromEntries(data.values.slice(1))
     expect(asObject.person1_name).toBe('Person 1')
-    expect(asObject.currency).toBe('JPY')
+    // Unlocalized, and written as a fraction rather than a percentage.
+    expect(asObject.default_split_p1).toBe('0.5')
   })
 
   /**
@@ -800,10 +971,9 @@ describe('ensureStructure', () => {
    */
   it('seeds these keys and no others', async () => {
     const calls = installSheets((call) => {
-      if (call.url.includes('fields=sheets'))
-        return sheetList(['expenses_p1', 'expenses_p2', 'config'])
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       if (call.url.includes('values:batchGet')) {
-        return { valueRanges: [values([EXPENSE_COLUMNS]), values([EXPENSE_COLUMNS]), {}] }
+        return { valueRanges: [...DATA_TABS.map((tab) => values([tab.columns])), {}] }
       }
       return {}
     })
@@ -814,7 +984,6 @@ describe('ensureStructure', () => {
     expect(data.values.slice(1).map(([key]) => key)).toEqual([
       'person1_name',
       'person2_name',
-      'currency',
       'categories',
       'default_split_p1',
       'default_split_p2',
@@ -824,16 +993,14 @@ describe('ensureStructure', () => {
 
   it('returns the gids compact needs', async () => {
     installSheets((call) => {
-      if (call.url.includes('fields=sheets'))
-        return sheetList(['expenses_p1', 'expenses_p2', 'config'])
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       if (call.url.includes('values:batchGet')) {
         return {
           valueRanges: [
-            values([EXPENSE_COLUMNS]),
-            values([EXPENSE_COLUMNS]),
+            ...DATA_TABS.map((tab) => values([tab.columns])),
             values([
               ['key', 'value'],
-              ['currency', 'JPY'],
+              ['person1_name', 'Waylon'],
             ]),
           ],
         }
@@ -843,7 +1010,13 @@ describe('ensureStructure', () => {
 
     const { sheetIds } = await sheets.ensureStructure(SHEET)
 
-    expect(sheetIds).toMatchObject({ expenses_p1: 100, expenses_p2: 101, config: 102 })
+    // The settlements tab included: `compact` refuses without a gid for every one.
+    expect(sheetIds).toMatchObject({
+      expenses_p1: 100,
+      expenses_p2: 101,
+      settlements: 102,
+      config: 103,
+    })
   })
 
   it('takes a created tab’s gid from the reply that created it', async () => {
@@ -852,7 +1025,7 @@ describe('ensureStructure', () => {
     // that runs on a phone with nothing cached.
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(['Sheet1'])
-      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}] }
+      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}, {}] }
       if (call.url.includes(`/${SHEET}:batchUpdate`)) {
         return {
           replies: [
@@ -877,9 +1050,9 @@ describe('readSheetGids', () => {
    * `compact` needs gids and nothing else. It must never reach them through
    * `ensureStructure`, which WRITES: a ledger whose config tab has been deleted
    * reports `configMissing` and is deliberately never repaired, but
-   * `ensureStructure` would add the tab back and seed it with the DEFAULT
-   * currency — putting a scale nobody chose into the sheet and taking the notice
-   * away with it. Every amount written afterwards is then 100x out.
+   * `ensureStructure` would add the tab back and seed it with this build's
+   * defaults — an even split included — taking the notice away with them and
+   * moving money on every later expense whose payer had a different default.
    */
   it('reads the gids and writes nothing at all', async () => {
     const calls = installSheets((call) =>
@@ -901,7 +1074,7 @@ describe('a rejected token', () => {
     let attempt = 0
     installSheets(() => {
       attempt += 1
-      return attempt === 1 ? { __status: 401 } : { valueRanges: [{}, {}, {}] }
+      return attempt === 1 ? { __status: 401 } : { valueRanges: [{}, {}, {}, {}] }
     })
 
     await sheets.loadAll(SHEET)
@@ -919,7 +1092,7 @@ describe('a rejected token', () => {
   })
 
   it('sends the token as a bearer header', async () => {
-    const calls = installSheets(() => ({ valueRanges: [{}, {}, {}] }))
+    const calls = installSheets(() => ({ valueRanges: [{}, {}, {}, {}] }))
     await sheets.loadAll(SHEET)
     expect(calls[0].headers.Authorization).toBe('Bearer ya29.stub-token')
   })

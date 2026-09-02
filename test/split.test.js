@@ -5,7 +5,7 @@ import { defaultSplitFor, nextSplit, splitAtPercent, toSplit } from '../src/lib/
 
 /**
  * The split decides how much of an expense each person owes, so every fallback
- * here is one step from `splitCents` and a wrong number on somebody's balance.
+ * here is one step from `splitYen` and a wrong number on somebody's balance.
  *
  * The transitions exist as pure functions specifically so they can be tested: the
  * control that uses them lives in a hook, and there is no renderer for hooks here.
@@ -33,7 +33,7 @@ describe('defaultSplitFor', () => {
   })
 
   it('never yields a non-finite share, whatever the config carries', () => {
-    // The last guard before splitCents, which throws on NaN rather than moving
+    // The last guard before splitYen, which throws on NaN rather than moving
     // money wrongly — but only after the form has already shown a nonsense split.
     for (const value of [NaN, Infinity, undefined, null, 'half', {}]) {
       expect(defaultSplitFor({ defaultSplitP1: value }, PERSON.P1)).toBe(EVEN_SHARE)

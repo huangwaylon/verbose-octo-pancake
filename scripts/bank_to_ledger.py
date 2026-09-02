@@ -4,15 +4,18 @@
 # dependencies = []
 # ///
 """
-Turn a bank export into rows you can paste into one person's expenses tab.
+Turn a bank export into rows you can paste into the ledger.
 
     uv run scripts/bank_to_ledger.py statement.tsv
     uv run scripts/bank_to_ledger.py statement.tsv -o rows.csv --payer p1
 
-The output columns are EXPENSE_COLUMNS from src/schema.js, in order, so the
-result pastes straight into `expenses_p1!A2` (or p2) under the existing header.
-Amounts are written at the currency's own scale exactly as `entryToRow` would,
-and nothing is localized.
+Expenses go to the output file and paste straight into `expenses_p1!A2` (or p2) under
+the existing header. Settlements have their own tab and their own columns, so they get
+their own `.settlements.csv` beside it — written only when there are any.
+`test/schema.test.js` pins this copy of that list against the real one, because
+this file cannot import it and a silent disagreement writes every value under the
+wrong field. Amounts are whole yen exactly as `entryToRow` writes them, and
+nothing is localized.
 
 Everything the script decides is decided by RULES below: first match wins, and
 whatever matches nothing becomes a shared "Other" expense AND is listed in the
@@ -281,26 +284,31 @@ RULES: list[tuple[str, str | None, str, str | None]] = [
 # Whatever matched nothing at all.
 FALLBACK = ("Other", "shared", None)
 
-# Currencies whose minor unit is the major unit, mirroring `minorDigits` in
-# src/lib/money.js. Anything else is written with two decimals.
-ZERO_DECIMAL = {"JPY", "KRW", "VND", "CLP", "ISK", "XAF", "XOF", "XPF"}
 
 # Fixed so re-running the script produces the same ids: a second import of the
 # same statement then reconciles against the first instead of duplicating it.
 ID_NAMESPACE = uuid.UUID("6f9d1a2e-4b3c-5d6e-8f70-112233445566")
 
 EXPENSE_COLUMNS = [
-    "id",
-    "type",
     "date",
-    "amount",
-    "currency",
-    "category",
     "description",
+    "amount",
+    "category",
     "payer_share",
-    "created_at",
-    "updated_at",
     "deleted_at",
+    "id",
+]
+
+# Settlements go in their own tab, which cannot say who paid the way an expenses tab
+# does — hence the `payer` column, and no `category` or `payer_share`. Both lists are
+# pinned against src/schema.js by test/schema.test.js.
+SETTLEMENT_COLUMNS = [
+    "date",
+    "description",
+    "amount",
+    "payer",
+    "deleted_at",
+    "id",
 ]
 
 DATE_RE = re.compile(r"^(\d{4})年(\d{1,2})月(\d{1,2})日$")
@@ -326,29 +334,14 @@ def loose(text: str) -> str:
 LOOSE_RULES = [(loose(pattern), *rest) for pattern, *rest in RULES]
 
 
-def minor_digits(currency: str) -> int:
-    return 0 if currency.upper() in ZERO_DECIMAL else 2
-
-
-def amount_string(minor: int, currency: str) -> str:
-    """Integer minor units -> the string the sheet stores, at this currency's scale."""
-    digits = minor_digits(currency)
-    if digits == 0:
-        return str(minor)
-    whole, frac = divmod(abs(minor), 10**digits)
-    sign = "-" if minor < 0 else ""
-    return f"{sign}{whole}.{frac:0{digits}d}"
-
-
 @dataclass
 class Txn:
     line_no: int
     raw: str
     date: str  # ISO
     description: str  # NFKC-normalized, Visa prefix stripped
-    currency: str
-    credit: int  # minor units in
-    debit: int  # minor units out
+    credit: int  # whole yen in
+    debit: int  # whole yen out
     balance: int | None
     note: str
 
@@ -392,27 +385,31 @@ def parse_line(line: str, line_no: int) -> Txn | None:
     )
     description = VISA_PREFIX_RE.sub("", description).strip()
 
-    currency = cols[currency_at]
+    # The ledger is yen only, so a row in anything else cannot be written at all.
+    # Refused loudly here rather than converted or rounded: this is an offline
+    # script, so stopping costs a re-run, while guessing puts a 100x-wrong amount
+    # into a real ledger.
+    currency = cols[currency_at].upper()
+    if currency != "JPY":
+        raise ValueError(f"line {line_no}: {currency} is not JPY; this ledger is yen only")
 
     def money(cell: str) -> int:
         """
-        A statement amount as integer MINOR units, at this currency's scale.
+        A statement amount as whole yen.
 
-        The scale is the currency's, never the presence of a decimal point:
-        "1480" in a JPY column is ¥1480, and "12.3" in a USD one is $12.30, not
-        $12.03. Anything with more fractional digits than the currency has is
-        refused rather than rounded — a bank does not emit those, so seeing one
-        means the column was misidentified, and rounding would hide that.
+        The yen has no sub-unit, so a decimal point here carries no value —
+        "1480" and "1480.000000" are both ¥1480, and the bank's own export writes
+        the second. A non-zero fraction means the column was misidentified, so it
+        is refused rather than rounded away.
         """
         if not cell:
             return 0
         if not AMOUNT_RE.match(cell):
             raise ValueError(f"line {line_no}: {cell!r} is not an amount")
         whole, _, frac = cell.replace(",", "").partition(".")
-        digits = minor_digits(currency)
-        if len(frac) > digits:
-            raise ValueError(f"line {line_no}: {cell!r} has more decimals than {currency}")
-        return int(whole) * 10**digits + int(frac.ljust(digits, "0") or 0)
+        if frac.strip("0"):
+            raise ValueError(f"line {line_no}: {cell!r} is not a whole number of yen")
+        return int(whole)
 
     credit = money(cols[currency_at + 1])
     debit = money(cols[currency_at + 2])
@@ -425,7 +422,7 @@ def parse_line(line: str, line_no: int) -> Txn | None:
     if not credit and not debit:
         raise ValueError(f"line {line_no}: no amount")
 
-    return Txn(line_no, line, date, description, currency, credit, debit, balance, note)
+    return Txn(line_no, line, date, description, credit, debit, balance, note)
 
 
 def classify(txn: Txn) -> tuple[str | None, str, str | None, bool]:
@@ -462,13 +459,9 @@ def classify(txn: Txn) -> tuple[str | None, str, str | None, bool]:
     return (*FALLBACK, False)
 
 
-def money_text(minor: int, currency: str) -> str:
-    """Minor units as a readable figure, for the summary only."""
-    digits = minor_digits(currency)
-    if digits == 0:
-        return f"{minor:,}"
-    whole, frac = divmod(abs(minor), 10**digits)
-    return f"{'-' if minor < 0 else ''}{whole:,}.{frac:0{digits}d}"
+def yen_text(yen: int) -> str:
+    """Whole yen as a readable figure, for the summary only."""
+    return f"{yen:,}"
 
 
 def main() -> int:
@@ -554,9 +547,12 @@ def main() -> int:
         if previous.balance + current.credit - current.debit != current.balance:
             chain_breaks += 1
 
-    rows: list[list[str]] = []
+    # The cells to be written, one list per tab. Named apart from the summary's
+    # `expense_rows`/`settlement_rows` further down, which hold Txn tuples rather than
+    # sheet rows — one name for two shapes in one function is how a count starts lying.
+    expense_out: list[list[str]] = []
+    settlement_out: list[list[str]] = []
     seen_ids: dict[str, int] = defaultdict(int)
-    per_day: dict[str, int] = defaultdict(int)
 
     credits = [txn for txn in txns if txn.credit]
     debits = [txn for txn in txns if txn.debit]
@@ -593,80 +589,62 @@ def main() -> int:
         seen_ids[seed] += 1
         entry_id = str(uuid.uuid5(ID_NAMESPACE, f"{seed}|{seen_ids[seed]}"))
 
-        # Within a day the app lists newest-created first, so later in the file
-        # reads as later in the day. Derived from the date rather than from the
-        # clock so re-running produces a byte-identical file.
-        index = per_day[txn.date]
-        per_day[txn.date] += 1
-        stamp = f"{txn.date}T{min(index // 60, 23):02d}:{index % 60:02d}:00.000Z"
-
-        rows.append(
-            [
-                entry_id,
-                entry_type,
-                txn.date,
-                amount_string(txn.debit, txn.currency),
-                txn.currency,
-                category_out,
-                description,
-                str(share),
-                stamp,
-                stamp,
-                "",
-            ]
-        )
+        # One list per tab, because the two layouts differ: a settlement carries the
+        # payer it cannot get from its tab, and carries no category or share.
+        if entry_type == "settlement":
+            settlement_out.append(
+                [txn.date, description, str(txn.debit), args.payer, "", entry_id]
+            )
+        else:
+            expense_out.append(
+                [
+                    txn.date,
+                    description,
+                    str(txn.debit),
+                    category_out,
+                    str(share),
+                    "",
+                    entry_id,
+                ]
+            )
         emitted.append((txn, entry_type, txn.debit, share, category_out))
         if entry_type == "expense":
             by_category[category_out].append(txn)
 
     destination = args.output or args.input.with_suffix(args.input.suffix + ".ledger.csv")
-    if str(destination) == "-":
-        handle, closing = sys.stdout, False
-    else:
-        handle, closing = destination.open("w", encoding="utf-8", newline=""), True
-    try:
-        writer = csv.writer(handle, lineterminator="\n")
-        if not args.no_header:
-            writer.writerow(EXPENSE_COLUMNS)
-        writer.writerows(rows)
-    finally:
-        if closing:
-            handle.close()
+
+    def write(path, columns, body):
+        """One file per tab. Two layouts cannot share one paste."""
+        if str(path) == "-":
+            handle, closing = sys.stdout, False
+        else:
+            handle, closing = path.open("w", encoding="utf-8", newline=""), True
+        try:
+            writer = csv.writer(handle, lineterminator="\n")
+            if not args.no_header:
+                writer.writerow(columns)
+            writer.writerows(body)
+        finally:
+            if closing:
+                handle.close()
+
+    write(destination, EXPENSE_COLUMNS, expense_out)
+    # Only when there are any: an empty file is one more thing to notice and discard,
+    # and a settlement is rare enough that most runs produce none.
+    settlements_at = None
+    if settlement_out and str(destination) != "-":
+        settlements_at = destination.with_suffix(".settlements.csv")
+        write(settlements_at, SETTLEMENT_COLUMNS, settlement_out)
 
     # ---------------------------------------------------------------- summary
     #
-    # Every figure is a {currency: minor units} bag rather than one integer. A
-    # statement in one currency is the normal case and reads exactly as before,
-    # but ¥1480 and $12.34 are integers on different scales, so adding them
-    # would produce a confident wrong total — and the totals here are the whole
-    # point of the summary.
+    # The reconciliation is the whole point of this section: a row may leave the
+    # file only on purpose, so excluded + settlements + expenses has to equal every
+    # debit in it. One integer per figure, because the ledger is yen only.
     out = sys.stderr
 
-    def bag(amounts: dict[str, int] | None = None) -> dict[str, int]:
-        return defaultdict(int, amounts or {})
-
-    def add(into: dict[str, int], currency: str, minor: int) -> dict[str, int]:
-        into[currency] += minor
-        return into
-
-    def figure(amounts: dict[str, int]) -> str:
-        if not amounts:
-            return "0"
-        return " + ".join(
-            f"{money_text(minor, currency)}"
-            + (f" {currency}" if len(amounts) > 1 else "")
-            for currency, minor in sorted(amounts.items())
-        )
-
-    def same(left: dict[str, int], right: dict[str, int]) -> bool:
-        keys = {key for key in (*left, *right) if left.get(key) or right.get(key)}
-        return all(left.get(key, 0) == right.get(key, 0) for key in keys)
-
-    def totals(items) -> dict[str, int]:
-        result = bag()
-        for item in items:
-            add(result, item.currency, item.debit or item.credit)
-        return result
+    def totals(items) -> int:
+        return sum(item.debit or item.credit for item in items)
 
     debit_total = totals(debits)
     credit_total = totals(credits)
@@ -678,10 +656,7 @@ def main() -> int:
     expense_total = totals(txn for txn, *_ in expense_rows)
     settlement_total = totals(txn for txn, *_ in settlement_rows)
 
-    accounted = bag()
-    for part in (skipped_total, settlement_total, expense_total):
-        for currency, minor in part.items():
-            add(accounted, currency, minor)
+    accounted = skipped_total + settlement_total + expense_total
 
     print(f"\nInput  {args.input}", file=out)
     print(f"  lines read                    {len(lines):>6}", file=out)
@@ -694,29 +669,29 @@ def main() -> int:
     )
 
     print("\nMoney in (credits) — ignored", file=out)
-    print(f"  {len(credits):>6} rows  {figure(credit_total):>18}", file=out)
+    print(f"  {len(credits):>6} rows  {yen_text(credit_total):>18}", file=out)
 
     print("\nMoney out (debits)", file=out)
-    print(f"  {len(debits):>6} rows  {figure(debit_total):>18}", file=out)
+    print(f"  {len(debits):>6} rows  {yen_text(debit_total):>18}", file=out)
     print(
-        f"    excluded, not a purchase  {len(skipped_all):>6} rows  {figure(skipped_total):>18}",
+        f"    excluded, not a purchase  {len(skipped_all):>6} rows  {yen_text(skipped_total):>18}",
         file=out,
     )
     print(
-        f"    settlements               {len(settlement_rows):>6} rows  {figure(settlement_total):>18}",
+        f"    settlements               {len(settlement_rows):>6} rows  {yen_text(settlement_total):>18}",
         file=out,
     )
     print(
-        f"    expenses                  {len(expense_rows):>6} rows  {figure(expense_total):>18}",
+        f"    expenses                  {len(expense_rows):>6} rows  {yen_text(expense_total):>18}",
         file=out,
     )
 
-    balanced = same(accounted, debit_total)
+    balanced = accounted == debit_total
     counted = len(skipped_all) + len(emitted) == len(debits)
     print(
         f"\n  check  {'OK  ' if balanced and counted else 'FAILED'} "
-        f"excluded + settlements + expenses = {figure(accounted)}"
-        f"  vs debits {figure(debit_total)}",
+        f"excluded + settlements + expenses = {yen_text(accounted)}"
+        f"  vs debits {yen_text(debit_total)}",
         file=out,
     )
     print(
@@ -726,7 +701,12 @@ def main() -> int:
     )
 
     print(f"\nWritten  {destination}", file=out)
-    print(f"  {len(rows)} data row(s) for expenses_{args.payer}", file=out)
+    print(f"  {len(expense_out)} data row(s) for expenses_{args.payer}", file=out)
+    if settlements_at:
+        print(f"         {settlements_at}", file=out)
+        print(f"  {len(settlement_out)} data row(s) for settlements", file=out)
+    elif settlement_out:
+        print(f"  {len(settlement_out)} settlement row(s) NOT written (stdout is one tab)", file=out)
 
     def by_size(groups):
         return sorted(groups.items(), key=lambda kv: -sum(t.debit for t in kv[1]))
@@ -734,41 +714,35 @@ def main() -> int:
     if skipped:
         print("\nExcluded as not a purchase", file=out)
         for description, group in by_size(skipped):
-            print(f"  {len(group):>4} × {figure(totals(group)):>14}  {description}", file=out)
+            print(f"  {len(group):>4} × {yen_text(totals(group)):>14}  {description}", file=out)
 
     if by_category:
         print("\nExpense categories written (add any missing ones to the config tab)", file=out)
         ranked = sorted(by_category.items(), key=lambda kv: -sum(t.debit for t in kv[1]))
         for category, group in ranked:
-            print(f"  {len(group):>4} × {figure(totals(group)):>14}  {category}", file=out)
+            print(f"  {len(group):>4} × {yen_text(totals(group)):>14}  {category}", file=out)
 
     if settlement_rows:
         print("\nSettlements written", file=out)
         for txn, *_ in settlement_rows:
-            amount = money_text(txn.debit, txn.currency)
+            amount = yen_text(txn.debit)
             print(f"  {txn.date}  {amount:>14}  {txn.description}", file=out)
 
     if unmatched:
         print("\nNo rule matched — written as a shared 'Other' expense", file=out)
         for description, group in by_size(unmatched):
-            print(f"  {len(group):>4} × {figure(totals(group)):>14}  {description}", file=out)
+            print(f"  {len(group):>4} × {yen_text(totals(group)):>14}  {description}", file=out)
 
     if args.review_over:
-        # The threshold is in MAJOR units, so it means the same thing whatever
-        # the statement is priced in: --review-over 200 is ¥200 or $200.
         big = sorted(
-            (
-                row
-                for row in emitted
-                if row[0].debit >= args.review_over * 10 ** minor_digits(row[0].currency)
-            ),
+            (row for row in emitted if row[0].debit >= args.review_over),
             key=lambda row: -row[0].debit,
         )
         if big:
-            print(f"\nWorth a look — over {args.review_over:,} (major units)", file=out)
+            print(f"\nWorth a look — over ¥{args.review_over:,}", file=out)
             for txn, entry_type, _, share, category in big:
                 kind = "settlement" if entry_type == "settlement" else f"{category} @ {share}"
-                amount = money_text(txn.debit, txn.currency)
+                amount = yen_text(txn.debit)
                 print(f"  {txn.date}  {amount:>14}  {kind:<18}  {txn.description}", file=out)
 
     print("", file=out)

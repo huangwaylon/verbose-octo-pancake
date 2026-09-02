@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  owedToPayerCents,
+  owedToPayerYen,
   computeBalance,
   totalSpend,
   spendByCategory,
@@ -10,78 +10,73 @@ import {
   initialMonthKey,
   groupByDate,
   deletedEntries,
-  hasMixedCurrencies,
 } from '../src/lib/balance.js'
 import { PERSON, ENTRY_TYPE, EVEN_SHARE } from '../src/schema.js'
 import { expense as anExpense, settlement as aSettlement } from './support/entries.js'
 
 /**
- * Deterministic entry factory: explicit id, injected `now`, no crypto.
+ * Deterministic entry factory: explicit id, no crypto.
  *
- * One fixed `createdAt` for every entry unless a test says otherwise. Deriving it
- * from the id — as this once did, via `id.length` — made `groupByDate`'s
- * within-a-day ordering depend on how long the ids were typed, so renaming a
- * fixture could flip an expectation. Tests that care pass `now`.
+ * An entry reads no clock, so nothing has to be injected for these to be reproducible.
+ * The ids ARE the within-a-day order now (`groupByDate` sorts by id), so a test about
+ * that ordering has to choose them deliberately rather than incidentally.
  */
-const FIXED_NOW = '2026-03-01T00:00:00.000Z'
 
 /**
  * The shared fixtures at this file's own values. Almost everything here is about a
  * month, so the dates are March and stay visible in one place; the id and the amount
  * are positional because they are what nearly every assertion below turns on.
  */
-function expense(id, amountCents, overrides = {}) {
-  return anExpense({ id, amountCents, date: '2026-03-10', now: FIXED_NOW, ...overrides })
+function expense(id, amountYen, overrides = {}) {
+  return anExpense({ id, amountYen, date: '2026-03-10', ...overrides })
 }
 
-function settlement(id, amountCents, overrides = {}) {
-  return aSettlement({ id, amountCents, date: '2026-03-31', now: FIXED_NOW, ...overrides })
+function settlement(id, amountYen, overrides = {}) {
+  return aSettlement({ id, amountYen, date: '2026-03-31', ...overrides })
 }
 
-describe('owedToPayerCents', () => {
+describe('owedToPayerYen', () => {
   it('is the non-payer share of the amount', () => {
-    expect(owedToPayerCents(expense('a', 10000, { payerShare: EVEN_SHARE }))).toBe(5000)
-    expect(owedToPayerCents(expense('b', 10000, { payerShare: 1 }))).toBe(0)
-    expect(owedToPayerCents(expense('c', 10000, { payerShare: 0 }))).toBe(10000)
-    expect(owedToPayerCents(expense('d', 10000, { payerShare: 0.25 }))).toBe(7500)
+    expect(owedToPayerYen(expense('a', 10000, { payerShare: EVEN_SHARE }))).toBe(5000)
+    expect(owedToPayerYen(expense('b', 10000, { payerShare: 1 }))).toBe(0)
+    expect(owedToPayerYen(expense('c', 10000, { payerShare: 0 }))).toBe(10000)
+    expect(owedToPayerYen(expense('d', 10000, { payerShare: 0.25 }))).toBe(7500)
   })
 
   it('rounds so the payer and other portions still add to the amount', () => {
     const e = expense('odd', 101, { payerShare: EVEN_SHARE })
-    expect(owedToPayerCents(e)).toBe(50)
-    expect(e.amountCents - owedToPayerCents(e)).toBe(51)
+    expect(owedToPayerYen(e)).toBe(50)
+    expect(e.amountYen - owedToPayerYen(e)).toBe(51)
   })
 
   it('treats a settlement as fully owed to the payer', () => {
     const s = settlement('s1', 5000)
     expect(s.payerShare).toBe(0)
-    expect(owedToPayerCents(s)).toBe(5000)
+    expect(owedToPayerYen(s)).toBe(5000)
   })
 
   it('tolerates a numeric-string share, which a form can hand to makeEntry', () => {
     // A form input can hand '0.5' straight to makeEntry; the balance must not
     // crash on it, but genuine junk must still be loud.
-    expect(owedToPayerCents(expense('str', 10000, { payerShare: '0.5' }))).toBe(5000)
-    expect(computeBalance([expense('str', 10000, { payerShare: '0.25' })]).netCents).toBe(7500)
-    expect(() => owedToPayerCents(expense('junk', 10000, { payerShare: 'half' }))).toThrow(
-      TypeError,
-    )
+    expect(owedToPayerYen(expense('str', 10000, { payerShare: '0.5' }))).toBe(5000)
+    expect(computeBalance([expense('str', 10000, { payerShare: '0.25' })]).netYen).toBe(7500)
+    expect(() => owedToPayerYen(expense('junk', 10000, { payerShare: 'half' }))).toThrow(TypeError)
   })
 })
 
 describe('computeBalance', () => {
   it('reports settled for no entries', () => {
     expect(computeBalance([])).toEqual({
-      netCents: 0,
+      netYen: 0,
       debtor: null,
       creditor: null,
-      amountCents: 0,
+      amountYen: 0,
     })
     expect(computeBalance(undefined)).toEqual({
-      netCents: 0,
+      netYen: 0,
       debtor: null,
       creditor: null,
-      amountCents: 0,
+      amountYen: 0,
     })
   })
 
@@ -91,44 +86,44 @@ describe('computeBalance', () => {
       expense('b', 4000, { payer: PERSON.P2 }),
     ]
     expect(computeBalance(entries)).toEqual({
-      netCents: 0,
+      netYen: 0,
       debtor: null,
       creditor: null,
-      amountCents: 0,
+      amountYen: 0,
     })
   })
 
   it('says p2 owes p1 when p1 paid', () => {
     const balance = computeBalance([expense('a', 4000, { payer: PERSON.P1 })])
-    expect(balance.netCents).toBe(2000)
-    expect(balance.amountCents).toBe(2000)
+    expect(balance.netYen).toBe(2000)
+    expect(balance.amountYen).toBe(2000)
     expect(balance.debtor).toBe(PERSON.P2)
     expect(balance.creditor).toBe(PERSON.P1)
   })
 
   it('says p1 owes p2 when p2 paid', () => {
     const balance = computeBalance([expense('a', 4000, { payer: PERSON.P2 })])
-    expect(balance.netCents).toBe(-2000)
-    expect(balance.amountCents).toBe(2000)
+    expect(balance.netYen).toBe(-2000)
+    expect(balance.amountYen).toBe(2000)
     expect(balance.debtor).toBe(PERSON.P1)
     expect(balance.creditor).toBe(PERSON.P2)
   })
 
   it('handles an expense bought entirely for the other person', () => {
     const balance = computeBalance([expense('gift', 3000, { payer: PERSON.P1, payerShare: 0 })])
-    expect(balance.netCents).toBe(3000)
+    expect(balance.netYen).toBe(3000)
     expect(balance.debtor).toBe(PERSON.P2)
   })
 
   it('ignores an expense the payer bought only for themselves', () => {
     const balance = computeBalance([expense('mine', 3000, { payer: PERSON.P1, payerShare: 1 })])
-    expect(balance).toEqual({ netCents: 0, debtor: null, creditor: null, amountCents: 0 })
+    expect(balance).toEqual({ netYen: 0, debtor: null, creditor: null, amountYen: 0 })
   })
 
   // ── The most important test in the suite ────────────────────────────────
   it('drives the balance to exactly zero when a settlement pays off the outstanding amount', () => {
     const expenses = [
-      // p1 fronts the groceries, split evenly -> p2 owes 2166 (of 4331, odd cents)
+      // p1 fronts the groceries, split evenly -> p2 owes 2166 (of 4331, an odd amount)
       expense('e1', 4331, { payer: PERSON.P1, payerShare: EVEN_SHARE }),
       // p1 buys something entirely for p2 -> p2 owes all 1999
       expense('e2', 1999, { payer: PERSON.P1, payerShare: 0, category: 'Other' }),
@@ -143,28 +138,28 @@ describe('computeBalance', () => {
     // e2: p2 owes all 1999
     // e3: p1 owes 8049 - round(8049*0.5)=4025 -> 4024
     // e4: nobody owes anything
-    expect(before.netCents).toBe(2165 + 1999 - 4024)
-    expect(before.netCents).toBe(140)
+    expect(before.netYen).toBe(2165 + 1999 - 4024)
+    expect(before.netYen).toBe(140)
     expect(before.debtor).toBe(PERSON.P2)
     expect(before.creditor).toBe(PERSON.P1)
-    expect(before.amountCents).toBe(140)
+    expect(before.amountYen).toBe(140)
 
     // The debtor hands over exactly what is outstanding.
-    const payoff = settlement('s1', before.amountCents, { payer: before.debtor })
+    const payoff = settlement('s1', before.amountYen, { payer: before.debtor })
     const after = computeBalance([...expenses, payoff])
 
-    expect(after.netCents).toBe(0)
-    expect(after.amountCents).toBe(0)
+    expect(after.netYen).toBe(0)
+    expect(after.amountYen).toBe(0)
     expect(after.debtor).toBeNull()
     expect(after.creditor).toBeNull()
   })
 
   it('overshoots correctly if the settlement is too large, and flips the debtor', () => {
     const expenses = [expense('e1', 10000, { payer: PERSON.P1 })]
-    expect(computeBalance(expenses).netCents).toBe(5000)
+    expect(computeBalance(expenses).netYen).toBe(5000)
 
     const tooMuch = computeBalance([...expenses, settlement('s1', 6000, { payer: PERSON.P2 })])
-    expect(tooMuch.netCents).toBe(-1000)
+    expect(tooMuch.netYen).toBe(-1000)
     expect(tooMuch.debtor).toBe(PERSON.P1)
     expect(tooMuch.creditor).toBe(PERSON.P2)
   })
@@ -175,7 +170,7 @@ describe('computeBalance', () => {
       settlement('s1', 2000, { payer: PERSON.P2 }),
     ]
     const balance = computeBalance(entries)
-    expect(balance.netCents).toBe(3000)
+    expect(balance.netYen).toBe(3000)
     expect(balance.debtor).toBe(PERSON.P2)
   })
 
@@ -190,8 +185,8 @@ describe('computeBalance', () => {
     // e1: p2 owes 4331 - round(4331/2) = 2165, in p1's favour.
     // e2: p1 owes 30% of 8049 = 8049 - round(8049 * 0.7) = 2415, in p2's favour.
     // s1: p1 hands over 111, which is 111 more owed back to p1.
-    expect(computeBalance(entries).netCents).toBe(2165 - 2415 + 111)
-    expect(computeBalance([...entries].reverse()).netCents).toBe(2165 - 2415 + 111)
+    expect(computeBalance(entries).netYen).toBe(2165 - 2415 + 111)
+    expect(computeBalance([...entries].reverse()).netYen).toBe(2165 - 2415 + 111)
   })
 })
 
@@ -211,7 +206,7 @@ describe('soft deletes are excluded from every aggregate', () => {
 
   it('computeBalance', () => {
     expect(computeBalance(entries)).toEqual(computeBalance([live]))
-    expect(computeBalance(entries).netCents).toBe(2500)
+    expect(computeBalance(entries).netYen).toBe(2500)
   })
 
   it('totalSpend', () => {
@@ -219,7 +214,7 @@ describe('soft deletes are excluded from every aggregate', () => {
   })
 
   it('spendByCategory', () => {
-    expect(spendByCategory(entries)).toEqual([{ category: 'Groceries', totalCents: 5000 }])
+    expect(spendByCategory(entries)).toEqual([{ category: 'Groceries', totalYen: 5000 }])
   })
 
   it('spendByPerson', () => {
@@ -234,13 +229,13 @@ describe('soft deletes are excluded from every aggregate', () => {
   it('groupByDate', () => {
     const groups = groupByDate(entries)
     expect(groups).toHaveLength(1)
-    expect(groups[0]).toEqual({ date: '2026-03-10', entries: [live], totalCents: 5000 })
+    expect(groups[0]).toEqual({ date: '2026-03-10', entries: [live], totalYen: 5000 })
   })
 
   it('treats any truthy deletedAt as deleted', () => {
     const oddly = expense('odd', 100, { deletedAt: 'yes' })
     expect(totalSpend([oddly])).toBe(0)
-    expect(computeBalance([oddly]).netCents).toBe(0)
+    expect(computeBalance([oddly]).netYen).toBe(0)
   })
 
   it('does not treat an empty-string deletedAt as deleted', () => {
@@ -322,8 +317,8 @@ describe('settlements are transfers, not spending', () => {
 
   it('are excluded from spendByCategory even if a category leaked onto them', () => {
     expect(spendByCategory(entries)).toEqual([
-      { category: 'Groceries', totalCents: 3000 },
-      { category: 'Dining', totalCents: 2000 },
+      { category: 'Groceries', totalYen: 3000 },
+      { category: 'Dining', totalYen: 2000 },
     ])
   })
 
@@ -333,15 +328,15 @@ describe('settlements are transfers, not spending', () => {
 
   it('DO affect computeBalance', () => {
     // Expenses alone: p2 owes 1500, p1 owes 1000 -> net +500 to p1.
-    expect(computeBalance(entries.filter((e) => e.type === ENTRY_TYPE.EXPENSE)).netCents).toBe(500)
+    expect(computeBalance(entries.filter((e) => e.type === ENTRY_TYPE.EXPENSE)).netYen).toBe(500)
     // p2 settles 500 and p1 settles 250 -> net 500 - 500 + 250 = 250.
-    expect(computeBalance(entries).netCents).toBe(250)
+    expect(computeBalance(entries).netYen).toBe(250)
   })
 
   it('are still listed by groupByDate but not counted in the day total', () => {
     const group = groupByDate([settlement('only', 9999)])[0]
     expect(group.entries).toHaveLength(1)
-    expect(group.totalCents).toBe(0)
+    expect(group.totalYen).toBe(0)
   })
 })
 
@@ -359,27 +354,6 @@ describe('totalSpend', () => {
   })
 })
 
-describe('hasMixedCurrencies', () => {
-  const jpy = (id, currency) => expense(id, 1000, { currency })
-
-  it('is false when every entry matches the sheet, or says nothing', () => {
-    expect(hasMixedCurrencies([jpy('a', 'JPY'), jpy('b', '')], 'JPY')).toBe(false)
-    expect(hasMixedCurrencies([], 'JPY')).toBe(false)
-    expect(hasMixedCurrencies(null, 'JPY')).toBe(false)
-  })
-
-  it('is true as soon as one entry is priced in something else', () => {
-    expect(hasMixedCurrencies([jpy('a', 'JPY'), jpy('b', 'USD')], 'JPY')).toBe(true)
-  })
-
-  // Otherwise a tombstoned USD row makes the warning permanent, on totals that
-  // no longer include it.
-  it('ignores deleted entries, like every other aggregate', () => {
-    const gone = expense('x', 1000, { currency: 'USD', deletedAt: '2026-03-02T00:00:00.000Z' })
-    expect(hasMixedCurrencies([jpy('a', 'JPY'), gone], 'JPY')).toBe(false)
-  })
-})
-
 describe('spendByCategory', () => {
   it('sorts descending by total', () => {
     const entries = [
@@ -389,9 +363,9 @@ describe('spendByCategory', () => {
       expense('d', 100, { category: 'Groceries' }),
     ]
     expect(spendByCategory(entries)).toEqual([
-      { category: 'Dining', totalCents: 900 },
-      { category: 'Household', totalCents: 400 },
-      { category: 'Groceries', totalCents: 200 },
+      { category: 'Dining', totalYen: 900 },
+      { category: 'Household', totalYen: 400 },
+      { category: 'Groceries', totalYen: 200 },
     ])
   })
 
@@ -402,8 +376,8 @@ describe('spendByCategory', () => {
       expense('c', 300, { category: 'Dining' }),
     ]
     expect(spendByCategory(entries)).toEqual([
-      { category: 'Dining', totalCents: 300 },
-      { category: 'Uncategorized', totalCents: 300 },
+      { category: 'Dining', totalYen: 300 },
+      { category: 'Uncategorized', totalYen: 300 },
     ])
   })
 
@@ -428,7 +402,7 @@ describe('spendByCategory', () => {
       expense('c', 9, { category: '' }),
       settlement('s', 1000),
     ]
-    const sum = spendByCategory(entries).reduce((acc, row) => acc + row.totalCents, 0)
+    const sum = spendByCategory(entries).reduce((acc, row) => acc + row.totalYen, 0)
     expect(sum).toBe(totalSpend(entries))
   })
 })
@@ -543,17 +517,21 @@ describe('monthKeysPresent', () => {
 })
 
 describe('groupByDate', () => {
-  it('groups by day, newest day first, newest entry first within a day', () => {
+  it('groups by day, newest day first, and stably within a day', () => {
     const entries = [
-      expense('old', 100, { date: '2026-03-01', now: '2026-03-01T10:00:00.000Z' }),
-      expense('mid', 200, { date: '2026-03-05', now: '2026-03-05T08:00:00.000Z' }),
-      expense('late', 300, { date: '2026-03-05', now: '2026-03-05T21:00:00.000Z' }),
-      expense('newest', 400, { date: '2026-03-09', now: '2026-03-09T09:00:00.000Z' }),
+      expense('old', 100, { date: '2026-03-01' }),
+      expense('mid', 200, { date: '2026-03-05' }),
+      expense('late', 300, { date: '2026-03-05' }),
+      expense('newest', 400, { date: '2026-03-09' }),
     ]
     const groups = groupByDate(entries)
     expect(groups.map((g) => g.date)).toEqual(['2026-03-09', '2026-03-05', '2026-03-01'])
-    expect(groups[1].entries.map((e) => e.id)).toEqual(['late', 'mid'])
-    expect(groups[1].totalCents).toBe(500)
+    // Within a day the order is by id, descending. Arbitrary, but it must not depend on
+    // which tab the rows arrived from — so it is asserted against the reversed input
+    // too, which is what pins the sort rather than the fixture's order.
+    expect(groups[1].entries.map((e) => e.id)).toEqual(['mid', 'late'])
+    expect(groupByDate([...entries].reverse())[1].entries.map((e) => e.id)).toEqual(['mid', 'late'])
+    expect(groups[1].totalYen).toBe(500)
   })
 
   it('keeps every active entry exactly once', () => {
@@ -567,16 +545,20 @@ describe('groupByDate', () => {
     expect(ids.sort()).toEqual(['a', 'b', 'c'])
   })
 
-  it('is deterministic when createdAt ties', () => {
-    const same = '2026-03-05T08:00:00.000Z'
+  it('orders a day by id descending, whatever order the rows arrived in', () => {
     const entries = [
-      expense('bbb', 100, { date: '2026-03-05', now: same }),
-      expense('aaa', 100, { date: '2026-03-05', now: same }),
-      expense('ccc', 100, { date: '2026-03-05', now: same }),
+      expense('bbb', 100, { date: '2026-03-05' }),
+      expense('aaa', 100, { date: '2026-03-05' }),
+      expense('ccc', 100, { date: '2026-03-05' }),
     ]
-    const first = groupByDate(entries)[0].entries.map((e) => e.id)
-    const second = groupByDate([...entries].reverse())[0].entries.map((e) => e.id)
-    expect(first).toEqual(second)
+    // The literal order, not just "the same both ways": equal-but-arbitrary would pass
+    // a stability check while still depending on which tab the rows came from.
+    expect(groupByDate(entries)[0].entries.map((e) => e.id)).toEqual(['ccc', 'bbb', 'aaa'])
+    expect(groupByDate([...entries].reverse())[0].entries.map((e) => e.id)).toEqual([
+      'ccc',
+      'bbb',
+      'aaa',
+    ])
   })
 
   it('does not mutate or reorder the input array', () => {
@@ -606,7 +588,7 @@ describe('groupByDate', () => {
       settlement('s', 1000, { date: '2026-03-02' }),
       expense('c', 7, { date: '' }),
     ]
-    const sum = groupByDate(entries).reduce((acc, g) => acc + g.totalCents, 0)
+    const sum = groupByDate(entries).reduce((acc, g) => acc + g.totalYen, 0)
     expect(sum).toBe(totalSpend(entries))
   })
 
@@ -657,12 +639,12 @@ describe('end-to-end: a month of shared life', () => {
   it('settling a single month does not zero the whole history', () => {
     const march = filterByMonth(entries, '2026-03')
     const marchBalance = computeBalance(march)
-    const payoff = settlement('payoff', marchBalance.amountCents, {
+    const payoff = settlement('payoff', marchBalance.amountYen, {
       payer: marchBalance.debtor,
       date: '2026-03-31',
     })
-    expect(computeBalance([...march, payoff]).netCents).toBe(0)
-    expect(computeBalance([...entries, payoff]).netCents).not.toBe(0)
+    expect(computeBalance([...march, payoff]).netYen).toBe(0)
+    expect(computeBalance([...entries, payoff]).netYen).not.toBe(0)
   })
 })
 

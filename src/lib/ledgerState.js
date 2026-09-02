@@ -12,10 +12,9 @@
  */
 
 import {
+  DATA_TABS,
   ENTRY_TYPE,
-  PEOPLE,
   PERSON,
-  expensesTab,
   isActive,
   isPerson,
   makeEntry,
@@ -40,9 +39,9 @@ import { i18nError } from '../i18n/index.js'
  * a visible expense back into the balance permanently; and `withPendingEdit`
  * rewrites both copies, putting two of the same expense on screen.
  *
- * A live row therefore always wins, and between two tombstones the one edited
- * last does. Returns the input array itself when there is nothing to reconcile,
- * which is every load but the ones following a payer change.
+ * A live row therefore always wins, and between two tombstones the one deleted LAST
+ * does. Returns the input array itself when there is nothing to reconcile, which is
+ * every load but the ones following a payer change.
  *
  * @param {object[]} entries
  * @returns {object[]}
@@ -56,9 +55,26 @@ export function reconcileById(entries) {
   return byId.size === entries.length ? entries : [...byId.values()]
 }
 
+/**
+ * `deletedAt` breaks the tie, NOT array order.
+ *
+ * Array order here is tab order — `loadAll` decodes all of p1's rows before any of
+ * p2's — so "the last one seen" is not "the newest". The case that gets it backwards:
+ * an entry created under p2, edited to p1 (p2's row tombstoned), then deleted (p1's row
+ * tombstoned). Both copies are dead and p1's is decoded FIRST, so last-seen keeps p2's
+ * older, pre-move copy — and restoring that revives the entry under the wrong payer
+ * with pre-move values, flipping its contribution to the balance, while the correct row
+ * stays dead. Nothing reports it: `reconcileById` shows one row either way and
+ * `supersededRows` counts tombstones without caring which survived.
+ *
+ * The stamps are ISO, so they compare as strings. Two LIVE rows for one id — an
+ * interrupted payer move, where the append landed and the tombstone write did not —
+ * have no stamp to compare and keep the incumbent; either is a correct copy of the
+ * entry, and `compact` is what clears the duplicate.
+ */
 function supersedes(entry, kept) {
   if (isActive(entry) !== isActive(kept)) return isActive(entry)
-  return String(entry.updatedAt ?? '') > String(kept.updatedAt ?? '')
+  return String(entry.deletedAt ?? '') > String(kept.deletedAt ?? '')
 }
 
 /**
@@ -231,9 +247,6 @@ export function compactRefusal(entries, supersededRows) {
  * that `reconcileById` cannot collapse, and the balance would double-count it forever.
  * The same id makes a retry at worst a duplicate row the client reconciles to one.
  *
- * Deliberately not `makeEntry`, which stamps `createdAt`/`updatedAt`: a draft has not
- * been saved and must not claim to have been.
- *
  * `payerShare` is left null, meaning "follow the payer's default" — the form re-derives
  * it whenever the payer control changes. Seeding it here would pin the opening payer's
  * share onto whoever it is switched to.
@@ -244,7 +257,7 @@ export function newDraftEntry(person) {
     type: ENTRY_TYPE.EXPENSE,
     date: todayIso(),
     payer: isPerson(person) ? person : PERSON.P1,
-    amountCents: 0,
+    amountYen: 0,
     category: '',
     description: '',
     payerShare: null,
@@ -283,13 +296,13 @@ export function shouldRefresh(now, lastAt, floorMs) {
 }
 
 /**
- * Whether `compact` can run: it needs a numeric gid per expenses tab, and
- * `values.batchGet` cannot report one, so every compact reads them fresh through
- * `readSheetGids`. A gid still missing after that read is what makes `compact`
- * refuse loudly instead of silently skipping a tab.
+ * Whether `compact` can run: it needs a numeric gid per DATA tab — the settlements one
+ * included — and `values.batchGet` cannot report one, so every compact reads them fresh
+ * through `readSheetGids`. A gid still missing after that read is what makes `compact`
+ * refuse loudly instead of silently skipping a tab and under-reporting what it removed.
  */
-export function missingExpenseGid(sheetIds) {
-  return PEOPLE.some((person) => sheetIds?.[expensesTab(person)] == null)
+export function missingDataGid(sheetIds) {
+  return DATA_TABS.some((tab) => sheetIds?.[tab.title] == null)
 }
 
 /**
@@ -312,11 +325,10 @@ export function looksUninitialized(cause) {
  * thrown error carries `error.<code>` rather than an English sentence.
  *
  * @param {object} input
- * @param {string} [now] injected so tests stay deterministic
  * @returns {object}
  */
-export function entryFromInput(input, now) {
-  const entry = makeEntry(input, now)
+export function entryFromInput(input) {
+  const entry = makeEntry(input)
   const problems = validateEntryCodes(entry)
   if (problems.length) throw i18nError(`error.${problems[0]}`)
   return entry
@@ -334,26 +346,22 @@ export function entryFromInput(input, now) {
  * downgrade. `staleData` is the offline launch and needs an `error` to be real —
  * `stale` alone is where a cached launch starts, before any read has failed.
  *
- * @param {{status: string, error: unknown, mixedCurrencies: boolean,
- *   configMissing: boolean, currencyDefaulted: boolean, currency: string,
- *   undecodedRows: number, undatedRows: number}} state
+ * @param {{status: string, error: unknown, configMissing: boolean,
+ *   undecodedRows: number, undatedRows: number, unattributedRows: number}} state
  * @returns {{key: string, vars?: object}[]}
  */
 export function noticeKeys(state = {}) {
   const notices = []
   if (state.status === 'stale' && state.error) notices.push({ key: 'warning.staleData' })
   if (state.configMissing) notices.push({ key: 'warning.configMissing' })
-  // Only when the tab is actually there: a missing tab defaults the currency too, and
-  // the notice above already says so in the more specific way.
-  else if (state.currencyDefaulted) {
-    notices.push({ key: 'warning.currencyDefaulted', vars: { currency: state.currency } })
-  }
-  if (state.mixedCurrencies) notices.push({ key: 'warning.mixedCurrencies' })
   if (state.undecodedRows > 0) {
     notices.push({ key: 'warning.undecodedRows', vars: { count: state.undecodedRows } })
   }
   if (state.undatedRows > 0) {
     notices.push({ key: 'warning.undatedRows', vars: { count: state.undatedRows } })
+  }
+  if (state.unattributedRows > 0) {
+    notices.push({ key: 'warning.unattributedRows', vars: { count: state.unattributedRows } })
   }
   return notices
 }

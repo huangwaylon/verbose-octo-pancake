@@ -6,29 +6,24 @@
  * is stored as literal text and dates are never re-formatted.
  *
  * Ranges are passed through `encodeURIComponent`, which leaves '!' alone —
- * exactly what the API wants in "expenses_p1!A2:K" — while escaping the rest.
+ * exactly what the API wants in "expenses_p1!A2:G" — while escaping the rest.
  */
 
 import { mergeConfig } from '../config.js'
 import {
   CONFIG_RANGE,
   CONFIG_TAB,
-  EXPENSE_COLUMNS,
+  DATA_TABS,
   FIRST_DATA_ROW,
-  PEOPLE,
-  PERSON,
-  cellRange,
   cellText,
-  columnIndex,
   entryToRow,
-  expensesDataRange,
-  expensesHeaderRange,
-  expensesTab,
+  expenseTab,
   isPerson,
-  rowRange,
   rowToEntry,
+  tabOf,
 } from '../schema.js'
 import { reconcileById, tombstoneCount } from './ledgerState.js'
+import { parseAmountToYen } from './money.js'
 import { getAccessToken, refreshToken } from './connection.js'
 import { defaultConfigRows, parseConfigRows } from './sheetConfig.js'
 import { i18nError } from '../i18n/index.js'
@@ -57,9 +52,15 @@ function isUnreachable(status, payload) {
   return !reasons.some((reason) => RATE_LIMIT_REASONS.has(reason))
 }
 
-const ID_INDEX = columnIndex('id')
-const DELETED_AT_INDEX = columnIndex('deleted_at')
-const DATE_INDEX = columnIndex('date')
+/**
+ * The three cells this layer reads positionally, per tab.
+ *
+ * Deliberately NOT module-wide constants. The two layouts put `deleted_at` at different
+ * indexes, so a single shared one would have `compact` reading the settlements tab's
+ * `id` column — non-empty on every row — and hard-deleting every live settlement.
+ */
+const idCell = (tab, row) => cellText(row, tab.index('id'))
+const deletedCell = (tab, row) => cellText(row, tab.index('deleted_at'))
 
 function buildQuery(params) {
   const query = new URLSearchParams()
@@ -148,10 +149,6 @@ function updateValues(spreadsheetId, range, values) {
 /**
  * Load everything the app needs in one round trip.
  *
- * The config is resolved before the rows, because a row whose currency cell is
- * blank is decoded at the sheet's currency and getting that order wrong is a
- * silent 100x error.
- *
  * Returns the sheet's own partial config as well as the merged one, because the
  * snapshot cache has to store the partial — see `mergeConfig`.
  *
@@ -165,6 +162,11 @@ function updateValues(spreadsheetId, range, values) {
  * `undecodedRows` — live rows with an id whose amount cannot be read at all, so the
  * ledger is short by them. A tombstoned one is correctly out of the totals already.
  *
+ * `unattributedRows` — live SETTLEMENT rows whose `payer` cell names neither person.
+ * Its own count rather than part of `undecodedRows`, because the cell to go and fix is
+ * a different one. Only the settlements tab can reach this: an expense's payer is the
+ * tab it sits in, so there is no cell to get wrong.
+ *
  * `undatedRows` — live rows whose date cell is not a real ISO day. These DO reach
  * the balance but belong to no month, so they never appear in a month's list and
  * cannot be found and fixed from the app. A hand-typed date that Sheets stored as a
@@ -173,22 +175,17 @@ function updateValues(spreadsheetId, range, values) {
  * would make it a serial number, which is worse.
  *
  * `configMissing` — the config tab is gone or renamed, so every default applies:
- * on a USD sheet, every row with a blank currency cell silently decodes at JPY's
- * zero minor digits. Reported rather than repaired, because seeding a fresh config
- * tab would write the DEFAULT currency into the sheet and make the error permanent.
- *
- * `currencyDefaulted` — the tab is readable but names no usable currency, which carries
- * exactly the same 100x risk as the tab being absent and was the one way to reach it
- * silently: `configMissing` can only be set by a *failed* read, so a tab whose rows were
- * cleared, or which merely lost its `currency` row, ran the whole ledger on the default
- * with nothing said. Also never repaired, for the same reason.
+ * both people's names, the categories, and — the one that moves money — each
+ * person's default split, which falls back to an even one. Reported rather than
+ * repaired, because seeding a fresh tab would write this build's defaults into a
+ * sheet whose real values are unknown, and take the notice away with them.
  *
  * @returns {Promise<{entries: object[], config: object, sheetConfig: object,
  *   supersededRows: number, undecodedRows: number, undatedRows: number,
- *   configMissing: boolean, currencyDefaulted: boolean}>}
+ *   unattributedRows: number, configMissing: boolean}>}
  */
 export async function loadAll(spreadsheetId) {
-  const ranges = [expensesDataRange(PERSON.P1), expensesDataRange(PERSON.P2), CONFIG_RANGE]
+  const ranges = [...DATA_TABS.map((tab) => tab.dataRange), CONFIG_RANGE]
   let valueRanges
   let configMissing = false
 
@@ -197,32 +194,47 @@ export async function loadAll(spreadsheetId) {
     valueRanges = data.valueRanges ?? []
   } catch (error) {
     // A missing config tab makes the API reject the whole batch, so retry
-    // without it. The shortened reply then has no third range, and the defaults
-    // win by way of `parseConfigRows([])`.
+    // without it. The shortened reply then has no config range, and the defaults
+    // win by way of `parseConfigRows([])`. Sliced from the END rather than to a
+    // literal 2: a data range added later must not silently drop out of the retry.
     if (error.status !== 400 && error.status !== 404) throw error
-    const data = await batchGetValues(spreadsheetId, ranges.slice(0, 2))
+    const data = await batchGetValues(spreadsheetId, ranges.slice(0, -1))
     valueRanges = data.valueRanges ?? []
     configMissing = true
   }
 
-  const sheetConfig = parseConfigRows(valueRanges[2]?.values ?? [])
+  // The last range, matching `ranges` above. Derived rather than a literal index for
+  // the same reason as the slice: a data range added later would otherwise have the
+  // config parser reading ledger rows, where no key matches and every config value
+  // silently falls back to its default.
+  const sheetConfig = parseConfigRows(valueRanges[ranges.length - 1]?.values ?? [])
   const config = mergeConfig(sheetConfig)
 
   let undecodedRows = 0
   let undatedRows = 0
-  const decoded = PEOPLE.flatMap((person, index) =>
-    // Same order as `ranges` above: p1's tab, then p2's, then the config.
+  let unattributedRows = 0
+  // Positionally coupled to `ranges` above, which is why both are built from the one
+  // `DATA_TABS` list rather than two literals that could drift: a row mapped to the
+  // wrong tab is decoded with the wrong type and the wrong payer.
+  const decoded = DATA_TABS.flatMap((tab, index) =>
     (valueRanges[index]?.values ?? []).flatMap((row) => {
-      // A tombstoned row is meant to be absent from every total, so neither count
+      // A tombstoned row is meant to be absent from every total, so no count
       // applies to it; a row with no id is a blank one and says nothing either.
-      const counts = cellText(row, ID_INDEX) && !cellText(row, DELETED_AT_INDEX)
-      const entry = rowToEntry(row, person, config.currency)
+      const counts = idCell(tab, row) && !deletedCell(tab, row)
+      const entry = rowToEntry(row, tab)
       if (!entry) {
-        if (counts) undecodedRows += 1
+        // Which cell to go and fix. A settlement whose amount reads fine but whose
+        // payer does not is a different problem from an unreadable amount, and the
+        // notices name the cell rather than just the row.
+        if (counts) {
+          const amountReads = parseAmountToYen(cellText(row, tab.index('amount'))) != null
+          if (tab.has('payer') && amountReads) unattributedRows += 1
+          else undecodedRows += 1
+        }
         return []
       }
       // The cell held something; `rowToEntry` could not make a real day of it.
-      if (counts && !entry.date && cellText(row, DATE_INDEX)) undatedRows += 1
+      if (counts && !entry.date && cellText(row, tab.index('date'))) undatedRows += 1
       return [entry]
     }),
   )
@@ -235,26 +247,25 @@ export async function loadAll(spreadsheetId) {
     supersededRows: tombstoneCount(decoded) - tombstoneCount(entries),
     undecodedRows,
     undatedRows,
+    unattributedRows,
     configMissing,
-    // Reported whether the tab is missing or merely silent on the currency; which of
-    // the two it is, is `noticeKeys`' problem, not this layer's.
-    currencyDefaulted: !sheetConfig.currency,
   }
 }
 
 export async function appendEntry(spreadsheetId, entry) {
+  const tab = tabOf(entry)
   await request(
-    `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(expensesTab(entry.payer))}:append`,
+    `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(tab.title)}:append`,
     {
       method: 'POST',
       params: { valueInputOption: RAW, insertDataOption: 'INSERT_ROWS' },
-      body: { values: [entryToRow(entry)] },
+      body: { values: [entryToRow(entry, tab)] },
     },
   )
 }
 
 /**
- * Locate an entry's current row within one person's tab.
+ * Locate an entry's current row within one tab.
  *
  * Row numbers cannot be cached: inserting or deleting rows in the Sheets UI shifts
  * every row below the edit, and writing to a stale row silently overwrites a
@@ -270,14 +281,14 @@ export async function appendEntry(spreadsheetId, entry) {
  * are invisible afterwards — `reconcileById` collapses the duplicate on screen, and
  * `supersededRows` counts tombstones only, so a hidden live copy is never reported.
  */
-async function resolveRow(spreadsheetId, person, id) {
-  const data = await getValues(spreadsheetId, expensesDataRange(person))
+async function resolveRow(spreadsheetId, tab, id) {
+  const data = await getValues(spreadsheetId, tab.dataRange)
   const rows = data.values ?? []
 
   let live = -1
   let any = -1
   rows.forEach((row, index) => {
-    if (cellText(row, ID_INDEX) !== id) return
+    if (idCell(tab, row) !== id) return
     // The LAST match wins on both counts, live or dead: rows are only ever appended,
     // so the newest copy is the one every read reconciles to. The fallback matters as
     // much as the live case, because `setDeletedAt` also CLEARS the cell — a restore
@@ -285,7 +296,7 @@ async function resolveRow(spreadsheetId, person, id) {
     // one, putting the values from before a payer move back on screen while the newest
     // row stays dead, and `reconcileById` prefers the live row so nothing reports it.
     any = index
-    if (!cellText(row, DELETED_AT_INDEX)) live = index
+    if (!deletedCell(tab, row)) live = index
   })
 
   const index = live >= 0 ? live : any
@@ -295,13 +306,24 @@ async function resolveRow(spreadsheetId, person, id) {
 }
 
 /**
- * Overwrite an entry in place.
+ * Overwrite an entry in place, moving it between tabs if it now belongs in a different
+ * one.
  *
- * If the payer changed the row must move tabs — the payer is which tab it lives
- * in, not a cell that can be overwritten. `previousPayer` says where the row is
- * now; `entry.payer` says where it belongs. The old row is tombstoned rather
- * than removed, and only after the new one is appended, so a failure between the
- * two leaves the entry visible under its old payer instead of silently gone.
+ * Both tabs come from `tabOf`, so "where is this row" and "where does it belong" are
+ * answered by the same function — the only way they cannot drift. That also settles the
+ * settlement case without a branch of its own: a settlement's payer is a CELL in the one
+ * settlements tab, so changing it leaves `tabOf` answering the same tab and the row is
+ * simply overwritten. Only an EXPENSE's payer moves a row.
+ *
+ * On a move the old row is tombstoned rather than removed, and only after the new one is
+ * appended, so a failure between the two leaves the entry visible under its old payer
+ * instead of silently gone.
+ *
+ * The tombstone stamp is read from the clock here rather than taken from the entry or
+ * a parameter. An entry carries no timestamp of its own any more, and there is no
+ * decision for a caller to make: the row is being retired *now*. It has to be a real
+ * stamp rather than any non-empty marker, because `reconcileById` breaks a
+ * tombstone-vs-tombstone tie by comparing exactly this cell.
  */
 export async function updateEntry(spreadsheetId, entry, previousPayer) {
   /**
@@ -314,37 +336,49 @@ export async function updateEntry(spreadsheetId, entry, previousPayer) {
     throw new TypeError(`updateEntry needs the row's current payer, got ${String(previousPayer)}`)
   }
 
-  if (previousPayer !== entry.payer) {
+  const tab = tabOf(entry)
+  const previousTab = tabOf({ ...entry, payer: previousPayer })
+
+  if (previousTab !== tab) {
     await appendEntry(spreadsheetId, entry)
-    const oldRowNumber = await resolveRow(spreadsheetId, previousPayer, entry.id)
-    await updateValues(spreadsheetId, cellRange(previousPayer, oldRowNumber, 'deleted_at'), [
-      [entry.updatedAt],
+    const oldRowNumber = await resolveRow(spreadsheetId, previousTab, entry.id)
+    await updateValues(spreadsheetId, previousTab.cellRange(oldRowNumber, 'deleted_at'), [
+      [new Date().toISOString()],
     ])
     return
   }
-  const rowNumber = await resolveRow(spreadsheetId, entry.payer, entry.id)
-  await updateValues(spreadsheetId, rowRange(entry.payer, rowNumber), [entryToRow(entry)])
+  const rowNumber = await resolveRow(spreadsheetId, tab, entry.id)
+  await updateValues(spreadsheetId, tab.rowRange(rowNumber), [entryToRow(entry, tab)])
 }
 
 /**
  * Stamp or clear an entry's `deleted_at`. Deletes are soft so rows never change
  * position and undo is a single cell write.
+ *
+ * Takes the TAB rather than a payer, because the payer alone no longer names one: a
+ * settlement lives in the settlements tab whoever paid it. The caller passes
+ * `tabOf(previous)`, built from the copy in local state, so it is the tab the row is in
+ * now rather than one this layer could pick wrongly.
  */
-export async function setDeletedAt(spreadsheetId, person, id, deletedAtIso) {
-  const rowNumber = await resolveRow(spreadsheetId, person, id)
-  await updateValues(spreadsheetId, cellRange(person, rowNumber, 'deleted_at'), [
-    [deletedAtIso ?? ''],
-  ])
+export async function setDeletedAt(spreadsheetId, tab, id, deletedAtIso) {
+  const rowNumber = await resolveRow(spreadsheetId, tab, id)
+  await updateValues(spreadsheetId, tab.cellRange(rowNumber, 'deleted_at'), [[deletedAtIso ?? '']])
 }
 
 /**
- * Permanently remove every tombstoned row from both people's tabs.
+ * Permanently remove every tombstoned row from every data tab.
  *
  * Reads each tab's own deleted_at column rather than trusting a caller-supplied
  * id list, because an id is not a unique lookup key: an edited entry can have left
  * a tombstone in one tab while the live row sits in the other.
  *
- * @param {Record<string, number>} sheetGids expensesTab(person) -> numeric sheetId
+ * Iterates `DATA_TABS`, so the settlements tab is covered by construction. Left at the
+ * two expenses tabs it would leave every tombstoned settlement behind while
+ * `tombstoneCount` went on counting them — so `compactRefusal` would say there was work
+ * to do, this would do part of it, and the next compact would remove 0 rows and offer
+ * the same ones again.
+ *
+ * @param {Record<string, number>} sheetGids tab title -> numeric sheetId
  * @returns {Promise<{removed: number}>}
  */
 export async function compact(spreadsheetId, sheetGids) {
@@ -354,8 +388,8 @@ export async function compact(spreadsheetId, sheetGids) {
   // round trip on a rare, manual action, at the cost of re-deriving the row numbers
   // from a positional `valueRanges` reply — and this is the only hard delete in the
   // app, where being one row out removes somebody else's expense.
-  for (const person of PEOPLE) {
-    const sheetGid = sheetGids[expensesTab(person)]
+  for (const tab of DATA_TABS) {
+    const sheetGid = sheetGids[tab.title]
     if (sheetGid == null) continue
 
     // The FULL row range, not just the deleted_at column, and that is not waste.
@@ -363,10 +397,10 @@ export async function compact(spreadsheetId, sheetGids) {
     // that only holds while every data row is present in the reply. `deleted_at`
     // is empty on most rows, so a single-column read cannot be trusted to line up
     // — and being one row out here hard-deletes somebody else's expense.
-    const data = await getValues(spreadsheetId, expensesDataRange(person))
+    const data = await getValues(spreadsheetId, tab.dataRange)
     const rowNumbers = []
     ;(data.values ?? []).forEach((row, index) => {
-      if (cellText(row, DELETED_AT_INDEX)) rowNumbers.push(FIRST_DATA_ROW + index)
+      if (deletedCell(tab, row)) rowNumbers.push(FIRST_DATA_ROW + index)
     })
     if (rowNumbers.length === 0) continue
 
@@ -408,8 +442,9 @@ export async function compact(spreadsheetId, sheetGids) {
  * `ensureStructure` to get them: that path WRITES. A ledger whose config tab has
  * been deleted reports `configMissing` and is deliberately never repaired, but
  * `ensureStructure` would add the tab back and seed it with `DEFAULT_CONFIG` —
- * putting the default currency into a sheet whose real one is unknown, and taking
- * the notice away with it. Reading is the whole of what `compact` is owed.
+ * writing this build's defaults into a sheet whose real values are unknown, an even
+ * split included, and taking the notice away with them. Reading is the whole of what
+ * `compact` is owed.
  */
 export async function readSheetGids(spreadsheetId) {
   const data = await request(`/${encodeURIComponent(spreadsheetId)}`, {
@@ -427,9 +462,11 @@ export async function readSheetGids(spreadsheetId) {
  * Bring a blank or newly created spreadsheet up to the schema. Only this path
  * may build structure.
  *
- * Idempotent: existing tabs are left alone, a header row is only written when it
- * does not already match EXPENSE_COLUMNS, a config tab that already has values
- * is never reseeded, and expense data rows are never touched.
+ * Idempotent: existing tabs are left alone, a header row is only written when it does
+ * not already match its OWN tab's column list — the two layouts differ, so one shared
+ * expectation would rewrite the settlements header with the expenses one on every call
+ * — a config tab that already has values is never reseeded, and data rows are never
+ * touched.
  *
  * @returns {Promise<{sheetIds: Record<string, number>}>} tab title -> numeric
  *   sheetId, for a caller that has just built the tabs. `compact` reads its own
@@ -437,15 +474,19 @@ export async function readSheetGids(spreadsheetId) {
  */
 export async function ensureStructure(spreadsheetId) {
   const sheetIds = await readSheetGids(spreadsheetId)
-  const wantedTabs = [...PEOPLE.map(expensesTab), CONFIG_TAB]
+  const wantedTabs = [...DATA_TABS.map((tab) => tab.title), CONFIG_TAB]
   const missing = wantedTabs.filter((title) => !(title in sheetIds))
 
   // Refuse to build structure in a spreadsheet that is evidently somebody's
   // existing work. The id arrives from the script's SHEET_ID property rather than
   // from a person choosing a file, so a wrong one is a configuration mistake —
-  // and adding three tabs to an unrelated spreadsheet is not something undo can
+  // and adding four tabs to an unrelated spreadsheet is not something undo can
   // reach. A freshly created spreadsheet has exactly one default tab, so several
   // tabs with none of ours among them is not the ledger we were pointed at.
+  //
+  // The test is "none of ours", not "any missing": an existing ledger that predates the
+  // settlements tab is missing exactly one of the four, and must have it BUILT rather
+  // than be refused as somebody else's spreadsheet.
   //
   // Translated, because this is the one failure whose message a person has to act
   // on: it names the property to fix, and it reaches an error gate.
@@ -469,20 +510,23 @@ export async function ensureStructure(spreadsheetId) {
   }
 
   const { valueRanges = [] } = await batchGetValues(spreadsheetId, [
-    ...PEOPLE.map(expensesHeaderRange),
+    ...DATA_TABS.map((tab) => tab.headerRange),
     CONFIG_RANGE,
   ])
 
   const data = []
-  PEOPLE.forEach((person, tab) => {
-    const headerRow = valueRanges[tab]?.values?.[0] ?? []
+  DATA_TABS.forEach((tab, index) => {
+    const headerRow = valueRanges[index]?.values?.[0] ?? []
+    // Compared against THIS tab's own list, not one shared expectation: the two layouts
+    // differ, so a shared one would find the settlements header "wrong" every time and
+    // rewrite it with the expenses columns.
     const matches =
-      headerRow.length === EXPENSE_COLUMNS.length &&
-      EXPENSE_COLUMNS.every((column, index) => cellText(headerRow, index) === column)
-    if (!matches) data.push({ range: expensesHeaderRange(person), values: [EXPENSE_COLUMNS] })
+      headerRow.length === tab.columns.length &&
+      tab.columns.every((column, at) => cellText(headerRow, at) === column)
+    if (!matches) data.push({ range: tab.headerRange, values: [tab.columns] })
   })
 
-  const configRows = valueRanges[PEOPLE.length]?.values ?? []
+  const configRows = valueRanges[DATA_TABS.length]?.values ?? []
   const configIsEmpty = configRows.every((row) =>
     (row ?? []).every((_, index) => !cellText(row, index)),
   )

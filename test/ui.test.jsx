@@ -31,16 +31,15 @@ const config = {
   ...DEFAULT_CONFIG,
   person1Name: 'Alex',
   person2Name: 'Sam',
-  currency: 'JPY',
   categories: ['Groceries', 'Dining', 'Household'],
 }
 
 const noop = () => {}
-const money = (cents) => `¥${cents}`
+const money = (yen) => `¥${yen}`
 const share = (percent) => `${percent}%`
 
-function cat(label, valueCents) {
-  return { key: label, label, valueCents }
+function cat(label, valueYen) {
+  return { key: label, label, valueYen }
 }
 
 describe('foldTail', () => {
@@ -67,13 +66,13 @@ describe('foldTail', () => {
     expect(folded).toHaveLength(MAX_SLICES)
     expect(folded[MAX_SLICES - 1].label).toBe('Other')
     // The five folded categories at 10 each.
-    expect(folded[MAX_SLICES - 1].valueCents).toBe(50)
+    expect(folded[MAX_SLICES - 1].valueYen).toBe(50)
   })
 
   it('conserves the total when folding', () => {
     const items = Array.from({ length: 9 }, (_, i) => cat(`c${i}`, i + 1))
-    const before = items.reduce((sum, item) => sum + item.valueCents, 0)
-    const after = foldTail(items, 'Other').reduce((sum, item) => sum + item.valueCents, 0)
+    const before = items.reduce((sum, item) => sum + item.valueYen, 0)
+    const after = foldTail(items, 'Other').reduce((sum, item) => sum + item.valueYen, 0)
     expect(after).toBe(before)
   })
 })
@@ -157,20 +156,19 @@ describe('entry form', () => {
       type: ENTRY_TYPE.EXPENSE,
       date: '2026-08-05',
       payer: PERSON.P1,
-      amountCents: 0,
+      amountYen: 0,
       category: '',
       description: '',
       ...entry,
     },
   })
 
-  const render = (cfg, entry, { mode, currency = 'JPY' } = {}) =>
+  const render = (cfg, entry, { mode } = {}) =>
     renderToStaticMarkup(
       <EntryFormSheet
         draft={draft(entry, mode)}
         config={{ ...config, ...cfg }}
         me={PERSON.P1}
-        currency={currency}
         onSubmit={noop}
         onDelete={noop}
         onClose={noop}
@@ -294,15 +292,13 @@ describe('entry form', () => {
     expect(markup).toContain('Records that You paid Sam back.')
   })
 
-  it('picks the keypad and the placeholder from the currency’s exponent', () => {
-    // ¥1250 and $12.50 are the same digits at different scales, so offering a decimal
-    // point for a zero-decimal currency invites an amount 100x wrong.
-    const yen = render({}, {}, { currency: 'JPY' })
-    expect(yen).toContain('inputMode="numeric"')
-    expect(yen).toContain('placeholder="0"')
-    const dollars = render({}, {}, { currency: 'USD' })
-    expect(dollars).toContain('inputMode="decimal"')
-    expect(dollars).toContain('placeholder="0.00"')
+  it('offers a plain numeric keypad, because the yen has no sub-unit', () => {
+    // A decimal point on the pad would invite an amount 100x wrong, and there is no
+    // fractional yen to type into it.
+    const markup = render()
+    expect(markup).toContain('inputMode="numeric"')
+    expect(markup).not.toContain('inputMode="decimal"')
+    expect(markup).toContain('placeholder="0"')
   })
 
   it('offers delete only when there is a saved row to delete', () => {
@@ -322,12 +318,10 @@ describe('entry form', () => {
 describe('delete confirmation', () => {
   // ¥1,250 and the note are what the assertions below read, so they stay here; the
   // rest of a valid expense comes from the shared fixture.
-  const target = expense({ id: 'x', amountCents: 1250, description: 'Ozeki' })
+  const target = expense({ id: 'x', amountYen: 1250, description: 'Ozeki' })
 
   const render = (entry) =>
-    renderToStaticMarkup(
-      <ConfirmDeleteSheet entry={entry} currency="JPY" onConfirm={noop} onClose={noop} />,
-    )
+    renderToStaticMarkup(<ConfirmDeleteSheet entry={entry} onConfirm={noop} onClose={noop} />)
 
   it('names and prices the entry, so the question is answerable', () => {
     const markup = render(target)
@@ -355,7 +349,7 @@ describe('delete confirmation', () => {
 })
 
 describe('deleted entries list', () => {
-  const removed = (id, overrides) => tombstone({ id, amountCents: 1250, ...overrides })
+  const removed = (id, overrides) => tombstone({ id, amountYen: 1250, ...overrides })
 
   const render = (entries) =>
     renderToStaticMarkup(
@@ -363,7 +357,7 @@ describe('deleted entries list', () => {
         entries={entries}
         config={config}
         me={PERSON.P1}
-        currency="JPY"
+
         onRestore={noop}
       />,
     )
@@ -393,12 +387,6 @@ describe('deleted entries list', () => {
     expect(markup).toContain('aria-label="Restore Life"')
   })
 
-  it('prices each row at its own currency, not the sheet’s', () => {
-    // The same integer at two scales: ¥1250 must not render as $1,250.
-    const markup = render([removed('a', { currency: 'USD', amountCents: 1250 })])
-    expect(markup).toContain('$12.50')
-  })
-
   it('dims a row whose write has not landed yet', () => {
     expect(render([{ ...removed('a'), pending: true }])).toContain('entry--pending')
   })
@@ -410,11 +398,11 @@ describe('Japanese rendering', () => {
   // spend, and the deleted list needs a tombstone. ¥1,250 is what the yen assertions
   // read, and the 800 is `payerShare: 1` so the two are not mirror images.
   const entries = [
-    expense({ id: 'a', amountCents: 1250 }),
-    expense({ id: 'b', amountCents: 800, payer: PERSON.P2, category: 'Dining', payerShare: 1 }),
+    expense({ id: 'a', amountYen: 1250 }),
+    expense({ id: 'b', amountYen: 800, payer: PERSON.P2, category: 'Dining', payerShare: 1 }),
   ]
 
-  const removed = tombstone({ id: 'c', amountCents: 640, payer: PERSON.P2, category: 'Dining' })
+  const removed = tombstone({ id: 'c', amountYen: 640, payer: PERSON.P2, category: 'Dining' })
 
   function renderAll() {
     const balance = computeBalance(entries)
@@ -424,7 +412,7 @@ describe('Japanese rendering', () => {
           balance={balance}
           config={config}
           me={PERSON.P1}
-          currency="JPY"
+
           onRefresh={noop}
           onOpenSettings={noop}
         />,
@@ -436,7 +424,6 @@ describe('Japanese rendering', () => {
           byPerson={spendByPerson(entries)}
           config={config}
           me={PERSON.P1}
-          currency="JPY"
         />,
       ),
       renderToStaticMarkup(
@@ -444,7 +431,7 @@ describe('Japanese rendering', () => {
           groups={groupByDate(entries)}
           config={config}
           me={PERSON.P1}
-          currency="JPY"
+
           onEdit={noop}
           onDelete={noop}
         />,
@@ -454,13 +441,11 @@ describe('Japanese rendering', () => {
           entries={[removed]}
           config={config}
           me={PERSON.P1}
-          currency="JPY"
+
           onRestore={noop}
         />,
       ),
-      renderToStaticMarkup(
-        <ConfirmDeleteSheet entry={removed} currency="JPY" onConfirm={noop} onClose={noop} />,
-      ),
+      renderToStaticMarkup(<ConfirmDeleteSheet entry={removed} onConfirm={noop} onClose={noop} />),
     ].join('')
   }
 

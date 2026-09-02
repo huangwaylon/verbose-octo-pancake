@@ -3,8 +3,8 @@
  *
  * Five files had a near-identical builder around `makeEntry`, and a sixth wrote its
  * rows out as positional arrays. Both duplications were dangerous rather than merely
- * untidy: a builder that forgets `now` reintroduces `crypto.randomUUID` and a clock
- * into a fixture, and a positional row array silently mis-maps every cell the moment
+ * untidy: a builder that forgets to pass an id reintroduces `crypto.randomUUID` into a
+ * fixture, and a positional row array silently mis-maps every cell the moment
  * `EXPENSE_COLUMNS` gains an entry.
  *
  * What is NOT centralised is deliberate: a test whose amounts, shares or dates are
@@ -13,46 +13,40 @@
  * where it can be read next to the expectation.
  */
 
-import { ENTRY_TYPE, EVEN_SHARE, EXPENSE_COLUMNS, PERSON, makeEntry } from '../../src/schema.js'
+import {
+  ENTRY_TYPE,
+  EVEN_SHARE,
+  PERSON,
+  SETTLEMENTS,
+  expenseTab,
+  makeEntry,
+} from '../../src/schema.js'
 
 /**
- * One fixed timestamp for every entry unless a test says otherwise, passed as
- * `makeEntry`'s `now`. Never the real clock: `createdAt` decides `groupByDate`'s
- * within-a-day order, so a fixture built from `Date.now()` orders itself by how
- * fast the machine ran.
+ * The tombstone stamp `tombstone()` uses.
+ *
+ * A real ISO stamp rather than any non-empty marker, because `reconcileById` breaks a
+ * tombstone-vs-tombstone tie by comparing exactly this value.
  */
-export const FIXED_NOW = '2026-08-05T10:00:00.000Z'
-
-/** The tombstone stamp `tombstone()` uses: later than FIXED_NOW, as a real one is. */
 export const DELETED_AT = '2026-08-06T00:00:00.000Z'
 
 /**
  * A complete, valid expense with no randomness in it.
  *
- * `now` is lifted out of the overrides rather than being a second parameter, so a
- * caller that needs a different clock reads the same as one that needs a different
- * amount.
- *
- * @param {object} [over] any entry field, plus `now`
+ * @param {object} [over] any entry field
  */
 export function expense(over = {}) {
-  const { now = FIXED_NOW, ...fields } = over
-  return makeEntry(
-    {
-      id: 'e1',
-      type: ENTRY_TYPE.EXPENSE,
-      date: '2026-08-05',
-      payer: PERSON.P1,
-      // JPY at whole-yen scale, so a fixture's amount and its sheet string are the
-      // same digits. Tests about the two-decimal scale pass USD.
-      amountCents: 1250,
-      currency: 'JPY',
-      category: 'Groceries',
-      payerShare: EVEN_SHARE,
-      ...fields,
-    },
-    now,
-  )
+  return makeEntry({
+    id: 'e1',
+    type: ENTRY_TYPE.EXPENSE,
+    date: '2026-08-05',
+    payer: PERSON.P1,
+    // Whole yen, so a fixture's amount and its sheet string are the same digits.
+    amountYen: 1250,
+    category: 'Groceries',
+    payerShare: EVEN_SHARE,
+    ...over,
+  })
 }
 
 /**
@@ -72,15 +66,23 @@ export function tombstone(over = {}) {
 }
 
 /**
- * A raw sheet row, built from `EXPENSE_COLUMNS` by field NAME.
+ * A raw sheet row for a tab, built from that tab's own column list by field NAME.
  *
  * Never a positional literal: every range and letter in `schema.js` comes from array
- * position, so a fixture written out as eleven cells in order goes on passing while
- * each of its values lands under the neighbouring field.
+ * position, so a fixture written out as N cells in order goes on passing while each of
+ * its values lands under the neighbouring field. Taking the TAB matters just as much now
+ * that there are two layouts — a row built to the expenses list and read as a settlement
+ * puts `category` under `payer`.
  *
- * @param {Record<string, string|number>} fields any subset of EXPENSE_COLUMNS
+ * @param {Record<string, string|number>} fields any subset of the tab's columns
+ * @param {object} [tab] defaults to p1's expenses tab
  * @returns {string[]} one cell per column, blank for anything unnamed
  */
-export function row(fields) {
-  return EXPENSE_COLUMNS.map((column) => fields[column] ?? '')
+export function row(fields, tab = expenseTab(PERSON.P1)) {
+  return tab.columns.map((column) => fields[column] ?? '')
+}
+
+/** A raw settlement row, for the one tab whose payer is a cell. */
+export function settlementRow(fields) {
+  return row(fields, SETTLEMENTS)
 }

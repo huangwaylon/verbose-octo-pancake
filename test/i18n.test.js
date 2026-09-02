@@ -36,6 +36,10 @@ const SAME_IN_BOTH = new Set([
   // rather than being inlined so the *placement* of the symbol remains a
   // translation decision.
   'summary.share',
+  // A bare digit reads the same in both. It stays in the catalog for the same reason:
+  // whether the amount field prompts with "0", a fullwidth "０" or a word is a
+  // translation decision, not one for the component.
+  'form.amountPlaceholder',
 ])
 
 function placeholdersIn(value) {

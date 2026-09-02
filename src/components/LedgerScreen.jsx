@@ -20,7 +20,6 @@ import { useT } from '../i18n/index.js'
 export function LedgerScreen({
   config,
   me,
-  currency,
   view,
   monthKey,
   notices,
@@ -41,7 +40,6 @@ export function LedgerScreen({
         balance={view.balance}
         config={config}
         me={me}
-        currency={currency}
         busy={refreshing}
         onRefresh={onRefresh}
         onOpenSettings={onOpenSettings}
@@ -69,7 +67,6 @@ export function LedgerScreen({
             byPerson={view.byPerson}
             config={config}
             me={me}
-            currency={currency}
           />
         </aside>
 
@@ -79,17 +76,10 @@ export function LedgerScreen({
             groups={view.groups}
             config={config}
             me={me}
-            currency={currency}
             onEdit={onEdit}
             onDelete={onDelete}
           />
-          <DeletedList
-            entries={view.deleted}
-            config={config}
-            me={me}
-            currency={currency}
-            onRestore={onRestore}
-          />
+          <DeletedList entries={view.deleted} config={config} me={me} onRestore={onRestore} />
         </section>
       </main>
     </>

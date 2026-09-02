@@ -10,41 +10,63 @@ app key, and the browser then talks straight to the Sheets API. Google Cloud set
 
 ## Data model
 
-One spreadsheet, three tabs — `expenses_p1`, `expenses_p2`, `config` — laid out in
-exactly one place, `src/schema.js`. Each person has their own expenses tab, so which tab
-a row lives in *is* the payer and no `payer` column can disagree with it. Row 1 is the
-header, data starts at row 2, and editing an entry to change who paid appends it to the
-other person's tab and tombstones the original row — in that order, so a failure between
-the two leaves the entry visible rather than gone. Both rows then carry the same id until
-a compact runs, and the client keeps the live one.
+One spreadsheet, four tabs — `expenses_p1`, `expenses_p2`, `settlements`, `config` —
+laid out in exactly one place, `src/schema.js`. Each person has their own expenses tab, so
+which tab an expense lives in *is* the payer and no column can disagree with it. Row 1 is
+the header, data starts at row 2, and editing an expense to change who paid appends it to
+the other person's tab and tombstones the original row — in that order, so a failure
+between the two leaves the entry visible rather than gone. Both rows then carry the same
+id until a compact runs, and the client keeps the live one.
+
+Settlements get one tab rather than two, because there are few of them and none are
+typed by the app. That tab cannot say who paid the way an expenses tab does, so it has
+the schema's only `payer` column — and its own narrower layout, since a transfer needs
+no category and its share is 0 by definition. A settlement's payer being a cell has one
+pleasant consequence: changing it overwrites that cell instead of moving the row.
+
+`expenses_p1` and `expenses_p2`, ordered to match the bank's own CSV export
+(取引日 / 摘要 / 引出額) so a pasted statement lands under the right headings:
 
 | Col | Field | Example | Notes |
 | --- | --- | --- | --- |
-| A | `id` | `9f1c…` | UUID generated in the browser |
-| B | `type` | `expense` | `expense` or `settlement` |
-| C | `date` | `2026-08-05` | ISO `YYYY-MM-DD`, checked for calendar validity — `2026-02-31` reads as unset |
-| D | `amount` | `1250` | Decimal string at *this row's* currency scale: `1250` is ¥1250, `42.50` is $42.50 |
-| E | `currency` | `JPY` | Decoded before the amount, or the same string means two different sums. Upper-cased on read; blank, or anything that is not a three-letter code, means the sheet's configured currency |
-| F | `category` | `Groceries` | Required for an `expense` |
-| G | `description` | `weekly shop` | Free text, stored literally |
-| H | `payer_share` | `0.5` | Share of the entry the payer covers themselves; `1` means nobody owes them. Read like the `default_split` keys, so anything above 1 is a percentage |
-| I | `created_at` | `2026-08-05T18:02:11.004Z` | ISO timestamp |
-| J | `updated_at` | `2026-08-05T18:02:11.004Z` | ISO timestamp |
-| K | `deleted_at` | *(empty)* | A timestamp here soft-deletes the row |
+| A | `date` | `2026-08-05` | ISO `YYYY-MM-DD`, checked for calendar validity — `2026-02-31` reads as unset |
+| B | `description` | `weekly shop` | Free text, stored literally |
+| C | `amount` | `1250` | Whole yen, digits only. A typed decimal is rounded half-up, so the bank export's `1400.000000` reads as ¥1400 |
+| D | `category` | `Groceries` | Required for an expense |
+| E | `payer_share` | `0.5` | Share of the entry the payer covers themselves; `1` means nobody owes them. Read like the `default_split` keys, so anything above 1 is a percentage |
+| F | `deleted_at` | *(empty)* | A timestamp here soft-deletes the row. The only timestamp a row carries |
+| G | `id` | `9f1c…` | UUID, from the browser or from `scripts/bank_to_ledger.py`. Last, because it is bookkeeping rather than anything to read |
 
-A settlement is just an entry with `payer_share` of `0` — the payer is owed all of it —
-so the balance is one sum over every row and the arithmetic has no settlement branch;
-settlements never count toward spend totals or category breakdowns. Nothing in the
-interface writes one: we settle by wire transfer, which lands on a card statement and
-comes back in as ordinary spend, so the balance converges without a settle-up flow. Rows
-already carrying the type still read, display and edit correctly. Amounts are integer
-minor units (whole yen for JPY, cents for USD, fils for KWD) and every conversion takes
-the currency explicitly, with no default, because `1250` at the wrong scale is a silent
-100x error. Every write is `valueInputOption: RAW`, so a note of `=SUM(A:A)` stays
-literal text and dates are never reformatted. A row the app cannot fully read — an
-unparseable amount, a date the spreadsheet stored in its own locale, a renamed `config`
-tab — is counted and reported on screen, because a ledger quietly short one expense, or
-silently running on the default currency, is worse than a notice.
+`settlements` is narrower — a transfer needs no category, and its share is 0 by
+definition:
+
+| Col | Field | Example | Notes |
+| --- | --- | --- | --- |
+| A | `date` | `2026-08-05` | as above |
+| B | `description` | `Rent` | as above |
+| C | `amount` | `85000` | as above |
+| D | `payer` | `p1` | Who sent the money. The schema's only `payer` column, because one tab cannot say it; case-folded on read, and a value naming neither person is reported rather than guessed |
+| E | `deleted_at` | *(empty)* | as above |
+| F | `id` | `4ee5…` | as above |
+
+In memory a settlement is still just an entry with a `payer_share` of `0` — the payer is
+owed all of it — so the balance is one sum over every row and the arithmetic has no
+settlement branch; settlements never count toward spend totals or category breakdowns.
+Nothing in the interface writes one: we settle by wire transfer, which lands on a card
+statement and comes back in as ordinary spend, so the balance converges without a
+settle-up flow. Rows already there still read, display and edit correctly. The ledger is
+**yen only**: the yen has no sub-unit, so an amount is simply an integer number of yen
+and there is no scale anywhere to get wrong. Every write is `valueInputOption: RAW`, so a
+note of `=SUM(A:A)` stays literal text and dates are never reformatted. A row the app
+cannot fully read — an unparseable amount, a date the spreadsheet stored in its own
+locale, a renamed `config` tab — is counted and reported on screen, because a ledger
+quietly short one expense is worse than a notice.
+
+A row records no `created_at` or `updated_at`. The transaction date is the fact worth
+keeping, and neither stamp was ever displayed — so the only timestamp left is
+`deleted_at`, which doubles as the tie-break when a payer move has left two tombstones
+under one id. Within a day the list orders by id: arbitrary, but stable, and independent
+of which tab the rows arrived from.
 
 Both people are full Editors of one sheet, and edits are **last-write-wins**: an
 entry saved from two devices at once keeps whichever write landed second, with no
@@ -62,12 +84,11 @@ hard delete, and the only thing that spans every month at once.
 
 Key/value pairs in columns A and B under a `key`/`value` header row that the parser
 ignores. A missing, blank or unparseable value falls back to the default in
-`src/config.js`; the fallback currency is JPY.
+`src/config.js`.
 
 | Key | Example | Notes |
 | --- | --- | --- |
 | `person1_name` / `person2_name` | `Alex` | Display names |
-| `currency` | `JPY` | ISO 4217, per-sheet. Also the scale for any row with a blank currency cell |
 | `categories` | `Groceries, Dining, Household` | Comma-separated; an empty list never shadows the default |
 | `default_split_p1` / `default_split_p2` | `80` / `20` | The payer's own share on a new expense, as a percentage or a fraction — anything above 1 reads as a percentage |
 | `note_presets` | `OK Mart, Ozeki, Life` | Frequent shops, offered as one-tap chips on the note field |
@@ -76,11 +97,11 @@ The two split keys are independent and need not sum to 100: only the *payer's* k
 read, so `80`/`20` means person 1 covers 80% of what they paid for and person 2 covers
 20% of what they paid for. A missing key means an even split for that person alone.
 
-Currency is per-sheet and lives here. The interface language (English or Japanese), the
-accent colour, and which of the two people this device belongs to are all per-device, in
-`localStorage`, never in the sheet — nothing written to the sheet is localized or
-device-dependent. Nothing detects who is using the app, because the access token belongs
-to the account that owns the sheet rather than to either person.
+The interface language (English or Japanese), the accent colour, and which of the two
+people this device belongs to are all per-device, in `localStorage`, never in the sheet —
+nothing written to the sheet is localized or device-dependent. Nothing detects who is
+using the app, because the access token belongs to the account that owns the sheet rather
+than to either person.
 
 ## Security model
 
@@ -234,7 +255,7 @@ simulated keyboard. CLAUDE.md has the invocation.
 | `src/config.js` | build-time values, storage keys, defaults and their merge, `localStorage` wrappers |
 | `src/lib/sheets.js` | every Sheets API call |
 | `src/lib/sheetConfig.js` | the `config` tab: the key map, one parser per kind, and what a fresh tab is seeded with |
-| `src/lib/money.js` | integer minor units: parse, format, split, ISO 4217 exponents |
+| `src/lib/money.js` | whole yen: parse, format, split, sum |
 | `src/lib/balance.js` | who-owes-whom and the month aggregates; pure |
 | `src/lib/connection.js` | the app key, the minted token, and the failure taxonomy |
 | `src/lib/snapshot.js` | the launch cache: last successful read, kept on the device |

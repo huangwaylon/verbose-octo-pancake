@@ -1,19 +1,19 @@
 /**
- * Money as integer minor units — cents for USD, whole yen for JPY, fils for KWD.
- * Nothing in this app ever does floating-point arithmetic on money.
+ * Money as whole yen.
  *
- * Every conversion between a string and an integer takes the currency
- * explicitly, with no default: the string "1250" is ¥1250 or $12.50 depending
- * entirely on which currency it belongs to, so a guessed default is a silent
- * 100x corruption. `splitCents` and `sumCents` are scale-agnostic and need none.
+ * The ledger is JPY only, and the yen has no sub-unit — so an amount *is* an integer
+ * number of yen. That is why nothing here takes a currency. Every function used to
+ * need one because the string "1250" is ¥1250 or $12.50 depending on nothing else, so
+ * a guessed default was a silent 100x corruption; with a single currency that
+ * ambiguity cannot arise. Nothing in this app ever does floating-point arithmetic on
+ * money, and after this file there is no scale left to get wrong.
  *
- * `parseAmountToCents` and `centsToSheetString` are exact inverses *for the same
- * currency*, which is what makes a read-modify-write round trip through the
- * sheet lossless.
+ * `parseAmountToYen` and `yenToSheetString` are exact inverses, which is what makes a
+ * read-modify-write round trip through the sheet lossless.
  *
- * Functions taking minor units throw on non-integer input rather than
- * propagating NaN into a balance or a sheet cell. Only `parseAmountToCents`,
- * which handles untrusted human input, reports failure by returning null.
+ * Functions taking yen throw on non-integer input rather than propagating NaN into a
+ * balance or a sheet cell. Only `parseAmountToYen`, which handles untrusted human
+ * input, reports failure by returning null.
  */
 
 /** Whitespace (incl. NBSP / thin spaces) and any Unicode currency symbol. */
@@ -25,65 +25,11 @@ const NUMERIC_ONLY = /^[0-9.,]+$/
 /** Largest integer part we will parse, to stay inside Number.MAX_SAFE_INTEGER. */
 const MAX_INT_DIGITS = 13
 
-/**
- * ISO 4217 exponents, hardcoded rather than asked of Intl: this value decides
- * what gets WRITTEN to the sheet, so it must be identical on every device
- * forever, and `Intl.NumberFormat().resolvedOptions()` would tie the stored
- * format to the browser's ICU version.
- */
-// Eight codes a line: this is a table, not a list of sixteen things. The
-// directive has to be exactly `prettier-ignore` — any trailing text makes it
-// inert and Prettier unrolls the table to one code per line.
-// prettier-ignore
-const ZERO_DECIMAL = new Set([
-  'BIF', 'CLP', 'DJF', 'GNF', 'ISK', 'JPY', 'KMF', 'KRW',
-  'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
-])
-// prettier-ignore
-const THREE_DECIMAL = new Set([
-  'BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND',
-])
-
-/** A currency code is exactly three letters; anything else is not one. */
-const CURRENCY_CODE = /^[A-Za-z]{3}$/
-
-/**
- * The one spelling of a currency code, so `'jpy'`, `' JPY '` and `'JPY'` are the
- * same currency everywhere. Without this the codes only agree by luck:
- * `minorDigits` folds case internally, but `hasMixedCurrencies` compares two
- * codes with `!==` and an entry carries whatever its cell said, so one lowercase
- * config cell latches the mixed-currency warning on over totals that are
- * homogeneous.
- *
- * @param {string} value
- * @returns {string} the upper-cased code, or '' if it is not a code at all
- */
-export function normalizeCurrency(value) {
-  const code = typeof value === 'string' ? value.trim() : ''
-  return CURRENCY_CODE.test(code) ? code.toUpperCase() : ''
-}
-
-/**
- * Minor-unit digits for a currency: 0 for JPY (the yen *is* the minor unit), 2
- * for USD, 3 for KWD. An unrecognised code answers 2, the ISO 4217 default —
- * which is why a typo in the config tab's `currency` is a silent 100x error and
- * why `normalizeCurrency` rejects one at the boundary instead.
- *
- * @param {string} currency
- * @returns {0|2|3}
- */
-export function minorDigits(currency) {
-  const code = normalizeCurrency(currency)
-  if (ZERO_DECIMAL.has(code)) return 0
-  if (THREE_DECIMAL.has(code)) return 3
-  return 2
-}
-
-function assertCents(cents, name = 'cents') {
-  if (!Number.isInteger(cents)) {
-    throw new TypeError(`${name} must be an integer number of cents, got ${String(cents)}`)
+function assertYen(yen, name = 'yen') {
+  if (!Number.isInteger(yen)) {
+    throw new TypeError(`${name} must be an integer number of yen, got ${String(yen)}`)
   }
-  return cents
+  return yen
 }
 
 /**
@@ -115,21 +61,20 @@ function decimalSeparatorIndex(s) {
 }
 
 /**
- * Parse whatever a human types on a phone into integer minor units.
+ * Parse whatever a human types on a phone into whole yen.
  *
  * Returns null — never NaN, never negative — for junk, malformed grouping and
  * any negative input. Amounts are positive magnitudes; direction is carried by
  * the entry's `payer`.
  *
- * The comma-decimal rule above is currency-independent, so for JPY "42,10"
- * parses as 42 rather than 4210. Making the heuristic vary by currency would
- * cost it its one documented, testable definition.
+ * A decimal part is still read rather than rejected, because two things write one: a
+ * person typing out of habit, and the bank's own CSV export, which prints every yen
+ * amount as "1400.000000". Both round half-up to the yen.
  *
  * @param {string|number|null|undefined} input
- * @param {string} currency decides the minor-unit scale
- * @returns {number|null} integer minor units, or null if unparseable
+ * @returns {number|null} whole yen, or null if unparseable
  */
-export function parseAmountToCents(input, currency) {
+export function parseAmountToYen(input) {
   let raw
   if (typeof input === 'string') {
     raw = input
@@ -169,132 +114,83 @@ export function parseAmountToCents(input, currency) {
   if (!intDigits.length && !fracPart.length) return null
   if (intDigits.replace(/^0+/, '').length > MAX_INT_DIGITS) return null
 
-  // Half-up one digit past the last minor digit, in digit arithmetic rather than
-  // floats so the rounding is exact: "1250.5" is 1251 yen, "1.005" is 101 cents.
-  const digits = minorDigits(currency)
-  const padded = `${fracPart}${'0'.repeat(digits + 1)}`.slice(0, digits + 1)
-  let minor = Number(intDigits || '0') * 10 ** digits + Number(padded.slice(0, digits) || '0')
-  if (Number(padded[digits]) >= 5) minor += 1
+  // Half-up on the first decimal digit, in digit arithmetic rather than floats so the
+  // rounding is exact: "1250.5" is 1251 yen and "1400.000000" is 1400, where a parse
+  // through a float would be neither reliably.
+  let yen = Number(intDigits || '0')
+  if (Number(fracPart[0] ?? '0') >= 5) yen += 1
 
-  return Number.isSafeInteger(minor) ? minor : null
-}
-
-/** Digits and a dot at a known scale: no symbol, no grouping, no locale. */
-function decimalString(minor, digits) {
-  const sign = minor < 0 ? '-' : ''
-  const abs = Math.abs(minor)
-  const scale = 10 ** digits
-  const whole = Math.floor(abs / scale)
-  if (digits === 0) return `${sign}${whole}`
-  return `${sign}${whole}.${String(abs % scale).padStart(digits, '0')}`
+  return Number.isSafeInteger(yen) ? yen : null
 }
 
 /**
- * Minor units -> the exact string that lands in a sheet cell: the currency's own
- * precision, '.' separator, no grouping, no symbol, so it is locale-independent
- * and re-parseable. A JPY amount writes "1250", not "1250.00".
+ * Whole yen -> the exact string that lands in a sheet cell: digits alone, no
+ * separator, no grouping, no symbol, so it is locale-independent and re-parseable.
+ * ¥1250 writes "1250".
  *
- * Refuses a missing currency rather than assuming the two-digit default, which
- * is the difference between ¥1250 and "12.50" in somebody's spreadsheet. The
- * display formatters below stay lenient in the same situation on purpose — a
- * missing currency must not take a render down, but it must never be written.
- *
- * @param {number} minor integer minor units
- * @param {string} currency
+ * @param {number} yen
  * @returns {string}
  */
-export function centsToSheetString(minor, currency) {
-  assertCents(minor)
-  if (!currency) throw new TypeError('currency is required to encode an amount for the sheet')
-  return decimalString(minor, minorDigits(currency))
+export function yenToSheetString(yen) {
+  return String(assertYen(yen))
 }
 
 /**
- * Constructed formatters, keyed by everything that decides one.
+ * Constructed formatters, keyed by locale — now the only thing that decides one,
+ * since the currency and its zero fraction digits are fixed.
  *
  * A month's ledger asks for one formatter per amount on screen, and constructing an
  * `Intl.NumberFormat` costs an order of magnitude more than reusing one — enough to
  * be about half the cost of rendering the whole screen, which is paid again on the
- * cold-launch snapshot paint and on every refresh. The key space is
- * (locale × currency × 0|2|3) and both the locale and the sheet's currency are fixed
- * for an install, so this never grows.
+ * cold-launch snapshot paint and on every refresh. The locale is fixed for an
+ * install, so this never grows past a couple of entries.
  */
 const FORMATTERS = new Map()
 
-function formatterFor(locale, currency, fractionDigits) {
-  const key = `${locale ?? ''}|${currency}|${fractionDigits}`
+function formatterFor(locale) {
+  const key = locale ?? ''
   const cached = FORMATTERS.get(key)
   if (cached) return cached
-  // Constructed before it is stored, so an unusable code from the sheet's config tab
-  // keeps throwing into the callers' fallback instead of being remembered as one.
   const formatter = new Intl.NumberFormat(locale, {
     style: 'currency',
-    currency,
-    minimumFractionDigits: fractionDigits,
-    maximumFractionDigits: fractionDigits,
+    currency: 'JPY',
+    // Stated rather than left to ICU. This decides what a person reads, so it must
+    // not vary with the browser's ICU version.
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   })
   FORMATTERS.set(key, formatter)
   return formatter
 }
 
 /**
- * Shared by the two display formatters. The float division is the only one in
- * this module and it is display-only: Intl needs a Number, and the result is
- * rendered immediately, never stored or summed.
- */
-function currencyFormat(cents, currency, { locale, trimZeroCents = false }) {
-  const digits = minorDigits(currency)
-  const scale = 10 ** digits
-  const fractionDigits = trimZeroCents && cents % scale === 0 ? 0 : digits
-  return { formatter: formatterFor(locale, currency, fractionDigits), value: cents / scale }
-}
-
-/**
- * Minor units -> a display string (symbol, locale grouping). Never write this
- * back to the sheet.
+ * Whole yen -> a display string with the symbol and locale grouping ("¥1,250").
+ * Never write this back to the sheet.
  *
- * @param {number} cents integer minor units
- * @param {string} currency ISO 4217 code
+ * @param {number} yen
  * @param {object} [opts]
  * @param {string} [opts.locale] override the runtime locale
- * @param {boolean} [opts.trimZeroCents=false] drop a ".00" tail, easier to scan
- *   in a dense list. A no-op for a zero-decimal currency.
  * @returns {string}
  */
-export function formatCents(cents, currency, opts = {}) {
-  assertCents(cents)
-  try {
-    const { formatter, value } = currencyFormat(cents, currency, opts)
-    return formatter.format(value)
-  } catch {
-    // An unknown code in the sheet's config tab must not crash a render. Not via
-    // `centsToSheetString`, which refuses a missing currency: this is the display
-    // path, where the amount still has to appear. Append the code only when there
-    // is one, or a missing argument renders as the word "undefined".
-    const plain = decimalString(cents, minorDigits(currency))
-    return currency ? `${plain} ${currency}` : plain
-  }
+export function formatYen(yen, { locale } = {}) {
+  return formatterFor(locale).format(assertYen(yen))
 }
 
 /**
- * `formatCents` as `formatToParts` output, so the hero figure can set the symbol
- * and any fraction smaller than the integer part.
+ * `formatYen` as `formatToParts` output, so the hero figure can style the symbol
+ * apart from the digits.
  *
- * Render the parts in the order Intl returns them — `en`/`ja` put the symbol
- * before ("¥1,250"), `fr-FR` after ("1 250 €") — and never assume a `decimal`
- * or `fraction` part exists, because a zero-decimal currency has none.
+ * Render the parts in the order Intl returns them — `en`/`ja` put the symbol before
+ * ("¥1,250"), `fr-FR` after ("1 250 ¥"). There is deliberately no `decimal` or
+ * `fraction` part to handle: the yen has no sub-unit, so Intl never emits one.
  *
- * @returns {Array<{type: string, value: string}>|null} null for an unknown
- *   currency code, signalling the caller to fall back to `formatCents`.
+ * @param {number} yen
+ * @param {object} [opts]
+ * @param {string} [opts.locale] override the runtime locale
+ * @returns {Array<{type: string, value: string}>}
  */
-export function formatCentsParts(cents, currency, opts = {}) {
-  assertCents(cents)
-  try {
-    const { formatter, value } = currencyFormat(cents, currency, opts)
-    return formatter.formatToParts(value)
-  } catch {
-    return null
-  }
+export function formatYenParts(yen, { locale } = {}) {
+  return formatterFor(locale).formatToParts(assertYen(yen))
 }
 
 /**
@@ -308,7 +204,7 @@ export function formatCentsParts(cents, currency, opts = {}) {
  *
  * @param {unknown} value
  * @returns {number|null} null for junk, so the caller's own default wins rather
- *   than NaN reaching `splitCents`
+ *   than NaN reaching `splitYen`
  */
 export function parseShare(value) {
   const raw = typeof value === 'number' ? value : Number.parseFloat(value)
@@ -321,39 +217,39 @@ export function parseShare(value) {
  * Split an amount between the payer and the other person.
  *
  * The payer's portion is rounded half-up and the OTHER person absorbs the
- * remainder, so `payerCents + otherCents === cents` exactly for every input: a
- * shared expense can never lose or invent a unit.
+ * remainder, so `payerYen + otherYen === yen` exactly for every input: a shared
+ * expense can never lose or invent a yen.
  *
- * @param {number} cents integer minor units
+ * @param {number} yen
  * @param {number} payerShare fraction in [0,1]; values outside are clamped
- * @returns {{payerCents: number, otherCents: number}}
+ * @returns {{payerYen: number, otherYen: number}}
  */
-export function splitCents(cents, payerShare) {
-  assertCents(cents)
+export function splitYen(yen, payerShare) {
+  assertYen(yen)
   if (typeof payerShare !== 'number' || !Number.isFinite(payerShare)) {
     throw new TypeError(`payerShare must be a finite number, got ${String(payerShare)}`)
   }
   const share = Math.min(1, Math.max(0, payerShare))
-  const payerCents = Math.round(cents * share)
-  return { payerCents, otherCents: cents - payerCents }
+  const payerYen = Math.round(yen * share)
+  return { payerYen, otherYen: yen - payerYen }
 }
 
 /**
- * Sum integer minor units. Empty list -> 0.
+ * Sum whole yen. Empty list -> 0.
  *
  * @param {number[]} list
  * @returns {number}
  */
-export function sumCents(list) {
+export function sumYen(list) {
   if (!Array.isArray(list)) {
-    throw new TypeError(`sumCents expects an array, got ${String(list)}`)
+    throw new TypeError(`sumYen expects an array, got ${String(list)}`)
   }
   let total = 0
   for (let i = 0; i < list.length; i += 1) {
-    total += assertCents(list[i], `sumCents[${i}]`)
+    total += assertYen(list[i], `sumYen[${i}]`)
   }
   if (!Number.isSafeInteger(total)) {
-    throw new RangeError('sumCents overflowed the safe integer range')
+    throw new RangeError('sumYen overflowed the safe integer range')
   }
   return total
 }

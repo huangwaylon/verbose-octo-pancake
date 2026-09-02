@@ -37,7 +37,6 @@ const config = {
   ...DEFAULT_CONFIG,
   person1Name: 'Waylon',
   person2Name: 'Yuki',
-  currency: 'JPY',
   categories: ['食費', '外食', '日用品', '交通費', '娯楽', 'その他'],
 }
 
@@ -51,15 +50,14 @@ const raw = [
   ['g', '2026-08-01', PERSON.P1, 450, 'その他', '', EVEN_SHARE],
 ]
 
-const entries = raw.map(([id, date, payer, amountCents, category, description, payerShare]) =>
+const entries = raw.map(([id, date, payer, amountYen, category, description, payerShare]) =>
   makeEntry(
     {
       id,
       type: ENTRY_TYPE.EXPENSE,
       date,
       payer,
-      amountCents,
-      currency: 'JPY',
+      amountYen,
       category,
       description,
       payerShare,
@@ -72,15 +70,14 @@ const entries = raw.map(([id, date, payer, amountCents, category, description, p
 const deleted = [
   ['x', '2026-08-03', PERSON.P2, 2200, '外食', 'まちがえて二重に登録'],
   ['y', '2026-08-01', PERSON.P1, 780, '日用品', ''],
-].map(([id, date, payer, amountCents, category, description]) =>
+].map(([id, date, payer, amountYen, category, description]) =>
   makeEntry(
     {
       id,
       type: ENTRY_TYPE.EXPENSE,
       date,
       payer,
-      amountCents,
-      currency: 'JPY',
+      amountYen,
       category,
       description,
       payerShare: EVEN_SHARE,
@@ -120,10 +117,9 @@ function body(overlay, { view = baseView, config: pageConfig = config } = {}) {
       <LedgerScreen
         config={pageConfig}
         me={PERSON.P1}
-        currency="JPY"
         view={view}
         monthKey="2026-08"
-        notices={[t('warning.mixedCurrencies')]}
+        notices={[t('warning.configMissing')]}
         refreshing={false}
         onRefresh={noop}
         onOpenSettings={noop}
@@ -151,8 +147,7 @@ const settledEntries = [
       type: ENTRY_TYPE.SETTLEMENT,
       date: '2026-08-06',
       payer: baseView.balance.debtor,
-      amountCents: baseView.balance.amountCents,
-      currency: 'JPY',
+      amountYen: baseView.balance.amountYen,
       category: '',
       payerShare: 0,
     },
@@ -185,8 +180,7 @@ const stressEntries = [
       type: ENTRY_TYPE.EXPENSE,
       date: '2026-08-05',
       payer: PERSON.P1,
-      amountCents: 123456789,
-      currency: 'JPY',
+      amountYen: 123456789,
       category: 'Groceries and household supplies',
       description: 'Weekly shop plus the birthday things we said we would split evenly',
       payerShare: 0.7,
@@ -199,8 +193,7 @@ const stressEntries = [
       type: ENTRY_TYPE.SETTLEMENT,
       date: '2026-08-04',
       payer: PERSON.P2,
-      amountCents: 9876543,
-      currency: 'USD',
+      amountYen: 9876543,
       category: '',
       payerShare: 0,
     },
@@ -217,13 +210,12 @@ const stressView = viewOf(stressEntries)
  * page where getting the form's two conditional blocks wrong is visible.
  */
 const OVERLAYS = {
-  confirm: <ConfirmDeleteSheet entry={entries[0]} currency="JPY" onConfirm={noop} onClose={noop} />,
+  confirm: <ConfirmDeleteSheet entry={entries[0]} onConfirm={noop} onClose={noop} />,
   form: (
     <EntryFormSheet
       draft={{ mode: 'edit', entry: { ...entries[0], payerShare: 0.7 } }}
       config={{ ...config, notePresets: ['オーケー', 'Ozeki', 'Life'] }}
       me={PERSON.P1}
-      currency="JPY"
       onSubmit={noop}
       onDelete={noop}
       onClose={noop}
@@ -234,7 +226,6 @@ const OVERLAYS = {
       draft={{ mode: 'edit', entry: { ...entries[0], type: ENTRY_TYPE.SETTLEMENT, payerShare: 0 } }}
       config={config}
       me={PERSON.P1}
-      currency="JPY"
       onSubmit={noop}
       onDelete={noop}
       onClose={noop}
@@ -266,7 +257,6 @@ const STRESS_FORM = (
     draft={{ mode: 'edit', entry: { ...stressEntries[0], payerShare: 0.7 } }}
     config={stressConfig}
     me={PERSON.P1}
-    currency="JPY"
     onSubmit={noop}
     onDelete={noop}
     onClose={noop}

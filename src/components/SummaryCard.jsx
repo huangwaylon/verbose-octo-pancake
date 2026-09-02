@@ -16,11 +16,11 @@ import { DonutChart } from './DonutChart.jsx'
  * figure it reads is one of `useLedgerView`'s memos, so a toast has no business
  * re-laying-out a chart.
  */
-function SummaryCardInner({ monthSpend, byCategory, byPerson, config, me, currency }) {
+function SummaryCardInner({ monthSpend, byCategory, byPerson, config, me }) {
   // Every hook runs before the early return below: hook order must not depend
   // on props.
   const { t } = useT()
-  const money = useMoney(currency)
+  const money = useMoney()
   const { label } = usePeopleLabels(config, me)
 
   if (!monthSpend) return null
@@ -32,7 +32,7 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, config, me, curren
   const items = byCategory.map((row) => ({
     key: row.category,
     label: row.category === UNCATEGORIZED ? t('summary.uncategorized') : row.category,
-    valueCents: row.totalCents,
+    valueYen: row.totalYen,
   }))
 
   return (

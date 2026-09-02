@@ -1,31 +1,25 @@
-import { formatCents, formatCentsParts } from '../lib/money.js'
+import { formatYen, formatYenParts } from '../lib/money.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
 import { RefreshIcon, SettingsIcon } from './icons.jsx'
 
 /** Intl part types that recede behind the integer. Anything else is plain text. */
 const RECESSIVE = {
   currency: 'balance__symbol',
-  decimal: 'balance__fraction',
-  fraction: 'balance__fraction',
 }
 
 /**
- * The figure, composed from Intl's own parts so the currency symbol and any minor
- * units can recede while the integer carries the weight.
+ * The figure, composed from Intl's own parts so the currency symbol can recede while
+ * the integer carries the weight.
  *
- * Parts come out in the order Intl returns them — never symbol-first by
- * assumption. `en`/`ja` put it before ("¥1,250"), `fr-FR` after ("1 250 €"), and a
- * zero-decimal currency has no decimal or fraction part at all.
+ * Parts come out in the order Intl returns them — never symbol-first by assumption.
+ * `en`/`ja` put it before ("¥1,250"), `fr-FR` after ("1 250 ¥"). There is no decimal
+ * or fraction part to style: the yen has no sub-unit, so Intl never emits one.
  *
  * No `aria-hidden` on anything: the heading that holds this carries its own
  * `aria-label`, which outranks subtree content, so hiding the parts would only turn
  * a terse heading into an empty one.
  */
-function figure(parts, flat) {
-  // An unknown code from the sheet's config tab composes into nothing. The flat
-  // string is all there is, and a missing scale must not blank the hero.
-  if (!parts) return flat
-
+function figure(parts) {
   return parts.map((part, index) => {
     const recessive = RECESSIVE[part.type]
     return recessive ? (
@@ -57,16 +51,16 @@ function figure(parts, flat) {
  * refresh is in flight", and by the time the header renders at all the gates have
  * already handled `idle` and `loading`.
  */
-export function Header({ balance, config, me, currency, busy, onRefresh, onOpenSettings }) {
+export function Header({ balance, config, me, busy, onRefresh, onOpenSettings }) {
   const { t, locale } = useT()
   const { name } = usePeopleLabels(config, me)
-  const settled = balance.netCents === 0
+  const settled = balance.netYen === 0
   const owe = balance.debtor === me
   // The figure twice over: Intl's parts for the eye, and the same amount as one flat
-  // string for the heading's name — which is also all there is to paint when an
-  // unusable code composes into no parts at all. One call, so the two cannot differ.
-  const amount = settled ? null : formatCents(balance.amountCents, currency, { locale })
-  const parts = settled ? null : formatCentsParts(balance.amountCents, currency, { locale })
+  // string for the heading's name. One call each, from one amount, so the two cannot
+  // disagree about the number they describe.
+  const amount = settled ? null : formatYen(balance.amountYen, { locale })
+  const parts = settled ? null : formatYenParts(balance.amountYen, { locale })
   // The other person, whichever way the debt runs. Both sentences below need exactly
   // this and the amount.
   const vars = settled ? null : { name: name(owe ? balance.creditor : balance.debtor), amount }
@@ -89,7 +83,7 @@ export function Header({ balance, config, me, currency, busy, onRefresh, onOpenS
               className="balance__amount"
               aria-label={owe ? t('balance.youOweAmount', vars) : t('balance.owesYouAmount', vars)}
             >
-              {figure(parts, amount)}
+              {figure(parts)}
             </h1>
             {/* Already spoken as part of the heading above. */}
             <p className="balance__direction" aria-hidden="true">

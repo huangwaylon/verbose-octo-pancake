@@ -97,6 +97,7 @@ export default {
   'form.editSettlementTitle': '精算を編集',
   'form.amount': '金額',
   'form.amountError': '{example}のように金額を入力してください',
+  'form.amountPlaceholder': '0',
   'form.settlementHint': '{payer}が{other}に返したことを記録します。',
   'form.date': '日付',
   'form.category': 'カテゴリー',
@@ -128,7 +129,7 @@ export default {
   'accent.sepia': '焦茶',
   'settings.sheet': 'シート',
   'settings.openSheet': 'Google スプレッドシートで開く',
-  'settings.configTitle': '名前・通貨・カテゴリー',
+  'settings.configTitle': '名前・カテゴリー',
   'settings.defaultSplit': '既定の分担',
   'settings.defaultSplitValue': '{name}が支払ったとき、{name}の負担は{percent}%',
   'settings.defaultSplitHint':
@@ -201,18 +202,17 @@ export default {
   'error.badPayer': '支払った人はふたりのどちらかを選んでください。',
   'error.badShare': '分担は 0〜100% の範囲で指定してください。',
   'error.missingCategory': 'カテゴリーを選んでください。',
-  'error.missingCurrency': 'このシートの config タブに通貨が設定されていません。',
   'warning.staleData': '保存したデータを表示しています。シートにつながりませんでした。',
-  'warning.mixedCurrencies': '通貨の違う記録があるため、合計が正しくない可能性があります。',
   // `Intl.PluralRules('ja')` reports only `other`, so a single branch is correct.
   'warning.configMissing':
-    'config タブが見つからないため、名前・通貨・カテゴリーは既定値です。シートで復元してください。',
-  'warning.currencyDefaulted':
-    'config タブに通貨の指定がないため、金額は {currency} として読み取っています。シートに currency の行を追加してください。',
+    'config タブが見つからないため、名前・カテゴリー・既定の分担は既定値です。シートで復元してください。',
   'warning.undatedRows': {
     other: 'シートに日付を読み取れない行が {count} 行あるため、どの月にも表示されません。',
   },
   'warning.undecodedRows': {
     other: 'シートに金額を読み取れない行が {count} 行あるため、合計に含まれていません。',
+  },
+  'warning.unattributedRows': {
+    other: '支払った人を読み取れない精算が {count} 件あるため、残高に含まれていません。',
   },
 }

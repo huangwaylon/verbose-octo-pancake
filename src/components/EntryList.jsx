@@ -21,9 +21,9 @@ import { WalletIcon } from './icons.jsx'
  * data actually changed — `groups` comes from `useLedgerView`'s memo chain, `onEdit`
  * from a `useCallback` in `App`, and `onDelete` is a setter.
  */
-function EntryListInner({ groups, config, me, currency, onEdit, onDelete }) {
+function EntryListInner({ groups, config, me, onEdit, onDelete }) {
   const { t, locale } = useT()
-  const money = useMoney(currency)
+  const money = useMoney()
   const labels = useDayLabels()
   const { label } = usePeopleLabels(config, me)
 
@@ -53,8 +53,8 @@ function EntryListInner({ groups, config, me, currency, onEdit, onDelete }) {
                 settlement totals nothing — settlements are transfers, never spend — and
                 "¥0" over a six-figure row reads as a bug rather than as arithmetic.
                 Display only: no total is recomputed and no type is branched on. */}
-            {group.totalCents > 0 && (
-              <span className="day-group__total tnum">{money(group.totalCents)}</span>
+            {group.totalYen > 0 && (
+              <span className="day-group__total tnum">{money(group.totalYen)}</span>
             )}
           </header>
           <ul className="surface">
@@ -63,7 +63,6 @@ function EntryListInner({ groups, config, me, currency, onEdit, onDelete }) {
                 key={entry.id}
                 entry={entry}
                 label={label}
-                currency={currency}
                 onEdit={onEdit}
                 onDelete={onDelete}
               />

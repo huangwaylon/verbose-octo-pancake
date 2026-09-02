@@ -26,21 +26,61 @@ is still a rule. See Platform below.
 These are the rules that prevent silent data corruption. Breaking one does not
 throw — it quietly writes the wrong thing to someone's spreadsheet.
 
-**`src/schema.js` is the only file that knows the sheet layout.** Column names,
-order, ranges, and row↔entry mapping live there. Never hardcode a range like
-`'expenses_p1!A2:K'` or a column index elsewhere — use `columnLetter` /
-`columnIndex`.
+**`src/schema.js` is the only file in `src/` that knows the sheet layout.** Column
+names, order, ranges, and row↔entry mapping live there. Never hardcode a range like
+`'expenses_p1!A2:G'` or a column index elsewhere — use a tab's own `letter` / `index`.
+The one exception outside `src/` is `scripts/bank_to_ledger.py`, which cannot import it;
+see Testing for the pin that keeps the two in step.
 
-**`EXPENSE_COLUMNS` is append-only.** Every range and letter is derived from array
-*position*, and `ensureStructure` rewrites a mismatched header row while never touching
-data rows — so inserting or reordering a column relabels every existing row in a live
-sheet, silently, under the wrong field. `columnLetter` carries the 26-column cap and why
-`test/schema.test.js` is the only guard that can catch it being crossed.
+**There are TWO layouts, and every positional lookup hangs off a TAB, never the
+module.** `EXPENSE_COLUMNS` and `SETTLEMENT_COLUMNS` put `deleted_at` at different
+indexes (6 and 5), so one shared constant is not an optimisation — it is `compact`
+reading the settlements tab's `id` column, non-empty on every row, and hard-deleting
+every live settlement in the sheet. `dataTab` derives `index`, `letter`, `has`,
+`dataRange`, `headerRange`, `rowRange` and `cellRange` per tab from that tab's own list;
+`sheets.js` reads cells through `idCell`/`deletedCell`, which take the tab. Never
+reintroduce a module-level index, and never compare a header row against one shared
+expectation — `ensureStructure` would rewrite the settlements header with the expenses
+columns on every call.
 
-**`loadAll`'s ranges are positionally coupled to `PEOPLE`.** It requests
-`[p1, p2, config]` and maps `valueRanges[index]` back by the `PEOPLE` index, so
-reordering either list attributes every row to the wrong payer: the balance flips
-sign and nothing throws.
+**The tab asserts what a row cannot: its type, and — for an expenses tab — its payer.**
+`SETTLEMENTS.payer` is null, meaning "read the cell", and that cell is the only place in
+the schema a column can disagree with reality. So `rowToEntry` REFUSES a settlement whose
+payer names neither person rather than defaulting one, and `loadAll` counts what it
+refused as `unattributedRows` — its own count, not folded into `undecodedRows`, because
+the cell to go and fix is a different one and the amount usually reads fine. There is no
+`type` column at all any more: an expenses tab cannot produce a settlement.
+
+**`tabOf` is the one home of "where does this entry live".** `appendEntry` writes through
+it and `updateEntry` finds the row again through it, so the two cannot disagree. It also
+settles the settlement case with no branch: `tabOf` answers the same tab whichever payer
+a settlement names, so changing that payer overwrites a cell instead of moving the row —
+only an EXPENSE's payer moves one.
+
+**Both column lists are append-only from here.** Every range and letter is derived from
+array *position*, and `ensureStructure` rewrites a mismatched header row while never
+touching data rows — so inserting or reordering a column relabels every existing row in a
+live sheet, silently, under the wrong field.
+
+They WERE reordered once, deliberately, to match the bank CSV's 取引日 / 摘要 / 引出額 and
+to put `id` last. That was safe only because it shipped alongside a one-time manual column
+migration on the single live sheet, in the same change as `scripts/bank_to_ledger.py`.
+Append-only resumes: a second reorder gets no such window. `letterAt` carries the
+26-column cap, and `test/schema.test.js` is the only guard that can catch it being
+crossed.
+
+**`loadAll`'s ranges are positionally coupled to `DATA_TABS`.** It builds
+`[…DATA_TABS, config]` and maps `valueRanges[index]` back by the same index, which is
+why both come from that one list rather than two literals: a row mapped to the wrong tab
+is decoded with the wrong type AND the wrong payer, so the balance flips sign and
+nothing throws.
+
+**`loadAll` derives the config's index from `ranges.length`, and its no-config retry
+slices from the END of that list.** Neither may become a literal. A data range added
+later would otherwise hand ledger rows to `parseConfigRows`, where no key matches and
+every config value silently falls back to a default while `configMissing` stays false
+because the read *succeeded* — and would drop out of the retry entirely, so the tab it
+names is never created and never reported.
 
 **`rowToEntry` and `expensesTab` throw rather than guess a person.** Which tab a row
 lives in *is* the payer, so a caller that cannot name one has lost track of the tab it
@@ -106,6 +146,12 @@ edits the sheet in the Sheets UI, so `updateEntry` and `setDeletedAt` re-resolve
 id → row through `resolveRow` immediately before writing. There is deliberately no
 `rowNumber` field to be tempted by.
 
+**`compact` and `missingDataGid` cover `DATA_TABS`, not just the expenses tabs.** Left
+at two, every tombstoned settlement stays while `tombstoneCount` goes on counting it — so
+`compactRefusal` says there is work to do, `compact` does part of it, and the next one
+removes 0 rows and offers the same rows again, which is exactly the "Removed 0 rows is a
+lie" case.
+
 **`compact()` is the only hard delete.** It reads the full row range rather than the
 `deleted_at` column, it serializes its two tab reads rather than batching them, and it
 must issue its `deleteDimension` requests in **descending** row order within each tab.
@@ -126,40 +172,48 @@ action — a toast that has timed out is a delete nobody can undo.
 month switcher; settings' count stays sheet-wide, because that is what `compact`
 acts on.
 
-**`minorDigits(currency)` is the only place a currency's exponent is decided**, and
-**`normalizeCurrency` is the only spelling of a code** — applied by `parseConfigRows`,
-`rowToEntry` and `makeEntry` alike. `money.js` says why at both. What is not visible
-there: `minorDigits` still answers 2 for any three-letter code it does not recognise,
-so a *typo* inside a well-formed code stays a silent 100x error, and that one cannot
-be guarded anywhere.
+**The ledger is yen only, and no function takes a currency.** The yen has no sub-unit,
+so an amount IS an integer number of yen: there is no exponent to decide, no code to
+normalise, and no scale to get wrong. That is why `money.js` is as small as it is, and
+why the multi-currency machinery it used to carry — `minorDigits`, `normalizeCurrency`,
+the two ISO 4217 tables, `trimZeroCents`, the mixed-currency and defaulted-currency
+notices — is gone rather than merely unused. **Do not reintroduce a currency parameter**
+to make the app "ready" for another one; a second currency is a schema change, and
+adding the argument back without the column is the one shape that IS a silent 100x error.
+The one place `JPY` is still spelled is the `Intl` constructor in `money.js`.
 
-**Every money function takes the currency explicitly; none defaults it.** The string
-`"1250"` is ¥1250 or $12.50 depending only on the currency it is decoded with, so a
-default is a silent 100x error rather than a convenience. The display formatters are the
-deliberate exception: they fall back to the ISO default and to `decimalString`, never to
-the sheet encoder, because a missing currency must not take a render down but must never
-be written.
-
-**Decode a row's currency BEFORE its amount.** `rowToEntry` takes the sheet's
-currency and uses it only when a row's own currency cell is blank or unusable — a
-row somebody added by hand. `loadAll` therefore resolves the config *before* mapping
-rows. `test/currency.test.js` pins both scales. `entryToRow` writes each row at its
-*own* currency's scale, never the config's.
-
-**`parseAmountToCents`'s reading of a comma is currency-independent, and defined once**
-at `decimalSeparatorIndex`: comma-only with exactly three trailing digits is grouping,
-anything else is a decimal, so `"1,234"` is 1234 and `"42,10"` is 42.10 — for JPY too.
-It decides what lands in the sheet, so it has one documented definition rather than one
-per currency, and `test/money.test.js` pins both readings.
+**`parseAmountToYen`'s reading of a comma is defined once** at
+`decimalSeparatorIndex`: comma-only with exactly three trailing digits is grouping,
+anything else is a decimal, so `"1,234"` is 1234 and `"42,10"` is 42. It decides what
+lands in the sheet, so it has one documented definition; `test/money.test.js` pins both
+readings, and the bank export's `"1400.000000"` alongside them.
 
 **Anything the sheet holds and the app cannot show is counted and said out loud.**
-`loadAll` returns five such counts and explains each where it is counted; `noticeKeys`
-turns them into notices and owns their precedence, including why only ONE of the two
-currency notices is shown. Never repair either currency case: re-seeding writes the
-DEFAULT currency into a sheet whose real one is unknown.
+`loadAll` returns four such counts and explains each where it is counted; `noticeKeys`
+turns them into notices and owns their precedence. Never repair the `configMissing`
+case: re-seeding writes this build's defaults — an even split included — into a sheet
+whose real values are unknown, and takes the notice away with them.
 
-**`type` and `currency` are both case-folded on read, and the FIRST usable value for a
-config key wins.** Each is a 100x-or-worse error from one stray cell.
+**`type` is case-folded on read, and the FIRST usable value for a config key wins.**
+A hand-typed `Settlement` read as an expense inflates the month's spend and the category
+donut by the whole transfer; a stale duplicate `default_split_p1` moves money on every
+expense that person paid for.
+
+**A row carries no `created_at` or `updated_at`, and `makeEntry` reads no clock.**
+`deleted_at` is the only timestamp left, which makes it load-bearing twice over: it is
+what soft-deletes a row, and it is what `supersedes` compares to break a
+tombstone-vs-tombstone tie. That tie-break must never fall back to array order —
+`loadAll` decodes all of p1's rows before any of p2's, so "last seen" is tab order, not
+recency, and the copy it keeps after a payer-move-then-delete is the stale pre-move one.
+Restoring that revives the entry under the wrong payer and flips its sign in the balance,
+silently. `updateEntry` stamps the payer-move tombstone from the clock for the same
+reason: a bare non-empty marker would leave nothing to compare.
+
+**Within a day, `groupByDate` orders by id.** Arbitrary but stable, and — the point —
+independent of which tab a row came from. Leaving the rows in arrival order would sort
+every one of p1's expenses above every one of p2's on the same day, and an optimistic row
+is appended, so it would sit at the bottom of its day and then visibly jump when the next
+refresh returned the sheet's own order.
 
 **A displayed share is not the saved share.** `toSplit` carries the exact `share`
 beside the whole-percent `percent`, and `share` is what gets written; `splitAtPercent`
@@ -171,8 +225,7 @@ percentage. Both the `payer_share` column and the `default_split_p*` rows go thr
 it. With two readings, the same `50` means "half" in one place and "the payer covers
 all of it" in the other.
 
-**`splitCents` must conserve every unit:** `payerCents + otherCents === cents`. It
-and `sumCents` are scale-agnostic and need no currency.
+**`splitYen` must conserve every yen:** `payerYen + otherYen === yen`.
 
 **Nothing written to the sheet is ever localized.** Config defaults, column names,
 timestamps and amount strings are locale-independent by design: two people sharing a
@@ -216,7 +269,7 @@ out of it.
 **Config values are not all strings.** `CONFIG_FIELDS` in `src/lib/sheetConfig.js` carries a
 kind per key, and each parser in `PARSERS` answers null for a value it cannot use so the
 caller's defaults win: an empty list must never stand in for a default, or the category
-picker ends up empty, and a share must never yield NaN, because that reaches `splitCents`
+picker ends up empty, and a share must never yield NaN, because that reaches `splitYen`
 and moves money wrongly. `test/config.test.js` pins these. `mergeConfig` clones the arrays
 it spreads, because the defaults are module-level and one caller's mutation would
 otherwise corrupt every later merge in the process.
@@ -247,9 +300,10 @@ at 90ms behind a 120-entry snapshot and 165ms behind 400, at 4x CPU throttle.
 
 **Display formatters are cached, keyed on everything that decides one.** `money.js` and
 `dates.js` each hold a `Map`, because a month's ledger asks for one `Intl` formatter per
-amount and per day heading. The currency cache stores only *successful* constructions, or
-an unusable config code would be remembered as a formatter instead of falling through to
-the display fallback. Neither cache may key on less than the full set of options.
+amount and per day heading. `money.js`'s key is now the locale ALONE, because the
+currency and its zero fraction digits are fixed — but neither cache may key on less than
+the full set of options it actually passes, and a `money.js` key of nothing at all would
+be that same bug in its worst form.
 
 **The app key is never a build-time value.** It is typed once per device and lives
 only there. `VITE_SCRIPT_URL` ships in the public bundle, so nothing may depend on
@@ -344,11 +398,11 @@ existing sheet working".
 - **Prettier owns formatting, for `.js`/`.jsx` only.** `npm run format:check` runs in
   CI before the tests. The stylesheets and docs are outside the glob: their layout is
   hand-tuned (grouped selectors, aligned contrast ratios, hand-wrapped prose) and a
-  reflow would rewrite every paragraph. Where a literal is a table rather than a list
-  — the ISO 4217 sets in `money.js` — use `// prettier-ignore` rather than widening
-  `.prettierignore`, which only needs `dist/`. The directive must be a comment whose
-  text is *exactly* `prettier-ignore`: append a reason to that line and it is silently
-  inert, so put the reason on the line above.
+  reflow would rewrite every paragraph. Where a literal is a table rather than a list,
+  use `// prettier-ignore` rather than widening `.prettierignore`, which only needs
+  `dist/`. The directive must be a comment whose text is *exactly* `prettier-ignore`:
+  append a reason to that line and it is silently inert, so put the reason on the line
+  above.
 - **No new npm dependencies** without a clear reason. The bundle is React plus
   application code; icons are inline SVG in `src/components/icons.jsx`. A new
   dependency also means a CSP decision.
@@ -380,9 +434,10 @@ existing sheet working".
   the two possessive strings applies is a catalog decision rather than a rule in JS.
 - **A control that appears twice is a component.** `Field` (the one home of the
   `<label htmlFor>` vs `<span>` decision), `Segmented` (four call sites, itself built on
-  `Field`), `EntryAmount` (the per-row currency resolution), `EntryLine` (both entry
-  lists), `NoteField` and `SplitField`. The two radio groups — `Segmented` and the accent
-  swatches — each carry their own `role="radiogroup"`.
+  `Field`), `EntryLine` (both entry lists), `NoteField` and `SplitField`. The two radio
+  groups — `Segmented` and the accent swatches — each carry their own
+  `role="radiogroup"`. `EntryAmount` used to be on this list; with one currency its whole
+  job was gone, so it was inlined into its single caller rather than kept as a wrapper.
 - **`LedgerScreen` is the signed-in surface, and THREE things render it**: `App`,
   `scripts/preview.jsx`, and one static render in `test/render.test.jsx`. Written more
   than once, a layout change silently leaves the only visual check screenshotting a tree
@@ -644,15 +699,22 @@ about what was *sent*, not what came back.
 
 `connection`, `snapshot`, `sw-build`, `styles`, `preferences` and `viewport` exist
 because their failures are invisible in a build and on screen — a misclassified endpoint
-reply, a snapshot that renders money at the wrong scale, a precache list that stops any
-worker activating, a merged CSS rule that lands on the wrong block, an accent that
-writes an attribute CSS has no rule for, a keyboard inset that leaves Save covered.
+reply, a cached row the balance cannot survive, a precache list that stops any worker
+activating, a merged CSS rule that lands on the wrong block, an accent that writes an
+attribute CSS has no rule for, a keyboard inset that leaves Save covered.
+
+**`scripts/bank_to_ledger.py` is the one place outside `schema.js` that knows the column
+list**, because it is Python and cannot import it. It writes rows for the same tabs, so a
+disagreement is silent in the worst way: the script keeps emitting its old order, the rows
+paste in looking plausible, and every value lands under the neighbouring field.
+`test/schema.test.js` parses the Python literal and compares it to `EXPENSE_COLUMNS` —
+change the two together, and never add a third home.
 
 **A test that cannot fail is worse than no test**, because it reads as coverage. Do
 not assert a function against itself, do not assert a property of the platform, and do
 not name a test after an invariant it does not exercise. Four specific traps here:
 deriving an expected value from the module under test (write the literal `'K'`, not
-`columnLetter('deleted_at')`); asserting `not.toContain` against a string that appears
+`tab.letter('deleted_at')`); asserting `not.toContain` against a string that appears
 in neither the right nor the wrong output; accepting either of two shapes with `??`
 when only one is correct; and asserting an attribute that a DIFFERENT element in the
 same markup already supplies — check the element, not the document. **Mutate the code
@@ -710,8 +772,9 @@ and why height matters as much as width.
   `values.batchGet` cannot reveal a gid, so `loadAll` never has one and `readSheetGids`
   is a round trip `compact` always pays. `ensureStructure` would answer the same question
   and WRITES: on a ledger whose config tab has been deleted it re-creates the tab and
-  seeds it with the default currency, taking away the `configMissing` notice and putting
-  every later amount 100x out. There is deliberately no cached `sheetIds` state to make
+  seeds it with this build's defaults — an even split included — taking away the
+  `configMissing` notice and moving money on every later expense whose payer had a
+  different default. There is deliberately no cached `sheetIds` state to make
   that shortcut look free. `compact` skips a tab whose gid is missing, and the throw in
   `useLedger` is what stops that being silent.
 - **An endpoint that dies about a week after setup is the consent screen**, not a

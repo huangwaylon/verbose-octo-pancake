@@ -31,12 +31,12 @@ export const MAX_SLICES = 6
  * Fold a sorted-descending list down to at most MAX_SLICES entries, summing the
  * tail into one bucket.
  *
- * @param {{key: string, label: string, valueCents: number}[]} items
+ * @param {{key: string, label: string, valueYen: number}[]} items
  * @param {string} otherLabel
- * @returns {{key: string, label: string, valueCents: number}[]}
+ * @returns {{key: string, label: string, valueYen: number}[]}
  */
 export function foldTail(items, otherLabel) {
-  const list = Array.isArray(items) ? items.filter((item) => item.valueCents > 0) : []
+  const list = Array.isArray(items) ? items.filter((item) => item.valueYen > 0) : []
   if (list.length <= MAX_SLICES) return list
 
   const head = list.slice(0, MAX_SLICES - 1)
@@ -46,22 +46,22 @@ export function foldTail(items, otherLabel) {
     {
       key: '__other__',
       label: otherLabel,
-      valueCents: tail.reduce((sum, item) => sum + item.valueCents, 0),
+      valueYen: tail.reduce((sum, item) => sum + item.valueYen, 0),
     },
   ]
 }
 
 /**
  * @param {object} props
- * @param {{key: string, label: string, valueCents: number}[]} props.items sorted desc
- * @param {(cents: number) => string} props.formatMoney
+ * @param {{key: string, label: string, valueYen: number}[]} props.items sorted desc
+ * @param {(yen: number) => string} props.formatMoney
  * @param {string} props.label accessible name for the figure
  * @param {string} props.otherLabel
  * @param {(percent: number) => string} props.formatShare
  */
 export function DonutChart({ items, formatMoney, label, otherLabel, formatShare }) {
   const slices = foldTail(items, otherLabel)
-  const total = slices.reduce((sum, item) => sum + item.valueCents, 0)
+  const total = slices.reduce((sum, item) => sum + item.valueYen, 0)
   if (!slices.length || total <= 0) return null
 
   // A lone slice gets no gap: a 100% ring with a notch in it just looks broken.
@@ -69,7 +69,7 @@ export function DonutChart({ items, formatMoney, label, otherLabel, formatShare 
 
   let offset = 0
   const drawn = slices.map((item, index) => {
-    const share = (item.valueCents / total) * 100
+    const share = (item.valueYen / total) * 100
     const dash = Math.max(0, share - gap)
     const segment = {
       ...item,
@@ -112,7 +112,7 @@ export function DonutChart({ items, formatMoney, label, otherLabel, formatShare 
                  expects a part-to-whole ring to begin. */
               transform={`rotate(-90 ${CENTER} ${CENTER})`}
             >
-              <title>{`${slice.label} ${formatMoney(slice.valueCents)}`}</title>
+              <title>{`${slice.label} ${formatMoney(slice.valueYen)}`}</title>
             </circle>
           ))}
         </svg>
@@ -131,7 +131,7 @@ export function DonutChart({ items, formatMoney, label, otherLabel, formatShare 
                 the visible text — and iOS has no hover to show one anyway. */}
             <span className="chart__name">{slice.label}</span>
             <span>
-              <span className="chart__value">{formatMoney(slice.valueCents)}</span>{' '}
+              <span className="chart__value">{formatMoney(slice.valueYen)}</span>{' '}
               <span className="chart__share">{formatShare(Math.round(slice.share))}</span>
             </span>
           </li>

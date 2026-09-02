@@ -14,7 +14,7 @@ import { ChevronRightIcon } from './icons.jsx'
  * underneath it, and keyboard and screen-reader behaviour come from the
  * platform. This is a recovery surface, not a view — hence last on the page.
  */
-export function DeletedList({ entries, config, me, currency, onRestore }) {
+export function DeletedList({ entries, config, me, onRestore }) {
   const { t, locale } = useT()
   const labels = useDayLabels()
   const { label } = usePeopleLabels(config, me)
@@ -33,7 +33,6 @@ export function DeletedList({ entries, config, me, currency, onRestore }) {
           <DeletedRow
             key={entry.id}
             entry={entry}
-            currency={currency}
             payerLabel={label(entry.payer)}
             dateLabel={dayLabel(entry.date, { locale, labels })}
             onRestore={onRestore}
@@ -47,16 +46,15 @@ export function DeletedList({ entries, config, me, currency, onRestore }) {
 /**
  * Its own component because it calls a hook per row: `useEntryTitle` needs the entry,
  * and the title is wanted twice — as the visible text and inside the restore button's
- * accessible name. The row's shape and the per-row currency are `EntryLine`'s job.
+ * accessible name. The row's shape and its amount are `EntryLine`'s job.
  */
-function DeletedRow({ entry, currency, payerLabel, dateLabel, onRestore }) {
+function DeletedRow({ entry, payerLabel, dateLabel, onRestore }) {
   const { t } = useT()
   const description = useEntryTitle(entry)
 
   return (
     <EntryLine
       entry={entry}
-      currency={currency}
       description={description}
       meta={t('deleted.meta', { date: dateLabel, name: payerLabel })}
     >

@@ -21,14 +21,11 @@ const entry = (over = {}) => ({
   id: 'e1',
   type: 'expense',
   date: '2026-08-06',
-  amountCents: 1250,
-  currency: 'JPY',
+  amountYen: 1250,
   category: 'Groceries',
   description: 'shop',
   payer: 'p1',
   payerShare: 0.5,
-  createdAt: '2026-08-06T00:00:00.000Z',
-  updatedAt: '2026-08-06T00:00:00.000Z',
   deletedAt: null,
   ...over,
 })
@@ -36,14 +33,13 @@ const entry = (over = {}) => ({
 afterEach(removeStorage)
 
 describe('round trip', () => {
-  it('preserves the amount and its currency exactly', async () => {
+  it('preserves the amount exactly', async () => {
     const { snapshot } = await load()
-    // Integer minor units plus the row's own currency, so JSON is lossless and
-    // nothing is re-decoded at the wrong scale on the way back in.
-    snapshot.writeSnapshot(SHEET, [entry({ amountCents: 1250, currency: 'JPY' })], {})
+    // Whole yen as an integer, so JSON is lossless and nothing is re-decoded on the
+    // way back in — this is the one input never read through `rowToEntry`.
+    snapshot.writeSnapshot(SHEET, [entry({ amountYen: 1250 })], {})
     const read = snapshot.readSnapshot(SHEET)
-    expect(read.entries[0].amountCents).toBe(1250)
-    expect(read.entries[0].currency).toBe('JPY')
+    expect(read.entries[0].amountYen).toBe(1250)
   })
 
   it('drops pending, which does not survive a relaunch', async () => {
@@ -58,11 +54,11 @@ describe('round trip', () => {
     const { snapshot } = await load()
     // Only what the sheet actually said. Storing the merged config would freeze
     // the building build's defaults into every later launch.
-    snapshot.writeSnapshot(SHEET, [], { currency: 'USD' })
+    snapshot.writeSnapshot(SHEET, [], { defaultSplitP1: 0.8 })
     const read = snapshot.readSnapshot(SHEET)
-    expect(read.config).toEqual({ currency: 'USD' })
+    expect(read.config).toEqual({ defaultSplitP1: 0.8 })
     const merged = mergeConfig(read.config)
-    expect(merged.currency).toBe('USD')
+    expect(merged.defaultSplitP1).toBe(0.8)
     expect(merged.categories).toEqual(DEFAULT_CONFIG.categories)
   })
 
@@ -82,7 +78,7 @@ describe('round trip', () => {
     // The payload is produced by `writeSnapshot` rather than hand-authored, so this
     // asserts byte-identity through the real encoder.
     const seeded = await load()
-    seeded.snapshot.writeSnapshot(SHEET, [entry()], { currency: 'USD' })
+    seeded.snapshot.writeSnapshot(SHEET, [entry()], { person1Name: 'Waylon' })
     const payload = seeded.store.get('sf.snapshot')
 
     // A fresh module, as a relaunch is: the remembered payload resets with it.
@@ -98,7 +94,7 @@ describe('round trip', () => {
     expect(serialize).not.toHaveBeenCalled()
 
     // And not by going deaf: a changed ledger still reaches storage.
-    snapshot.writeSnapshot(SHEET, [entry({ amountCents: 99 })], restored.config)
+    snapshot.writeSnapshot(SHEET, [entry({ amountYen: 99 })], restored.config)
     expect(writes).toHaveBeenCalledTimes(1)
     serialize.mockRestore()
   })
@@ -126,7 +122,7 @@ describe('what gets ignored', () => {
 
   it('ignores a payload missing its entries or config', async () => {
     const { snapshot } = await load({
-      'sf.snapshot': JSON.stringify({ v: 1, spreadsheetId: SHEET, entries: 'nope', config: {} }),
+      'sf.snapshot': JSON.stringify({ v: 2, spreadsheetId: SHEET, entries: 'nope', config: {} }),
     })
     expect(snapshot.readSnapshot(SHEET)).toBe(null)
   })
@@ -142,10 +138,11 @@ describe('what gets ignored', () => {
     // silently never persist and launch would stay slow with no signal at all.
     //
     // The 800,000-character cap is the whole subject, and rows of this shape cross it
-    // at about 3,120 — so this is just past it rather than the 20,000 it used to be,
-    // which spent six times the work proving the same crossing. A fixture that fell
-    // back UNDER the cap would fail this test rather than pass it vacuously.
-    const overCap = Array.from({ length: 3_200 }, (_unused, index) => entry({ id: `e${index}` }))
+    // at about 5,130 — so this is just past it rather than the 20,000 it used to be,
+    // which spent four times the work proving the same crossing. A fixture that fell
+    // back UNDER the cap fails this test rather than passing it vacuously, which is
+    // what happens every time the row shape loses a field: re-measure, do not pad.
+    const overCap = Array.from({ length: 5_400 }, (_unused, index) => entry({ id: `e${index}` }))
     snapshot.writeSnapshot(SHEET, overCap, {})
     expect(store.has('sf.snapshot')).toBe(false)
   })
@@ -172,20 +169,20 @@ describe('what gets ignored', () => {
 /**
  * The cache is the one input never decoded through `rowToEntry`, and it is restored
  * during the FIRST render — so a row the aggregates cannot take is not a bad number,
- * it is an app that will not launch, with no way in to clear the cache. `splitCents`
- * throws on a non-numeric share and `sumCents` on a non-integer amount.
+ * it is an app that will not launch, with no way in to clear the cache. `splitYen`
+ * throws on a non-numeric share and `sumYen` on a non-integer amount.
  *
  * Whole-list rejection is the point: a partially dropped ledger is a wrong balance on
  * screen, which is worse than the empty frame a re-read costs.
  */
 describe('a row the balance could not survive', () => {
   const stored = (entries) => ({
-    'sf.snapshot': JSON.stringify({ v: 1, spreadsheetId: SHEET, entries, config: {} }),
+    'sf.snapshot': JSON.stringify({ v: 2, spreadsheetId: SHEET, entries, config: {} }),
   })
 
   const unusable = {
-    'a non-integer amount': { amountCents: 12.5 },
-    'a missing amount': { amountCents: undefined },
+    'a non-integer amount': { amountYen: 12.5 },
+    'a missing amount': { amountYen: undefined },
     // Not `Number(...)`: null, '' and false all coerce to 0 and then throw.
     'a null share': { payerShare: null },
     'an empty-string share': { payerShare: '' },
@@ -196,7 +193,6 @@ describe('a row the balance could not survive', () => {
     'a missing payer': { payer: undefined },
     'a missing id': { id: undefined },
     'an empty id': { id: '' },
-    'a non-string currency': { currency: 42 },
   }
 
   for (const [what, over] of Object.entries(unusable)) {
@@ -208,7 +204,7 @@ describe('a row the balance could not survive', () => {
 
   it('drops the whole list, not just the bad row', async () => {
     const { snapshot } = await load(
-      stored([entry({ id: 'good' }), entry({ id: 'bad', amountCents: 12.5 })]),
+      stored([entry({ id: 'good' }), entry({ id: 'bad', amountYen: 12.5 })]),
     )
     expect(snapshot.readSnapshot(SHEET)).toBe(null)
   })
@@ -226,7 +222,7 @@ describe('a row the balance could not survive', () => {
   })
 
   it('accepts a zero amount, which is not the same as a missing one', async () => {
-    const { snapshot } = await load(stored([entry({ amountCents: 0 })]))
+    const { snapshot } = await load(stored([entry({ amountYen: 0 })]))
     expect(snapshot.readSnapshot(SHEET).entries).toHaveLength(1)
   })
 })

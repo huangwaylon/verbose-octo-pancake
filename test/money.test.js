@@ -1,335 +1,295 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseAmountToCents,
-  centsToSheetString,
-  formatCents,
-  splitCents,
-  sumCents,
+  parseAmountToYen,
+  yenToSheetString,
+  formatYen,
+  formatYenParts,
+  splitYen,
+  sumYen,
 } from '../src/lib/money.js'
 
-describe('parseAmountToCents — formats a human actually types', () => {
-  it('parses plain integers and decimals', () => {
-    expect(parseAmountToCents('42', 'USD')).toBe(4200)
-    expect(parseAmountToCents('42.10', 'USD')).toBe(4210)
-    expect(parseAmountToCents('0', 'USD')).toBe(0)
-    expect(parseAmountToCents('0.00', 'USD')).toBe(0)
-    expect(parseAmountToCents('0.01', 'USD')).toBe(1)
+describe('parseAmountToYen — formats a human actually types', () => {
+  it('parses plain integers', () => {
+    expect(parseAmountToYen('1250')).toBe(1250)
+    expect(parseAmountToYen('0')).toBe(0)
+    expect(parseAmountToYen('1')).toBe(1)
+  })
+
+  it('rounds a typed decimal half-up to the yen', () => {
+    expect(parseAmountToYen('1250.4')).toBe(1250)
+    expect(parseAmountToYen('1250.5')).toBe(1251)
+    expect(parseAmountToYen('1250.49')).toBe(1250)
+    // Only the FIRST decimal digit decides: 0.49 must not carry into 0.5.
+    expect(parseAmountToYen('0.49')).toBe(0)
+    expect(parseAmountToYen('0.5')).toBe(1)
+  })
+
+  it('reads the bank export’s six-decimal amounts as whole yen', () => {
+    // Every amount in the statement CSV is written this way.
+    expect(parseAmountToYen('1400.000000')).toBe(1400)
+    expect(parseAmountToYen('100000.000000')).toBe(100000)
+    expect(parseAmountToYen('311.000000')).toBe(311)
   })
 
   it('parses the sloppy shapes a phone keyboard produces', () => {
-    expect(parseAmountToCents('.5', 'USD')).toBe(50)
-    expect(parseAmountToCents('42.', 'USD')).toBe(4200)
-    expect(parseAmountToCents('.05', 'USD')).toBe(5)
+    expect(parseAmountToYen('.5')).toBe(1)
+    expect(parseAmountToYen('.4')).toBe(0)
+    expect(parseAmountToYen('1250.')).toBe(1250)
   })
 
   it('strips surrounding whitespace and currency symbols', () => {
-    expect(parseAmountToCents(' $42.10 ', 'USD')).toBe(4210)
-    expect(parseAmountToCents('€42,10', 'USD')).toBe(4210)
-    expect(parseAmountToCents('£1,234.56', 'USD')).toBe(123456)
-    expect(parseAmountToCents(' 42.10 ', 'USD')).toBe(4210)
-    expect(parseAmountToCents('42.10 $', 'USD')).toBe(4210)
+    expect(parseAmountToYen(' ¥1250 ')).toBe(1250)
+    // Fullwidth yen sign, which is what a Japanese keyboard produces.
+    expect(parseAmountToYen('￥1250')).toBe(1250)
+    expect(parseAmountToYen('$1250')).toBe(1250)
+    expect(parseAmountToYen('1250 ¥')).toBe(1250)
   })
 
+  /**
+   * The comma rule has one definition for the whole app, at
+   * `decimalSeparatorIndex`, and both readings of it decide what lands in the sheet
+   * — so both are pinned here rather than left to the caller.
+   */
   it('treats a comma before one or two digits as a decimal separator', () => {
-    expect(parseAmountToCents('42,10', 'USD')).toBe(4210)
-    expect(parseAmountToCents('42,1', 'USD')).toBe(4210)
-    expect(parseAmountToCents('0,99', 'USD')).toBe(99)
-    expect(parseAmountToCents(',5', 'USD')).toBe(50)
+    expect(parseAmountToYen('42,10')).toBe(42)
+    expect(parseAmountToYen('42,50')).toBe(43)
+    expect(parseAmountToYen('0,99')).toBe(1)
+    expect(parseAmountToYen(',5')).toBe(1)
   })
 
   it('treats a comma before exactly three digits as a thousands separator', () => {
-    expect(parseAmountToCents('1,234', 'USD')).toBe(123400)
-    expect(parseAmountToCents('1,234,567', 'USD')).toBe(123456700)
-    expect(parseAmountToCents('12,345', 'USD')).toBe(1234500)
+    expect(parseAmountToYen('1,234')).toBe(1234)
+    expect(parseAmountToYen('1,234,567')).toBe(1234567)
   })
 
-  it('lets the last separator win when both . and , appear', () => {
-    // US style
-    expect(parseAmountToCents('1,234.56', 'USD')).toBe(123456)
-    // European style — same amount
-    expect(parseAmountToCents('1.234,56', 'USD')).toBe(123456)
-    // French style, space grouping
-    expect(parseAmountToCents('1 234,56', 'USD')).toBe(123456)
-    expect(parseAmountToCents('1.234.567,89', 'USD')).toBe(123456789)
-    expect(parseAmountToCents('1,234,567.89', 'USD')).toBe(123456789)
+  it('takes the last separator as the decimal one when both kinds appear', () => {
+    expect(parseAmountToYen('1,234.56')).toBe(1235)
+    expect(parseAmountToYen('1.234,56')).toBe(1235)
+    expect(parseAmountToYen('1.234,49')).toBe(1234)
   })
 
-  it('reads a lone dot as a decimal point even before three digits', () => {
-    // "1.234" is a US decimal, so it must round to 1.23 and NOT become 1234.
-    expect(parseAmountToCents('1.234', 'USD')).toBe(123)
-    // Repeated dots can only be grouping.
-    expect(parseAmountToCents('1.234.567', 'USD')).toBe(123456700)
+  it('returns null for malformed grouping rather than a plausible wrong number', () => {
+    expect(parseAmountToYen('12,34,567')).toBeNull()
+    expect(parseAmountToYen('1,2345,678')).toBeNull()
+    expect(parseAmountToYen(',,5')).toBeNull()
   })
 
-  it('rounds half-up at the third decimal without float error', () => {
-    expect(parseAmountToCents('1.005', 'USD')).toBe(101)
-    expect(parseAmountToCents('1.004', 'USD')).toBe(100)
-    expect(parseAmountToCents('1.0049', 'USD')).toBe(100)
-    expect(parseAmountToCents('1.0051', 'USD')).toBe(101)
-    expect(parseAmountToCents('0.005', 'USD')).toBe(1)
-    expect(parseAmountToCents('0.004', 'USD')).toBe(0)
-    expect(parseAmountToCents('1.995', 'USD')).toBe(200)
-    expect(parseAmountToCents('0.999', 'USD')).toBe(100)
-    expect(parseAmountToCents('9.999', 'USD')).toBe(1000)
+  it('returns null for junk and for anything that is not a string or number', () => {
+    expect(parseAmountToYen('')).toBeNull()
+    expect(parseAmountToYen('   ')).toBeNull()
+    expect(parseAmountToYen('abc')).toBeNull()
+    expect(parseAmountToYen('12a5')).toBeNull()
+    expect(parseAmountToYen('.')).toBeNull()
+    expect(parseAmountToYen(null)).toBeNull()
+    expect(parseAmountToYen(undefined)).toBeNull()
+    expect(parseAmountToYen({})).toBeNull()
+    expect(parseAmountToYen([])).toBeNull()
   })
 
-  it('beats naive float rounding, which loses a cent on these', () => {
-    // Math.round(x * 100) rounds DOWN here because the double nearest to the
-    // decimal is just below the .xx5 midpoint. Half-up must round up.
-    for (const [text, cents] of [
-      ['1.005', 101],
-      ['0.145', 15],
-      ['0.285', 29],
-      ['0.575', 58],
-      ['1.255', 126],
-    ]) {
-      expect(parseAmountToCents(text, 'USD')).toBe(cents)
-    }
+  it('refuses negatives — direction is the payer’s job, not the amount’s', () => {
+    expect(parseAmountToYen('-1250')).toBeNull()
+    // U+2212 MINUS SIGN, which an iOS keyboard can produce.
+    expect(parseAmountToYen('−1250')).toBeNull()
+    expect(parseAmountToYen(-1250)).toBeNull()
   })
 
-  it('returns null for empty and non-string input', () => {
-    for (const bad of ['', '   ', null, undefined, {}, [], true, false, NaN, Infinity, -Infinity]) {
-      expect(parseAmountToCents(bad, 'USD')).toBeNull()
-    }
+  it('accepts a finite number but refuses exponential notation and non-finites', () => {
+    expect(parseAmountToYen(1250)).toBe(1250)
+    expect(parseAmountToYen(1250.5)).toBe(1251)
+    expect(parseAmountToYen(1e21)).toBeNull()
+    expect(parseAmountToYen(1e-7)).toBeNull()
+    expect(parseAmountToYen(NaN)).toBeNull()
+    expect(parseAmountToYen(Infinity)).toBeNull()
   })
 
-  it('returns null for junk that merely contains digits', () => {
-    for (const bad of [
-      'abc',
-      '42abc',
-      'abc42',
-      '4-2',
-      '1e3',
-      '1E3',
-      '$',
-      '.',
-      ',',
-      '..',
-      '--5',
-      'NaN',
-      'Infinity',
-      '4/2',
-      '1_000',
-      '=42',
-      '42%',
-    ]) {
-      expect(parseAmountToCents(bad, 'USD')).toBeNull()
-    }
-  })
-
-  it('returns null for malformed grouping instead of guessing', () => {
-    for (const bad of ['12,34.5', '1,2,3', '1,,234', ',234', '1,23,456', '12.34.5']) {
-      expect(parseAmountToCents(bad, 'USD')).toBeNull()
-    }
-  })
-
-  it('returns null for negatives — direction lives on the payer, not the amount', () => {
-    for (const bad of ['-1', '-0.01', '-42.10', ' -$42.10 ', '−42.10', '(42.10)', -5, -0.5]) {
-      expect(parseAmountToCents(bad, 'USD')).toBeNull()
-    }
-  })
-
-  it('accepts finite numbers as well as strings', () => {
-    expect(parseAmountToCents(42, 'USD')).toBe(4200)
-    expect(parseAmountToCents(42.1, 'USD')).toBe(4210)
-    expect(parseAmountToCents(0, 'USD')).toBe(0)
-    expect(parseAmountToCents(0.1 + 0.2, 'USD')).toBe(30)
-  })
-
-  it('refuses absurd magnitudes rather than returning an unsafe integer', () => {
-    expect(parseAmountToCents('99999999999999999999', 'USD')).toBeNull()
-    expect(parseAmountToCents('1e21', 'USD')).toBeNull()
-    // ...but a realistically large amount still parses exactly.
-    expect(parseAmountToCents('9999999999.99', 'USD')).toBe(999999999999)
+  it('refuses magnitudes that would leave the safe integer range', () => {
+    expect(parseAmountToYen('9999999999999')).toBe(9999999999999) // 13 digits, fine
+    expect(parseAmountToYen('99999999999999')).toBeNull() // 14, refused
+    // Leading zeros do not count towards the limit.
+    expect(parseAmountToYen('0000000000000001')).toBe(1)
   })
 })
 
-describe('centsToSheetString', () => {
-  it('writes a locale-independent fixed-2-decimal string', () => {
-    expect(centsToSheetString(4210, 'USD')).toBe('42.10')
-    expect(centsToSheetString(0, 'USD')).toBe('0.00')
-    expect(centsToSheetString(1, 'USD')).toBe('0.01')
-    expect(centsToSheetString(99, 'USD')).toBe('0.99')
-    expect(centsToSheetString(100, 'USD')).toBe('1.00')
-    expect(centsToSheetString(123456789, 'USD')).toBe('1234567.89')
+describe('yenToSheetString', () => {
+  it('writes digits alone — no separator, no grouping, no symbol', () => {
+    expect(yenToSheetString(1250)).toBe('1250')
+    expect(yenToSheetString(0)).toBe('0')
+    expect(yenToSheetString(1234567)).toBe('1234567')
+    expect(yenToSheetString(-1250)).toBe('-1250')
   })
 
-  it('handles negatives', () => {
-    expect(centsToSheetString(-1, 'USD')).toBe('-0.01')
-    expect(centsToSheetString(-4210, 'USD')).toBe('-42.10')
-    expect(centsToSheetString(-100, 'USD')).toBe('-1.00')
-  })
-
-  it('never emits a currency symbol, grouping, or a comma', () => {
-    for (const cents of [0, 1, 999, 100000, 123456789]) {
-      // The whole shape, not an absence list: digits, one dot, two places, an
-      // optional sign — which forbids a symbol, a group separator and a space by
-      // construction rather than one character at a time.
-      expect(centsToSheetString(cents, 'USD')).toMatch(/^-?\d+\.\d{2}$/)
+  it('never emits a decimal point, a comma or a symbol', () => {
+    for (const yen of [0, 1, 99, 1250, 1234567]) {
+      expect(yenToSheetString(yen)).toMatch(/^-?\d+$/)
     }
   })
 
-  it('throws rather than emitting "NaN" into a sheet cell', () => {
-    for (const bad of [NaN, Infinity, -Infinity, 4.5, '4210', null, undefined]) {
-      expect(() => centsToSheetString(bad, 'USD')).toThrow(TypeError)
+  it('throws rather than writing "NaN" into somebody’s ledger', () => {
+    expect(() => yenToSheetString(12.5)).toThrow(TypeError)
+    expect(() => yenToSheetString(NaN)).toThrow(TypeError)
+    expect(() => yenToSheetString('1250')).toThrow(TypeError)
+    expect(() => yenToSheetString(undefined)).toThrow(TypeError)
+    expect(() => yenToSheetString(null)).toThrow(TypeError)
+  })
+})
+
+describe('the sheet round trip is lossless', () => {
+  it('recovers every amount written', () => {
+    for (let yen = 0; yen <= 20000; yen += 37) {
+      expect(parseAmountToYen(yenToSheetString(yen))).toBe(yen)
     }
   })
 })
 
-describe('centsToSheetString <-> parseAmountToCents round trip', () => {
-  // The sweep across four currency scales is in currency.test.js; this is the
-  // boundary list for the two-decimal case. It is also what makes a read-modify-write
-  // through the sheet idempotent: `parse(write(cents)) === cents` is exactly what
-  // makes a second write produce the same string.
-  it('round-trips every representative value', () => {
-    for (const cents of [0, 1, 5, 99, 100, 101, 999, 1000, 4210, 100000, 123456789]) {
-      expect(parseAmountToCents(centsToSheetString(cents, 'USD'), 'USD')).toBe(cents)
-    }
-  })
-})
-
-describe('splitCents — never loses or invents a penny', () => {
+describe('splitYen — never loses or invents a yen', () => {
   const shares = [0, 0.5, 1, 0.333, 0.6667]
   const amounts = [0, 1, 3, 7, 99, 101, 4210, 123456789]
 
   /**
    * Conservation on its own cannot fail against the current implementation —
-   * `otherCents` IS `cents - payerCents`, so the sum is an algebraic identity and a
-   * `payerCents + 1` mutation passes. It is still worth asserting, because the
+   * `otherYen` IS `yen - payerYen`, so the sum is an algebraic identity and a
+   * `payerYen + 1` mutation passes. It is still worth asserting, because the
    * plausible rewrite is computing each side from its own share
-   * (`Math.round(cents * (1 - share))`), which loses a unit on every odd amount.
+   * (`Math.round(yen * (1 - share))`), which loses a yen on every odd amount.
    *
    * So the bound below is the half that can fail: the payer's own side, stated as a
-   * property rather than restated as the formula. Anything further than half a minor
-   * unit from the exact share is money moved by rounding.
+   * property rather than restated as the formula. Anything further than half a yen
+   * from the exact share is money moved by rounding.
    */
-  it('sums back to the original amount, and lands within half a unit of the exact share', () => {
-    for (const cents of amounts) {
+  it('sums back to the original amount, and lands within half a yen of the exact share', () => {
+    for (const yen of amounts) {
       for (const share of shares) {
-        const { payerCents, otherCents } = splitCents(cents, share)
-        expect(payerCents + otherCents).toBe(cents)
-        expect(Math.abs(payerCents - cents * share)).toBeLessThanOrEqual(0.5 + 1e-9)
+        const { payerYen, otherYen } = splitYen(yen, share)
+        expect(payerYen + otherYen).toBe(yen)
+        expect(Math.abs(payerYen - yen * share)).toBeLessThanOrEqual(0.5 + 1e-9)
       }
     }
   })
 
   it('holds both properties across an exhaustive small sweep', () => {
-    for (let cents = 0; cents <= 200; cents += 1) {
+    for (let yen = 0; yen <= 200; yen += 1) {
       for (let share = 0; share <= 1.0001; share += 0.05) {
-        const { payerCents, otherCents } = splitCents(cents, share)
-        expect(payerCents + otherCents).toBe(cents)
-        expect(Math.abs(payerCents - cents * Math.min(share, 1))).toBeLessThanOrEqual(0.5 + 1e-9)
+        const { payerYen, otherYen } = splitYen(yen, share)
+        expect(payerYen + otherYen).toBe(yen)
+        expect(Math.abs(payerYen - yen * Math.min(share, 1))).toBeLessThanOrEqual(0.5 + 1e-9)
       }
     }
   })
 
   it('gives everything to the payer at share 1 and nothing at share 0', () => {
-    expect(splitCents(101, 1)).toEqual({ payerCents: 101, otherCents: 0 })
-    expect(splitCents(101, 0)).toEqual({ payerCents: 0, otherCents: 101 })
+    expect(splitYen(101, 1)).toEqual({ payerYen: 101, otherYen: 0 })
+    expect(splitYen(101, 0)).toEqual({ payerYen: 0, otherYen: 101 })
   })
 
   it('rounds the payer up on an odd even split and hands the rest to the other', () => {
-    // 3 cents, even split: payer 2, other 1 — documented remainder-to-other rule.
-    expect(splitCents(3, 0.5)).toEqual({ payerCents: 2, otherCents: 1 })
-    expect(splitCents(1, 0.5)).toEqual({ payerCents: 1, otherCents: 0 })
-    expect(splitCents(7, 0.5)).toEqual({ payerCents: 4, otherCents: 3 })
-    expect(splitCents(99, 0.5)).toEqual({ payerCents: 50, otherCents: 49 })
+    // 3 yen, even split: payer 2, other 1 — documented remainder-to-other rule.
+    expect(splitYen(3, 0.5)).toEqual({ payerYen: 2, otherYen: 1 })
+    expect(splitYen(1, 0.5)).toEqual({ payerYen: 1, otherYen: 0 })
+    expect(splitYen(7, 0.5)).toEqual({ payerYen: 4, otherYen: 3 })
+    expect(splitYen(99, 0.5)).toEqual({ payerYen: 50, otherYen: 49 })
+    expect(splitYen(1251, 0.5)).toEqual({ payerYen: 626, otherYen: 625 })
   })
 
   it('clamps out-of-range shares instead of producing nonsense', () => {
-    expect(splitCents(100, 1.5)).toEqual({ payerCents: 100, otherCents: 0 })
-    expect(splitCents(100, -2)).toEqual({ payerCents: 0, otherCents: 100 })
+    expect(splitYen(100, 1.5)).toEqual({ payerYen: 100, otherYen: 0 })
+    expect(splitYen(100, -2)).toEqual({ payerYen: 0, otherYen: 100 })
   })
 
-  it('throws on non-integer cents or a non-finite share', () => {
-    expect(() => splitCents(10.5, 0.5)).toThrow(TypeError)
-    expect(() => splitCents(NaN, 0.5)).toThrow(TypeError)
-    expect(() => splitCents(100, NaN)).toThrow(TypeError)
-    expect(() => splitCents(100, Infinity)).toThrow(TypeError)
-    expect(() => splitCents(100, '0.5')).toThrow(TypeError)
-    expect(() => splitCents(100, null)).toThrow(TypeError)
+  it('throws on non-integer yen or a non-finite share', () => {
+    expect(() => splitYen(10.5, 0.5)).toThrow(TypeError)
+    expect(() => splitYen(NaN, 0.5)).toThrow(TypeError)
+    expect(() => splitYen(100, NaN)).toThrow(TypeError)
+    expect(() => splitYen(100, Infinity)).toThrow(TypeError)
+    expect(() => splitYen(100, '0.5')).toThrow(TypeError)
+    expect(() => splitYen(100, null)).toThrow(TypeError)
   })
 
   it('handles negative amounts without breaking the invariant', () => {
-    for (const cents of [-1, -3, -101]) {
+    for (const yen of [-1, -3, -101]) {
       for (const share of shares) {
-        const { payerCents, otherCents } = splitCents(cents, share)
-        expect(payerCents + otherCents).toBe(cents)
+        const { payerYen, otherYen } = splitYen(yen, share)
+        expect(payerYen + otherYen).toBe(yen)
       }
     }
   })
 })
 
-describe('sumCents', () => {
+describe('sumYen', () => {
   it('sums integers and returns 0 for an empty list', () => {
-    expect(sumCents([])).toBe(0)
-    expect(sumCents([1, 2, 3])).toBe(6)
-    expect(sumCents([4210, -4210])).toBe(0)
-    expect(sumCents([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])).toBe(10)
+    expect(sumYen([])).toBe(0)
+    expect(sumYen([1, 2, 3])).toBe(6)
+    expect(sumYen([4210, -4210])).toBe(0)
+    expect(sumYen([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])).toBe(10)
   })
 
   it('throws on a non-array or a non-integer member instead of returning NaN', () => {
-    expect(() => sumCents(null)).toThrow(TypeError)
-    expect(() => sumCents(undefined)).toThrow(TypeError)
-    expect(() => sumCents('123')).toThrow(TypeError)
-    expect(() => sumCents([1, '2'])).toThrow(TypeError)
-    expect(() => sumCents([1, NaN])).toThrow(TypeError)
-    expect(() => sumCents([1, undefined])).toThrow(TypeError)
-    expect(() => sumCents([1, 2.5])).toThrow(TypeError)
+    expect(() => sumYen(null)).toThrow(TypeError)
+    expect(() => sumYen(undefined)).toThrow(TypeError)
+    expect(() => sumYen('123')).toThrow(TypeError)
+    expect(() => sumYen([1, '2'])).toThrow(TypeError)
+    expect(() => sumYen([1, NaN])).toThrow(TypeError)
+    expect(() => sumYen([1, undefined])).toThrow(TypeError)
+    expect(() => sumYen([1, 2.5])).toThrow(TypeError)
   })
 })
 
-describe('formatCents', () => {
-  it('formats with a currency symbol and cents by default', () => {
-    expect(formatCents(4210, 'USD', { locale: 'en-US' })).toBe('$42.10')
-    expect(formatCents(0, 'USD', { locale: 'en-US' })).toBe('$0.00')
-    expect(formatCents(4200, 'USD', { locale: 'en-US' })).toBe('$42.00')
-    expect(formatCents(123456789, 'USD', { locale: 'en-US' })).toBe('$1,234,567.89')
+describe('formatYen', () => {
+  it('renders yen with grouping and no fractional part', () => {
+    const en = formatYen(1250, { locale: 'en' })
+    expect(en).toContain('1,250')
+    // Assert the ABSENCE of a fraction rather than the symbol: `en` uses ¥ and `ja`
+    // fullwidth ￥, and which one varies by ICU version.
+    expect(en).not.toMatch(/[.,]\d{2}$/)
+
+    const ja = formatYen(1250, { locale: 'ja' })
+    expect(ja).toContain('1,250')
+    expect(ja).not.toMatch(/[.,]\d{2}$/)
   })
 
-  it('can trim the ".00" tail on whole amounts for narrow screens', () => {
-    expect(formatCents(4200, 'USD', { locale: 'en-US', trimZeroCents: true })).toBe('$42')
-    // A non-whole amount keeps its cents even with the option on.
-    expect(formatCents(4210, 'USD', { locale: 'en-US', trimZeroCents: true })).toBe('$42.10')
+  it('renders zero and large amounts', () => {
+    expect(formatYen(0, { locale: 'en' })).toContain('0')
+    expect(formatYen(1234567, { locale: 'en' })).toContain('1,234,567')
   })
 
   it('marks negatives', () => {
-    const formatted = formatCents(-4210, 'USD', { locale: 'en-US' })
-    expect(formatted).toContain('42.10')
+    const formatted = formatYen(-1250, { locale: 'en' })
+    expect(formatted).toContain('1,250')
     expect(formatted).toMatch(/-|\(/)
   })
 
-  it('respects the requested locale and currency', () => {
-    const eur = formatCents(123456, 'EUR', { locale: 'de-DE' })
-    expect(eur).toContain('€')
-    expect(eur).toContain('1.234,56')
+  it('respects the requested locale', () => {
+    // de-DE groups with dots, so this fails if the locale is being ignored.
+    expect(formatYen(1234567, { locale: 'de-DE' })).toContain('1.234.567')
   })
 
-  it('falls back to a plain string rather than throwing on a bad currency code', () => {
-    expect(formatCents(4210, 'NOTACURRENCY')).toBe('42.10 NOTACURRENCY')
-    expect(formatCents(4210, '')).toContain('42.10')
-    expect(formatCents(4210, null)).toContain('42.10')
-  })
-
-  it('throws on non-integer cents', () => {
-    expect(() => formatCents(NaN, 'USD')).toThrow(TypeError)
-    expect(() => formatCents(1.5, 'USD')).toThrow(TypeError)
-    expect(() => formatCents('4210', 'USD')).toThrow(TypeError)
-    expect(() => formatCents(undefined, 'USD')).toThrow(TypeError)
+  it('throws on non-integer yen', () => {
+    expect(() => formatYen(NaN)).toThrow(TypeError)
+    expect(() => formatYen(1.5)).toThrow(TypeError)
+    expect(() => formatYen('1250')).toThrow(TypeError)
+    expect(() => formatYen(undefined)).toThrow(TypeError)
   })
 })
 
-describe('a caller that forgets the currency', () => {
-  // The two directions differ on purpose. A write with no currency would be a
-  // silent 100x error in the sheet, so it throws; a display path that misses one
-  // must degrade to the ISO default rather than take the render down.
-  it('refuses to encode for the sheet', () => {
-    expect(() => centsToSheetString(4210)).toThrow(TypeError)
-    expect(() => centsToSheetString(4210, '')).toThrow(TypeError)
+describe('formatYenParts', () => {
+  /**
+   * `Header` styles the symbol apart from the digits and handles no other recessive
+   * part, so "there is a currency part, an integer part, and nothing fractional" is
+   * exactly the contract it depends on.
+   */
+  it('exposes a symbol and an integer, and never a fraction', () => {
+    const types = formatYenParts(1250, { locale: 'en' }).map((part) => part.type)
+    expect(types).toContain('currency')
+    expect(types).toContain('integer')
+    expect(types).not.toContain('decimal')
+    expect(types).not.toContain('fraction')
   })
 
-  it('still formats for display', () => {
-    expect(() => formatCents(4210)).not.toThrow()
-    expect(formatCents(4210)).toContain('42.10')
+  it('composes back to the same string formatYen produces', () => {
+    const parts = formatYenParts(1250, { locale: 'ja' })
+    expect(parts.map((part) => part.value).join('')).toBe(formatYen(1250, { locale: 'ja' }))
+  })
+
+  it('throws on non-integer yen', () => {
+    expect(() => formatYenParts(1.5)).toThrow(TypeError)
   })
 })

@@ -131,7 +131,6 @@ export function SettingsSheet({
           description={tn('settings.configHint', { tab: <code>{CONFIG_TAB}</code> })}
         >
           <div className="row">
-            <span className="pill pill--muted">{config.currency}</span>
             {config.categories.map((category) => (
               <span className="pill pill--muted" key={category}>
                 {category}

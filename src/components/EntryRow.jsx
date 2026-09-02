@@ -15,7 +15,7 @@ import { SwapIcon, TrashIcon } from './icons.jsx'
  * by construction — `onEdit` is a `useCallback` in `App` and `onDelete` is a setter —
  * which is what makes the comparison worth making at all.
  */
-function EntryRowInner({ entry, label, currency, onEdit, onDelete }) {
+function EntryRowInner({ entry, label, onEdit, onDelete }) {
   const { t } = useT()
   const description = useEntryTitle(entry)
 
@@ -49,7 +49,6 @@ function EntryRowInner({ entry, label, currency, onEdit, onDelete }) {
   return (
     <EntryLine
       entry={entry}
-      currency={currency}
       description={description}
       meta={meta}
       settlement={isSettlement}

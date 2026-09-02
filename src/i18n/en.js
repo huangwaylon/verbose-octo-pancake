@@ -120,6 +120,7 @@ export default {
   'form.editSettlementTitle': 'Edit settlement',
   'form.amount': 'Amount',
   'form.amountError': 'Enter an amount, like {example}',
+  'form.amountPlaceholder': '0',
   'form.settlementHint': 'Records that {payer} paid {other} back.',
   'form.date': 'Date',
   'form.category': 'Category',
@@ -155,7 +156,7 @@ export default {
   'accent.sepia': 'Sepia',
   'settings.sheet': 'Sheet',
   'settings.openSheet': 'Open in Google Sheets',
-  'settings.configTitle': 'Names, currency & categories',
+  'settings.configTitle': 'Names & categories',
   'settings.defaultSplit': 'Default split',
   'settings.defaultSplitValue': '{name} covers {percent}% of what they pay for',
   'settings.defaultSplitHint':
@@ -239,20 +240,13 @@ export default {
   'error.badPayer': 'Payer must be one of the two people.',
   'error.badShare': 'Split must be between 0 and 100%.',
   'error.missingCategory': 'Pick a category.',
-  'error.missingCurrency': 'This sheet has no currency set in its config tab.',
   'warning.staleData': 'Showing saved data — could not reach the sheet.',
-  'warning.mixedCurrencies': 'Some entries use a different currency, so totals may be wrong.',
   // A row whose amount cell cannot be read at all is left out of every total, so
   // the balance is short by it. Naming the count is the only way anyone would know.
   // The config tab is gone or renamed, so every value falls back to a default —
-  // including the currency, which decides the scale of every amount.
+  // including each person's default split, which decides how every expense divides.
   'warning.configMissing':
-    'The config tab is missing, so names, currency and categories are the defaults. Restore it in the sheet.',
-  // The tab is there but says nothing about the currency, which is the same silent
-  // 100x risk as the tab being gone: every row with a blank currency cell is read at
-  // the default's scale.
-  'warning.currencyDefaulted':
-    'The config tab sets no currency, so amounts are read as {currency}. Add a currency row in the sheet.',
+    'The config tab is missing, so names, categories and the default split are the defaults. Restore it in the sheet.',
   // These rows are in the balance but belong to no month, so they appear in no
   // list and cannot be found from here.
   'warning.undatedRows': {
@@ -263,5 +257,12 @@ export default {
     one: '{count} row in the sheet has an amount that cannot be read, so it is left out of the totals.',
     other:
       '{count} rows in the sheet have amounts that cannot be read, so they are left out of the totals.',
+  },
+  // Settlements only: an expense takes its payer from the tab it sits in, so the
+  // settlements tab holds the one payer cell anybody can get wrong. Names the cell,
+  // because that is what has to be fixed and the amount may read perfectly well.
+  'warning.unattributedRows': {
+    one: '{count} settlement names nobody who paid, so it is left out of the balance.',
+    other: '{count} settlements name nobody who paid, so they are left out of the balance.',
   },
 }
