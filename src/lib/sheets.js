@@ -145,9 +145,24 @@ function updateValues(spreadsheetId, range, values) {
   })
 }
 
+/**
+ * Append one row to a tab.
+ *
+ * The range is the tab's own `dataRange` — `expenses_p1!A2:G` — and NEVER the bare tab title,
+ * which is what this used to pass. `values.append` treats its range as "the A1 notation of a
+ * range to SEARCH for a logical table of data", so a bare sheet name hands Google the choice of
+ * where that table begins: lock onto a block that starts at column G and the row is written from
+ * G, every value under a field six columns to its right. An A-anchored range pins both the first
+ * column and the width, so there is nothing left to guess.
+ *
+ * It fails quietly in the worst way. `rowToEntry` reads `amount` at index 2, finds it blank and
+ * refuses the row, so the expense never reaches the balance — and `loadAll` reports it as
+ * `undecodedRows`, which correctly says "an amount that cannot be read" and says nothing at all
+ * about the column it is in.
+ */
 function appendRow(spreadsheetId, tab, cells) {
   return request(
-    `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(tab.title)}:append`,
+    `/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(tab.dataRange)}:append`,
     {
       method: 'POST',
       params: { valueInputOption: RAW, insertDataOption: 'INSERT_ROWS' },

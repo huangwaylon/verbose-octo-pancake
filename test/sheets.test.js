@@ -264,7 +264,7 @@ describe('changing who paid moves the row between tabs', () => {
     await sheets.updateEntry(SHEET, entry({ payer: PERSON.P2 }), PERSON.P1)
 
     const mutating = writes(calls)
-    expect(mutating[0].url).toContain('expenses_p2:append')
+    expect(mutating[0].url).toContain('expenses_p2!A2:G:append')
     expect(mutating[1].method).toBe('PUT')
     expect(mutating[1].url).toContain('expenses_p1!F')
     // A real ISO stamp, not merely something non-empty: `reconcileById` breaks a
@@ -330,8 +330,37 @@ describe('appendEntry', () => {
 
     await sheets.appendEntry(SHEET, entry({ payer: PERSON.P2 }))
 
-    expect(calls[0].url).toContain('expenses_p2:append')
+    expect(calls[0].url).toContain('expenses_p2!A2:G:append')
     expect(calls[0].body.values[0][P2.index('id')]).toBe('e1')
+  })
+
+  /**
+   * The append range is A-ANCHORED, never the bare tab title. `values.append` treats its range
+   * as a range to SEARCH for a logical table, so a bare sheet name lets Google pick where that
+   * table starts — and a row written from column G puts every value six fields to the right,
+   * which `rowToEntry` then reports as an unreadable amount rather than as a misplaced row.
+   *
+   * Asserted per tab and against the literal ranges, because the two layouts are seven and six
+   * and ten columns wide: deriving them from `tab.dataRange` would only compare the module with
+   * a copy of its own arithmetic.
+   */
+  it.each([
+    ['expenses_p1', 'expenses_p1!A2:G:append'],
+    ['expenses_p2', 'expenses_p2!A2:G:append'],
+    ['settlements', 'settlements!A2:F:append'],
+  ])('anchors the %s append to column A', async (_title, range) => {
+    const calls = installSheets(() => ({}))
+    const rows = [
+      entry({ payer: PERSON.P1 }),
+      entry({ payer: PERSON.P2 }),
+      settlement({ id: 's1', payer: PERSON.P1 }),
+    ]
+
+    for (const row of rows) await sheets.appendEntry(SHEET, row)
+
+    expect(calls.map((call) => call.url).join('\n')).toContain(range)
+    // And never the bare title, which is the shape that let a row start at column G.
+    for (const call of calls) expect(call.url).not.toMatch(/values\/[^!]+:append/)
   })
 })
 
@@ -855,7 +884,8 @@ describe('template writes', () => {
     await sheets.saveTemplate(SHEET, RENT)
 
     const write = writes(calls)[0]
-    expect(write.url).toContain('recurring:append')
+    // A-anchored, like every other append: `appendRow` says what a bare tab title costs.
+    expect(write.url).toContain('recurring!A2:J:append')
     expect(write.url).toContain('valueInputOption=RAW')
     expect(sentRow(write)).toEqual({
       description: 'Rent',
@@ -920,11 +950,15 @@ describe('template writes', () => {
    */
   it('overwrites rather than duplicating when the same add is retried', async () => {
     let appended = null
+    // `:append` is matched FIRST: the append range now CONTAINS the data range — that is the
+    // whole point of anchoring it — so a router that tested the read first would answer the
+    // append as though it were one.
     const calls = installSheets((call) => {
-      if (call.url.includes(RECURRING.dataRange)) {
-        return values(appended ? [appended] : [])
+      if (call.url.includes(':append')) {
+        appended = call.body.values[0]
+        return {}
       }
-      if (call.url.includes(':append')) appended = call.body.values[0]
+      if (call.url.includes(RECURRING.dataRange)) return values(appended ? [appended] : [])
       return {}
     })
 
