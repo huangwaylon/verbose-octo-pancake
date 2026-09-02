@@ -24,7 +24,7 @@ what that buys and what it costs.
 1. Create a new Google account. Unique strong password, 2FA on, used for nothing
    else.
 2. Signed in as that account, create one spreadsheet. Do not add tabs — the app
-   builds `expenses_p1`, `expenses_p2` and `config` on its first run.
+   builds `expenses_p1`, `expenses_p2`, `settlements` and `config` on its first run.
 3. Copy the id out of the URL:
    `https://docs.google.com/spreadsheets/d/`**`<this part>`**`/edit`
 4. **Share** it with both people's own Google addresses as **Editor**, and leave

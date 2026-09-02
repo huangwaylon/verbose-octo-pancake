@@ -1,16 +1,13 @@
 /**
  * The entry fixtures every suite needs, and the raw sheet row they map to.
  *
- * Five files had a near-identical builder around `makeEntry`, and a sixth wrote its
- * rows out as positional arrays. Both duplications were dangerous rather than merely
- * untidy: a builder that forgets to pass an id reintroduces `crypto.randomUUID` into a
- * fixture, and a positional row array silently mis-maps every cell the moment
- * `EXPENSE_COLUMNS` gains an entry.
+ * One builder rather than one per file: a builder that forgets an id reintroduces
+ * `crypto.randomUUID` into a fixture, and a row written out as a positional array
+ * silently mis-maps every cell the moment a column list gains an entry.
  *
- * What is NOT centralised is deliberate: a test whose amounts, shares or dates are
- * what it asserts about passes them in. The defaults here are only what has to exist
- * for an entry to be valid at all — everything a test is about stays at the call site,
- * where it can be read next to the expectation.
+ * What is NOT centralised is deliberate: a test whose amounts, shares or dates are what it
+ * asserts about passes them in. The defaults here are only what has to exist for an entry
+ * to be valid at all.
  */
 
 import {
@@ -23,10 +20,8 @@ import {
 } from '../../src/schema.js'
 
 /**
- * The tombstone stamp `tombstone()` uses.
- *
- * A real ISO stamp rather than any non-empty marker, because `reconcileById` breaks a
- * tombstone-vs-tombstone tie by comparing exactly this value.
+ * The tombstone stamp `tombstone()` uses — a real ISO stamp rather than any non-empty
+ * marker, because `reconcileById` breaks a tombstone-vs-tombstone tie by comparing it.
  */
 export const DELETED_AT = '2026-08-06T00:00:00.000Z'
 
@@ -52,8 +47,8 @@ export function expense(over = {}) {
 /**
  * A settlement: no category, and no share of its own.
  *
- * `payerShare` is deliberately NOT set here. `makeEntry` derives 0 from the type, and
- * that is what the app relies on — a fixture that stated it would turn every
+ * `payerShare` is deliberately NOT set here. `makeEntry` derives 0 from the type, and that
+ * is what the app relies on — a fixture that stated it would turn every
  * `payerShare === 0` assertion downstream into an assertion about this file.
  */
 export function settlement(over = {}) {
@@ -69,10 +64,10 @@ export function tombstone(over = {}) {
  * A raw sheet row for a tab, built from that tab's own column list by field NAME.
  *
  * Never a positional literal: every range and letter in `schema.js` comes from array
- * position, so a fixture written out as N cells in order goes on passing while each of
- * its values lands under the neighbouring field. Taking the TAB matters just as much now
- * that there are two layouts — a row built to the expenses list and read as a settlement
- * puts `category` under `payer`.
+ * position, so a fixture written out as N cells in order goes on passing while each of its
+ * values lands under the neighbouring field. Taking the TAB matters as much, because there
+ * are two layouts — a row built to the expenses list and read as a settlement puts
+ * `category` under `payer`.
  *
  * @param {Record<string, string|number>} fields any subset of the tab's columns
  * @param {object} [tab] defaults to p1's expenses tab

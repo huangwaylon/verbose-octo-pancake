@@ -40,10 +40,9 @@ export function useLedgerView(entries, monthKey) {
 }
 
 /**
- * Land on the newest month that actually has data, once per session, so a sheet
- * whose last entry was a while ago does not open on an empty screen. Which month
- * that is is `initialMonthKey`'s decision; this only owns the once-per-session
- * latch and the effect.
+ * Land on the newest month that actually has data, once per session. Which month that
+ * is is `initialMonthKey`'s decision; this only owns the once-per-session latch and the
+ * effect.
  *
  * Runs on the cached paint too (`stale`), which is the point: waiting for `ready`
  * would move the month out from under someone who had already started using the

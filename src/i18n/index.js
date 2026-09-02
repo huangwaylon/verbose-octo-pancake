@@ -16,6 +16,7 @@ import { useMemo, useSyncExternalStore } from 'react'
 import { STORAGE_KEYS, readStored, writeStored } from '../config.js'
 import { ENTRY_TYPE } from '../schema.js'
 import { formatYen } from '../lib/money.js'
+import { cached } from '../lib/memo.js'
 import { nameOf } from '../lib/identity.js'
 import { CATALOGS, DEFAULT_LOCALE, SUPPORTED } from './catalogs.js'
 
@@ -25,27 +26,13 @@ export const VAR_PATTERN = /\{(\w+)\}/g
 const numberFormats = new Map()
 const pluralRules = new Map()
 
-function numberFormat(locale) {
-  let format = numberFormats.get(locale)
-  if (!format) {
-    format = new Intl.NumberFormat(locale)
-    numberFormats.set(locale, format)
-  }
-  return format
-}
-
 /**
  * Plural category via `Intl.PluralRules` rather than a hand-rolled CLDR table.
  * `en` yields one|other; `ja` yields other for every count, which is correct —
  * Japanese has a single cardinal category.
  */
 function selectPlural(locale, count) {
-  let rules = pluralRules.get(locale)
-  if (!rules) {
-    rules = new Intl.PluralRules(locale)
-    pluralRules.set(locale, rules)
-  }
-  return rules.select(count)
+  return cached(pluralRules, locale, () => new Intl.PluralRules(locale)).select(count)
 }
 
 const warned = new Set()
@@ -67,14 +54,15 @@ function lookup(locale, key) {
 /**
  * Substitute `{name}` placeholders. An unknown placeholder is left visible
  * rather than blanked, so the failure is obvious and the test catches it.
- * Numbers route through Intl so `{count}` reads 1,234 rather than 1234.
  */
 export function interpolate(template, vars, locale) {
   if (!vars) return template
   return String(template).replace(VAR_PATTERN, (whole, name) => {
     if (!(name in vars)) return whole
     const value = vars[name]
-    return typeof value === 'number' ? numberFormat(locale).format(value) : String(value)
+    if (typeof value !== 'number') return String(value)
+    // Through Intl so `{count}` reads 1,234 rather than 1234.
+    return cached(numberFormats, locale, () => new Intl.NumberFormat(locale)).format(value)
   })
 }
 
@@ -166,12 +154,11 @@ export function i18nError(key, vars) {
 /**
  * The one way a caught error becomes a sentence on screen.
  *
- * `cause.message` is never shown: `sheets.js` keeps the API's own English text
- * there on purpose, for consoles and bug reports, and a Japanese reader must not
- * be handed "The caller does not have permission (HTTP 403)". A cause carrying an
- * `i18nKey` says something specific and useful ("that entry is no longer in the
- * sheet"); anything else falls back to the caller's own key, which names the
- * action that failed rather than the transport that failed it.
+ * `cause.message` is never shown: `sheets.js` keeps the API's own English text there on
+ * purpose, for consoles and bug reports, and a Japanese reader must not be handed "The
+ * caller does not have permission (HTTP 403)". A cause carrying an `i18nKey` says
+ * something specific and useful; anything else falls back to the caller's own key, which
+ * names the action that failed rather than the transport that failed it.
  *
  * @param {unknown} cause
  * @param {string} fallbackKey
@@ -216,10 +203,9 @@ export function useDayLabels() {
 }
 
 /**
- * The two people's names, and the same names labelled relative to the viewer so
- * the UI can say "You". Bound here rather than in `identity.js` so that module
- * stays pure, and memoised so seven components stop rebuilding the same three
- * strings on every render.
+ * The two people's names, and the same names labelled relative to the viewer so the UI
+ * can say "You". Bound here rather than in `identity.js` so that module stays pure, and
+ * memoised so seven components stop rebuilding the same three strings on every render.
  */
 export function usePeopleLabels(config, me) {
   const { t, locale } = useT()
@@ -232,10 +218,9 @@ export function usePeopleLabels(config, me) {
       label: (person) => (person === me ? you : name(person)),
       /**
        * The same label in the possessive, and a separate function because English
-       * inflects: interpolating `label` into a `{name}’s` string reads "You’s
-       * share" for whoever is holding the phone. Japanese takes a uniform particle,
-       * so which of the two forms applies is a catalog decision rather than a rule
-       * here — the caller only says whose.
+       * inflects: interpolating `label` into a `{name}’s` string reads "You’s share" for
+       * whoever is holding the phone. Japanese takes a uniform particle, so which form
+       * applies is a catalog decision rather than a rule here.
        */
       possessive: (person) =>
         person === me
@@ -247,13 +232,10 @@ export function usePeopleLabels(config, me) {
 }
 
 /**
- * An entry's one-line title. Three surfaces need exactly the same string — the
- * list row, the delete confirmation and the deleted list — and a confirmation
- * that says "Delete Expense?" for a row with neither note nor category is the
- * reason the fallback chain lives in one place rather than three.
- *
- * Takes the entry rather than returning a function: every call site holds exactly
- * one, and `useEntryTitle()(entry)` was the shape of all three.
+ * An entry's one-line title. Three surfaces need exactly the same string — the list row,
+ * the delete confirmation and the deleted list — and a confirmation that says "Delete
+ * Expense?" for a row with neither note nor category is the reason the fallback chain
+ * lives in one place rather than three.
  */
 export function useEntryTitle(entry) {
   const { t, locale } = useT()

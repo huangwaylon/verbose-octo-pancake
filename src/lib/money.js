@@ -1,12 +1,10 @@
 /**
  * Money as whole yen.
  *
- * The ledger is JPY only, and the yen has no sub-unit — so an amount *is* an integer
- * number of yen. That is why nothing here takes a currency. Every function used to
- * need one because the string "1250" is ¥1250 or $12.50 depending on nothing else, so
- * a guessed default was a silent 100x corruption; with a single currency that
- * ambiguity cannot arise. Nothing in this app ever does floating-point arithmetic on
- * money, and after this file there is no scale left to get wrong.
+ * The ledger is JPY only and the yen has no sub-unit, so an amount *is* an integer
+ * number of yen. Nothing here takes a currency: with one currency there is no scale to
+ * guess and no 100x error to make. Nothing in this app does floating-point arithmetic
+ * on money.
  *
  * `parseAmountToYen` and `yenToSheetString` are exact inverses, which is what makes a
  * read-modify-write round trip through the sheet lossless.
@@ -16,12 +14,13 @@
  * input, reports failure by returning null.
  */
 
+import { cached } from './memo.js'
+
 /** Whitespace (incl. NBSP / thin spaces) and any Unicode currency symbol. */
 const NOISE = /[\s\u00a0\u202f\u2009]|\p{Sc}/gu
 
 /** After noise removal, only digits and the two separator characters remain. */
 const NUMERIC_ONLY = /^[0-9.,]+$/
-
 /** Largest integer part we will parse, to stay inside Number.MAX_SAFE_INTEGER. */
 const MAX_INT_DIGITS = 13
 
@@ -63,9 +62,9 @@ function decimalSeparatorIndex(s) {
 /**
  * Parse whatever a human types on a phone into whole yen.
  *
- * Returns null — never NaN, never negative — for junk, malformed grouping and
- * any negative input. Amounts are positive magnitudes; direction is carried by
- * the entry's `payer`.
+ * Returns null — never NaN, never negative — for junk, malformed grouping and any
+ * negative input. Amounts are positive magnitudes; direction is carried by the entry's
+ * `payer`.
  *
  * A decimal part is still read rather than rejected, because two things write one: a
  * person typing out of habit, and the bank's own CSV export, which prints every yen
@@ -136,31 +135,30 @@ export function yenToSheetString(yen) {
 }
 
 /**
- * Constructed formatters, keyed by locale — now the only thing that decides one,
- * since the currency and its zero fraction digits are fixed.
+ * Constructed formatters, keyed by locale — the only thing that decides one, since the
+ * currency and its zero fraction digits are fixed.
  *
  * A month's ledger asks for one formatter per amount on screen, and constructing an
- * `Intl.NumberFormat` costs an order of magnitude more than reusing one — enough to
- * be about half the cost of rendering the whole screen, which is paid again on the
- * cold-launch snapshot paint and on every refresh. The locale is fixed for an
- * install, so this never grows past a couple of entries.
+ * `Intl.NumberFormat` costs an order of magnitude more than reusing one — about half the
+ * cost of rendering the whole screen, paid again on the cold-launch snapshot paint and on
+ * every refresh. The locale is fixed for an install, so this stays tiny.
  */
 const FORMATTERS = new Map()
 
 function formatterFor(locale) {
-  const key = locale ?? ''
-  const cached = FORMATTERS.get(key)
-  if (cached) return cached
-  const formatter = new Intl.NumberFormat(locale, {
-    style: 'currency',
-    currency: 'JPY',
-    // Stated rather than left to ICU. This decides what a person reads, so it must
-    // not vary with the browser's ICU version.
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  })
-  FORMATTERS.set(key, formatter)
-  return formatter
+  return cached(
+    FORMATTERS,
+    locale ?? '',
+    () =>
+      new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency: 'JPY',
+        // Stated rather than left to ICU. This decides what a person reads, so it must
+        // not vary with the browser's ICU version.
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }),
+  )
 }
 
 /**
@@ -181,8 +179,8 @@ export function formatYen(yen, { locale } = {}) {
  * apart from the digits.
  *
  * Render the parts in the order Intl returns them — `en`/`ja` put the symbol before
- * ("¥1,250"), `fr-FR` after ("1 250 ¥"). There is deliberately no `decimal` or
- * `fraction` part to handle: the yen has no sub-unit, so Intl never emits one.
+ * ("¥1,250"), `fr-FR` after ("1 250 ¥"). There is no `decimal` or `fraction` part to
+ * handle: the yen has no sub-unit, so Intl never emits one.
  *
  * @param {number} yen
  * @param {object} [opts]
@@ -194,17 +192,17 @@ export function formatYenParts(yen, { locale } = {}) {
 }
 
 /**
- * Read a share of an expense — a `payer_share` cell, or a `default_split_p*` row
- * — into a fraction in [0,1].
+ * Read a share of an expense — a `payer_share` cell, or a `default_split_p*` row — into
+ * a fraction in [0,1].
  *
- * Anything above 1 reads as a percentage, because a spreadsheet is where people
- * write 50 rather than 0.5. Both places a human can type a share go through this
- * one rule: with two readings of it, the same `50` would mean "half" in the config
- * tab and "the payer covers all of it" in the `payer_share` column.
+ * Anything above 1 reads as a percentage, because a spreadsheet is where people write 50
+ * rather than 0.5. Both places a human can type a share go through this one rule: with
+ * two readings of it, the same `50` would mean "half" in the config tab and "the payer
+ * covers all of it" in the `payer_share` column.
  *
  * @param {unknown} value
- * @returns {number|null} null for junk, so the caller's own default wins rather
- *   than NaN reaching `splitYen`
+ * @returns {number|null} null for junk, so the caller's own default wins rather than NaN
+ *   reaching `splitYen`
  */
 export function parseShare(value) {
   const raw = typeof value === 'number' ? value : Number.parseFloat(value)
@@ -216,9 +214,9 @@ export function parseShare(value) {
 /**
  * Split an amount between the payer and the other person.
  *
- * The payer's portion is rounded half-up and the OTHER person absorbs the
- * remainder, so `payerYen + otherYen === yen` exactly for every input: a shared
- * expense can never lose or invent a yen.
+ * The payer's portion is rounded half-up and the OTHER person absorbs the remainder, so
+ * `payerYen + otherYen === yen` exactly for every input: a shared expense can never lose
+ * or invent a yen.
  *
  * @param {number} yen
  * @param {number} payerShare fraction in [0,1]; values outside are clamped

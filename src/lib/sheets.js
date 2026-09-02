@@ -80,18 +80,15 @@ function buildQuery(params) {
  *
  * A 401 means the token was rejected (revoked, or the session moved on) even if
  * it still looked unexpired, so re-acquire once and retry exactly once. Never
- * more — a revoked grant would loop.
- *
- * This retry is what makes the refresh margin in `connection.js` a performance
- * choice rather than a correctness one: minting needs no user gesture, so the
- * recovery is silent. `refreshToken` guarantees a token newer than any mint that
- * was already in flight when the 401 arrived.
+ * more — a revoked grant would loop. This retry is what makes the refresh margin in
+ * `connection.js` a performance choice rather than a correctness one: minting needs no
+ * user gesture, so the recovery is silent, and `refreshToken` guarantees a token newer
+ * than any mint already in flight when the 401 arrived.
  *
  * Thrown errors carry `.status` so callers can tell 401/403/404 apart, and an
  * `i18nKey` so the sentence that reaches the screen is in the reader's language.
  * The `.message` stays English and keeps the API's own text, because that is what
- * ends up in a console and a bug report — a Japanese reader must never be shown
- * "The caller does not have permission (HTTP 403)".
+ * ends up in a console and a bug report.
  */
 async function request(path, { method = 'GET', params, body, allowRetry = true } = {}) {
   const token = await getAccessToken()
@@ -149,36 +146,33 @@ function updateValues(spreadsheetId, range, values) {
 /**
  * Load everything the app needs in one round trip.
  *
- * Returns the sheet's own partial config as well as the merged one, because the
- * snapshot cache has to store the partial — see `mergeConfig`.
+ * Returns the sheet's own partial config as well as the merged one, because the snapshot
+ * cache has to store the partial — see `mergeConfig`.
  *
- * The counts are how the sheet reports what it holds and the app cannot show. Each
- * one exists because the alternative is a wrong number with nothing said:
+ * The four counts are how the sheet reports what it holds and the app cannot show. Each
+ * exists because the alternative is a wrong number with nothing said:
  *
  * `supersededRows` — TOMBSTONES `reconcileById` hid. Only tombstones, because the
- * consumer is the compact button and `compact` removes exactly those: counting a
- * hidden live duplicate would offer a removal that can never happen.
+ * consumer is the compact button and `compact` removes exactly those: counting a hidden
+ * live duplicate would offer a removal that can never happen.
  *
  * `undecodedRows` — live rows with an id whose amount cannot be read at all, so the
  * ledger is short by them. A tombstoned one is correctly out of the totals already.
  *
- * `unattributedRows` — live SETTLEMENT rows whose `payer` cell names neither person.
- * Its own count rather than part of `undecodedRows`, because the cell to go and fix is
- * a different one. Only the settlements tab can reach this: an expense's payer is the
- * tab it sits in, so there is no cell to get wrong.
+ * `unattributedRows` — live SETTLEMENT rows whose `payer` cell names neither person. Its
+ * own count rather than part of `undecodedRows`, because the cell to go and fix is a
+ * different one. Only the settlements tab can reach this.
  *
- * `undatedRows` — live rows whose date cell is not a real ISO day. These DO reach
- * the balance but belong to no month, so they never appear in a month's list and
- * cannot be found and fixed from the app. A hand-typed date that Sheets stored as a
- * date is the common cause: reads are `FORMATTED_VALUE`, so it comes back in the
- * spreadsheet's own locale ("8/5/2026"). Asking for `UNFORMATTED_VALUE` instead
- * would make it a serial number, which is worse.
+ * `undatedRows` — live rows whose date cell is not a real ISO day. These DO reach the
+ * balance but belong to no month, so they appear in no month's list. Usual cause: a
+ * hand-typed date Sheets stored as a date, which reads back in the spreadsheet's own
+ * locale because reads are `FORMATTED_VALUE`. `UNFORMATTED_VALUE` would make it a serial
+ * number, which is worse.
  *
- * `configMissing` — the config tab is gone or renamed, so every default applies:
- * both people's names, the categories, and — the one that moves money — each
- * person's default split, which falls back to an even one. Reported rather than
- * repaired, because seeding a fresh tab would write this build's defaults into a
- * sheet whose real values are unknown, and take the notice away with them.
+ * `configMissing` — the config tab is gone or renamed, so every default applies: both
+ * names, the categories, and — the one that moves money — each person's default split.
+ * Reported rather than repaired: seeding a fresh tab would write this build's defaults
+ * into a sheet whose real values are unknown, and take the notice away with them.
  *
  * @returns {Promise<{entries: object[], config: object, sheetConfig: object,
  *   supersededRows: number, undecodedRows: number, undatedRows: number,
@@ -267,19 +261,17 @@ export async function appendEntry(spreadsheetId, entry) {
 /**
  * Locate an entry's current row within one tab.
  *
- * Row numbers cannot be cached: inserting or deleting rows in the Sheets UI shifts
- * every row below the edit, and writing to a stale row silently overwrites a
- * different expense — so this re-reads immediately before every write.
+ * Row numbers cannot be cached: inserting or deleting rows in the Sheets UI shifts every
+ * row below the edit, and writing to a stale row silently overwrites a different
+ * expense — so this re-reads immediately before every write.
  *
  * It reads the FULL row range rather than the id column alone, because **an id is not
  * unique within a tab**. `updateEntry` leaves a same-id tombstone behind whenever the
  * payer moves, so an entry whose payer has moved away and back has the id in this tab
  * twice — once dead, once live. Taking the first match then writes to the dead row: a
- * delete stamps a row that is already tombstoned and the live one survives, so the
- * delete silently does nothing and the expense returns on the next refresh; a plain
- * edit clears that row's `deleted_at` and resurrects it into a SECOND live row. Both
- * are invisible afterwards — `reconcileById` collapses the duplicate on screen, and
- * `supersededRows` counts tombstones only, so a hidden live copy is never reported.
+ * delete stamps a row that is already tombstoned, so the live one survives and the
+ * expense returns on the next refresh; a plain edit clears that row's `deleted_at` and
+ * resurrects it into a SECOND live row. Both are invisible afterwards.
  */
 async function resolveRow(spreadsheetId, tab, id) {
   const data = await getValues(spreadsheetId, tab.dataRange)
@@ -289,12 +281,11 @@ async function resolveRow(spreadsheetId, tab, id) {
   let any = -1
   rows.forEach((row, index) => {
     if (idCell(tab, row) !== id) return
-    // The LAST match wins on both counts, live or dead: rows are only ever appended,
-    // so the newest copy is the one every read reconciles to. The fallback matters as
-    // much as the live case, because `setDeletedAt` also CLEARS the cell — a restore
-    // where every copy in this tab is tombstoned would otherwise revive the oldest
-    // one, putting the values from before a payer move back on screen while the newest
-    // row stays dead, and `reconcileById` prefers the live row so nothing reports it.
+    // The LAST match wins on both counts, live or dead: rows are only ever appended, so
+    // the newest copy is the one every read reconciles to. The dead fallback matters as
+    // much, because `setDeletedAt` also CLEARS the cell — a restore where every copy in
+    // this tab is tombstoned would otherwise revive the oldest one, putting
+    // pre-payer-move values back on screen while the newest row stays dead.
     any = index
     if (!deletedCell(tab, row)) live = index
   })
@@ -311,27 +302,23 @@ async function resolveRow(spreadsheetId, tab, id) {
  *
  * Both tabs come from `tabOf`, so "where is this row" and "where does it belong" are
  * answered by the same function — the only way they cannot drift. That also settles the
- * settlement case without a branch of its own: a settlement's payer is a CELL in the one
- * settlements tab, so changing it leaves `tabOf` answering the same tab and the row is
- * simply overwritten. Only an EXPENSE's payer moves a row.
+ * settlement case without a branch: a settlement's payer is a CELL in the one settlements
+ * tab, so changing it leaves `tabOf` answering the same tab and the row is simply
+ * overwritten. Only an EXPENSE's payer moves a row.
  *
  * On a move the old row is tombstoned rather than removed, and only after the new one is
  * appended, so a failure between the two leaves the entry visible under its old payer
  * instead of silently gone.
  *
- * The tombstone stamp is read from the clock here rather than taken from the entry or
- * a parameter. An entry carries no timestamp of its own any more, and there is no
- * decision for a caller to make: the row is being retired *now*. It has to be a real
- * stamp rather than any non-empty marker, because `reconcileById` breaks a
- * tombstone-vs-tombstone tie by comparing exactly this cell.
+ * The tombstone stamp is read from the clock here rather than taken from the entry: an
+ * entry carries no timestamp of its own, and it has to be a real stamp rather than any
+ * non-empty marker, because `reconcileById` breaks a tombstone-vs-tombstone tie by
+ * comparing exactly this cell.
  */
 export async function updateEntry(spreadsheetId, entry, previousPayer) {
-  /**
-   * Checked before anything is written, not on the way to the second call.
-   * `previousPayer` says which tab the row is in now; without a real one, the
-   * branch below appends a copy to the new tab and then cannot find the original
-   * to tombstone — so the sheet ends up with two live rows for one entry.
-   */
+  // Checked before anything is written. `previousPayer` says which tab the row is in
+  // now; without a real one, the branch below appends a copy to the new tab and then
+  // cannot find the original to tombstone — so the sheet ends up with two live rows.
   if (!isPerson(previousPayer)) {
     throw new TypeError(`updateEntry needs the row's current payer, got ${String(previousPayer)}`)
   }
@@ -355,7 +342,7 @@ export async function updateEntry(spreadsheetId, entry, previousPayer) {
  * Stamp or clear an entry's `deleted_at`. Deletes are soft so rows never change
  * position and undo is a single cell write.
  *
- * Takes the TAB rather than a payer, because the payer alone no longer names one: a
+ * Takes the TAB rather than a payer, because the payer alone does not name one: a
  * settlement lives in the settlements tab whoever paid it. The caller passes
  * `tabOf(previous)`, built from the copy in local state, so it is the tab the row is in
  * now rather than one this layer could pick wrongly.
@@ -368,15 +355,14 @@ export async function setDeletedAt(spreadsheetId, tab, id, deletedAtIso) {
 /**
  * Permanently remove every tombstoned row from every data tab.
  *
- * Reads each tab's own deleted_at column rather than trusting a caller-supplied
- * id list, because an id is not a unique lookup key: an edited entry can have left
- * a tombstone in one tab while the live row sits in the other.
+ * Reads each tab's own deleted_at column rather than trusting a caller-supplied id list,
+ * because an id is not a unique lookup key: an edited entry can have left a tombstone in
+ * one tab while the live row sits in the other.
  *
  * Iterates `DATA_TABS`, so the settlements tab is covered by construction. Left at the
  * two expenses tabs it would leave every tombstoned settlement behind while
- * `tombstoneCount` went on counting them — so `compactRefusal` would say there was work
- * to do, this would do part of it, and the next compact would remove 0 rows and offer
- * the same ones again.
+ * `tombstoneCount` went on counting them — so the next compact would remove 0 rows and
+ * offer the same ones again.
  *
  * @param {Record<string, number>} sheetGids tab title -> numeric sheetId
  * @returns {Promise<{removed: number}>}
@@ -385,18 +371,17 @@ export async function compact(spreadsheetId, sheetGids) {
   const requests = []
 
   // One read per tab rather than a single batchGet, deliberately. Batching would save a
-  // round trip on a rare, manual action, at the cost of re-deriving the row numbers
-  // from a positional `valueRanges` reply — and this is the only hard delete in the
-  // app, where being one row out removes somebody else's expense.
+  // round trip on a rare manual action, at the cost of re-deriving the row numbers from a
+  // positional `valueRanges` reply — and this is the only hard delete in the app, where
+  // being one row out removes somebody else's expense.
   for (const tab of DATA_TABS) {
     const sheetGid = sheetGids[tab.title]
     if (sheetGid == null) continue
 
-    // The FULL row range, not just the deleted_at column, and that is not waste.
-    // Row numbers here are derived from position (`FIRST_DATA_ROW + index`), and
-    // that only holds while every data row is present in the reply. `deleted_at`
-    // is empty on most rows, so a single-column read cannot be trusted to line up
-    // — and being one row out here hard-deletes somebody else's expense.
+    // The FULL row range, not just the deleted_at column. Row numbers here are derived
+    // from position (`FIRST_DATA_ROW + index`), which only holds while every data row is
+    // present in the reply — and `deleted_at` is empty on most rows, so a single-column
+    // read cannot be trusted to line up.
     const data = await getValues(spreadsheetId, tab.dataRange)
     const rowNumbers = []
     ;(data.values ?? []).forEach((row, index) => {
@@ -404,9 +389,9 @@ export async function compact(spreadsheetId, sheetGids) {
     })
     if (rowNumbers.length === 0) continue
 
-    // CRITICAL: delete from the bottom up within each tab. deleteDimension
-    // shifts every row below it, so ascending order would make each request
-    // after the first target the wrong row.
+    // CRITICAL: delete from the bottom up within each tab. deleteDimension shifts every
+    // row below it, so ascending order would make each request after the first target
+    // the wrong row.
     rowNumbers.sort((a, b) => b - a)
     for (const rowNumber of rowNumbers) {
       requests.push({
@@ -438,13 +423,11 @@ export async function compact(spreadsheetId, sheetGids) {
  * `deleteDimension` takes nothing else, so this is the only way to name a tab to
  * `compact`.
  *
- * Exported because `compact` needs the gids and must NOT go through
- * `ensureStructure` to get them: that path WRITES. A ledger whose config tab has
- * been deleted reports `configMissing` and is deliberately never repaired, but
- * `ensureStructure` would add the tab back and seed it with `DEFAULT_CONFIG` —
- * writing this build's defaults into a sheet whose real values are unknown, an even
- * split included, and taking the notice away with them. Reading is the whole of what
- * `compact` is owed.
+ * Exported because `compact` needs the gids and must NOT go through `ensureStructure` to
+ * get them: that path WRITES. A ledger whose config tab has been deleted reports
+ * `configMissing` and is deliberately never repaired, but `ensureStructure` would add the
+ * tab back and seed it with this build's defaults — an even split included — taking the
+ * notice with them.
  */
 export async function readSheetGids(spreadsheetId) {
   const data = await request(`/${encodeURIComponent(spreadsheetId)}`, {
@@ -477,19 +460,16 @@ export async function ensureStructure(spreadsheetId) {
   const wantedTabs = [...DATA_TABS.map((tab) => tab.title), CONFIG_TAB]
   const missing = wantedTabs.filter((title) => !(title in sheetIds))
 
-  // Refuse to build structure in a spreadsheet that is evidently somebody's
-  // existing work. The id arrives from the script's SHEET_ID property rather than
-  // from a person choosing a file, so a wrong one is a configuration mistake —
-  // and adding four tabs to an unrelated spreadsheet is not something undo can
-  // reach. A freshly created spreadsheet has exactly one default tab, so several
-  // tabs with none of ours among them is not the ledger we were pointed at.
+  // Refuse to build structure in a spreadsheet that is evidently somebody's existing
+  // work. The id arrives from the script's SHEET_ID property rather than from a person
+  // choosing a file, so a wrong one is a configuration mistake — and adding four tabs to
+  // an unrelated spreadsheet is not something undo can reach. A freshly created
+  // spreadsheet has exactly one default tab.
   //
-  // The test is "none of ours", not "any missing": an existing ledger that predates the
-  // settlements tab is missing exactly one of the four, and must have it BUILT rather
-  // than be refused as somebody else's spreadsheet.
-  //
-  // Translated, because this is the one failure whose message a person has to act
-  // on: it names the property to fix, and it reaches an error gate.
+  // The test is "none of ours", not "any missing": a ledger predating the settlements
+  // tab is missing exactly one of the four and must have it BUILT. Translated, because
+  // this is the one failure whose message a person has to act on — it names the property
+  // to fix, and it reaches an error gate.
   if (missing.length === wantedTabs.length && Object.keys(sheetIds).length > 1) {
     throw i18nError('error.notOurSheet')
   }
@@ -499,10 +479,10 @@ export async function ensureStructure(spreadsheetId) {
       method: 'POST',
       body: { requests: missing.map((title) => ({ addSheet: { properties: { title } } })) },
     })
-    // The reply already names every tab it just created, so re-reading the
-    // spreadsheet for the same gids is a wasted round trip. Read defensively:
-    // a gid that does not arrive stays absent, and `compact` skips a tab it
-    // cannot name rather than deleting rows from a guess.
+    // The reply already names every tab it just created, so re-reading the spreadsheet
+    // for the same gids is a wasted round trip. Read defensively: a gid that does not
+    // arrive stays absent, and `compact` skips a tab it cannot name rather than
+    // deleting rows from a guess.
     for (const { addSheet } of reply.replies ?? []) {
       const { title, sheetId } = addSheet?.properties ?? {}
       if (title != null && sheetId != null) sheetIds[title] = sheetId

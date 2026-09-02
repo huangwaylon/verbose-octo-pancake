@@ -10,6 +10,8 @@
  * and the three relative-day words arrive as arguments with English defaults.
  */
 
+import { cached } from './memo.js'
+
 /** The only English text here; callers override it from the catalog. */
 const EN_DAY_LABELS = { today: 'Today', yesterday: 'Yesterday', none: 'No date' }
 
@@ -30,12 +32,30 @@ function dateFormatter(locale, options) {
     .sort()
     .map((name) => `${name}:${options[name]}`)
     .join(',')
-  const key = `${locale ?? ''}|${shape}`
-  const cached = DATE_FORMATS.get(key)
-  if (cached) return cached
-  const formatter = new Intl.DateTimeFormat(locale, options)
-  DATE_FORMATS.set(key, formatter)
-  return formatter
+  return cached(
+    DATE_FORMATS,
+    `${locale ?? ''}|${shape}`,
+    () => new Intl.DateTimeFormat(locale, options),
+  )
+}
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * Shape *and* calendar validity, and the only test of a 'YYYY-MM-DD' day — the
+ * companion to `isMonthKey` below. The regex alone accepts 2026-02-31 and 2026-13-45,
+ * which surface as a bogus month in the month switcher; the UTC round-trip is what
+ * rejects them, since an out-of-range month or day lands in a different one.
+ */
+export function isIsoDate(value) {
+  if (!ISO_DATE.test(value ?? '')) return false
+  const [year, month, day] = value.split('-').map(Number)
+  const probe = new Date(Date.UTC(year, month - 1, day))
+  return (
+    probe.getUTCFullYear() === year &&
+    probe.getUTCMonth() === month - 1 &&
+    probe.getUTCDate() === day
+  )
 }
 
 export function todayIso(now = new Date()) {

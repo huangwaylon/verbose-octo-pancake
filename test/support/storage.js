@@ -1,12 +1,9 @@
 /**
- * The fake `localStorage` both module-state tests need.
+ * The fake `localStorage` the module-state tests need.
  *
  * vitest runs in `environment: 'node'`, so there is none to speak of — and both
  * `connection.js` and `snapshot.js` read storage at import time, which is why each
  * test loads its module fresh against a seeded store rather than mutating one.
- *
- * Extracted because the two files had this byte-identical, teardown included, and
- * a third copy is exactly what a future `sheets.js` test would have written.
  */
 
 /**

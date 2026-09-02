@@ -7,16 +7,15 @@ import { Segmented } from './Segmented.jsx'
 /**
  * The payer's own share of an entry, as the form holds it.
  *
- * `null` means "follow the payer's configured default", which is what a new entry
- * starts as: switching the payer control then re-derives the split, because the
- * default is a property of the person, not of the form — with 80/20, p1 owes 80%
- * of what they paid and p2 owes 20% of what *they* paid.
+ * `null` means "follow the payer's configured default", which is what a new entry starts
+ * as: switching the payer control then re-derives the split, because the default is a
+ * property of the person, not of the form.
  *
- * An entry being edited carries an explicit share instead, so it opens on the
- * number actually stored and changing its payer leaves that number alone: a saved
- * row records a decision someone already made. `payerShare` comes from `share`
- * rather than `percent / 100` for the same reason — the slider is whole percents,
- * and a stored 0.333 must not be quantized to 0.33 by an edit that never touched it.
+ * An entry being edited carries an explicit share instead, so it opens on the number
+ * actually stored and changing its payer leaves that number alone: a saved row records a
+ * decision someone already made. `payerShare` comes from `share` rather than `percent /
+ * 100` for the same reason — a stored 0.333 must not be quantized to 0.33 by an edit that
+ * never touched it.
  *
  * Every transition is in `lib/split.js`; this holds only the one piece of state.
  */

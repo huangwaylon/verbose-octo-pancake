@@ -51,19 +51,16 @@ const raw = [
 ]
 
 const entries = raw.map(([id, date, payer, amountYen, category, description, payerShare]) =>
-  makeEntry(
-    {
-      id,
-      type: ENTRY_TYPE.EXPENSE,
-      date,
-      payer,
-      amountYen,
-      category,
-      description,
-      payerShare,
-    },
-    `${date}T10:00:00.000Z`,
-  ),
+  makeEntry({
+    id,
+    type: ENTRY_TYPE.EXPENSE,
+    date,
+    payer,
+    amountYen,
+    category,
+    description,
+    payerShare,
+  }),
 )
 
 /** Two tombstones, in the month being previewed, since the section is scoped to it. */
@@ -71,20 +68,17 @@ const deleted = [
   ['x', '2026-08-03', PERSON.P2, 2200, '外食', 'まちがえて二重に登録'],
   ['y', '2026-08-01', PERSON.P1, 780, '日用品', ''],
 ].map(([id, date, payer, amountYen, category, description]) =>
-  makeEntry(
-    {
-      id,
-      type: ENTRY_TYPE.EXPENSE,
-      date,
-      payer,
-      amountYen,
-      category,
-      description,
-      payerShare: EVEN_SHARE,
-      deletedAt: `${date}T12:00:00.000Z`,
-    },
-    `${date}T10:00:00.000Z`,
-  ),
+  makeEntry({
+    id,
+    type: ENTRY_TYPE.EXPENSE,
+    date,
+    payer,
+    amountYen,
+    category,
+    description,
+    payerShare: EVEN_SHARE,
+    deletedAt: `${date}T12:00:00.000Z`,
+  }),
 )
 
 const noop = () => {}
@@ -141,18 +135,15 @@ function body(overlay, { view = baseView, config: pageConfig = config } = {}) {
  */
 const settledEntries = [
   ...entries,
-  makeEntry(
-    {
-      id: 'z',
-      type: ENTRY_TYPE.SETTLEMENT,
-      date: '2026-08-06',
-      payer: baseView.balance.debtor,
-      amountYen: baseView.balance.amountYen,
-      category: '',
-      payerShare: 0,
-    },
-    '2026-08-06T10:00:00.000Z',
-  ),
+  makeEntry({
+    id: 'z',
+    type: ENTRY_TYPE.SETTLEMENT,
+    date: '2026-08-06',
+    payer: baseView.balance.debtor,
+    amountYen: baseView.balance.amountYen,
+    category: '',
+    payerShare: 0,
+  }),
 ]
 
 const settledView = viewOf(settledEntries, deleted)
@@ -174,88 +165,37 @@ const stressConfig = {
 }
 
 const stressEntries = [
-  makeEntry(
-    {
-      id: 's1',
-      type: ENTRY_TYPE.EXPENSE,
-      date: '2026-08-05',
-      payer: PERSON.P1,
-      amountYen: 123456789,
-      category: 'Groceries and household supplies',
-      description: 'Weekly shop plus the birthday things we said we would split evenly',
-      payerShare: 0.7,
-    },
-    '2026-08-05T10:00:00.000Z',
-  ),
-  makeEntry(
-    {
-      id: 's2',
-      type: ENTRY_TYPE.SETTLEMENT,
-      date: '2026-08-04',
-      payer: PERSON.P2,
-      amountYen: 9876543,
-      category: '',
-      payerShare: 0,
-    },
-    '2026-08-04T10:00:00.000Z',
-  ),
+  makeEntry({
+    id: 's1',
+    type: ENTRY_TYPE.EXPENSE,
+    date: '2026-08-05',
+    payer: PERSON.P1,
+    amountYen: 123456789,
+    category: 'Groceries and household supplies',
+    description: 'Weekly shop plus the birthday things we said we would split evenly',
+    payerShare: 0.7,
+  }),
+  makeEntry({
+    id: 's2',
+    type: ENTRY_TYPE.SETTLEMENT,
+    date: '2026-08-04',
+    payer: PERSON.P2,
+    amountYen: 9876543,
+    category: '',
+    payerShare: 0,
+  }),
 ]
 
 const stressView = viewOf(stressEntries)
 
 /**
- * The overlays, each the densest thing on a phone screen in its own way — plus the
- * settlement form, which is the sparsest: it drops the note, category and split
- * controls, which now sit either side of the payer and date controls, so it is the one
- * page where getting the form's two conditional blocks wrong is visible.
+ * One builder per sheet, so a stress page cannot drift from the page it stresses:
+ * the props are written once and only the entry and the config vary.
  */
-const OVERLAYS = {
-  confirm: <ConfirmDeleteSheet entry={entries[0]} onConfirm={noop} onClose={noop} />,
-  form: (
-    <EntryFormSheet
-      draft={{ mode: 'edit', entry: { ...entries[0], payerShare: 0.7 } }}
-      config={{ ...config, notePresets: ['オーケー', 'Ozeki', 'Life'] }}
-      me={PERSON.P1}
-      onSubmit={noop}
-      onDelete={noop}
-      onClose={noop}
-    />
-  ),
-  settlement: (
-    <EntryFormSheet
-      draft={{ mode: 'edit', entry: { ...entries[0], type: ENTRY_TYPE.SETTLEMENT, payerShare: 0 } }}
-      config={config}
-      me={PERSON.P1}
-      onSubmit={noop}
-      onDelete={noop}
-      onClose={noop}
-    />
-  ),
-  settings: (
-    <SettingsSheet
-      config={config}
-      me={PERSON.P1}
-      spreadsheetId="preview-sheet-id"
-      tombstoneCount={2}
-      onSetMe={noop}
-      onCompact={noop}
-      onForget={noop}
-      onClose={noop}
-    />
-  ),
-}
-
-/**
- * The entry form under the same stress. Not covered by `OVERLAYS.form`, which uses the
- * short-named config — and the form holds config text in a place the settings sheet
- * does not: the split slider's label is the payer's own name in the possessive, in a
- * grid whose other track is sized to its content, where `.sheet__body`'s
- * `overflow-x: hidden` would CLIP an overflow rather than report it.
- */
-const STRESS_FORM = (
+const entryForm = (entry, pageConfig) => (
   <EntryFormSheet
-    draft={{ mode: 'edit', entry: { ...stressEntries[0], payerShare: 0.7 } }}
-    config={stressConfig}
+    draft={{ mode: 'edit', entry }}
+    config={pageConfig}
     me={PERSON.P1}
     onSubmit={noop}
     onDelete={noop}
@@ -263,10 +203,9 @@ const STRESS_FORM = (
   />
 )
 
-/** The settings sheet is where the config tab's own text has least room to fit. */
-const STRESS_SETTINGS = (
+const settingsSheet = (pageConfig) => (
   <SettingsSheet
-    config={stressConfig}
+    config={pageConfig}
     me={PERSON.P1}
     spreadsheetId="preview-sheet-id"
     tombstoneCount={2}
@@ -276,6 +215,36 @@ const STRESS_SETTINGS = (
     onClose={noop}
   />
 )
+
+/**
+ * The overlays, each the densest thing on a phone screen in its own way — plus the
+ * settlement form, which is the sparsest: it drops the note, category and split
+ * controls, which sit either side of the payer and date controls, so it is the one page
+ * where getting the form's two conditional blocks wrong is visible.
+ */
+const OVERLAYS = {
+  confirm: <ConfirmDeleteSheet entry={entries[0]} onConfirm={noop} onClose={noop} />,
+  form: entryForm(
+    { ...entries[0], payerShare: 0.7 },
+    {
+      ...config,
+      notePresets: ['オーケー', 'Ozeki', 'Life'],
+    },
+  ),
+  settlement: entryForm({ ...entries[0], type: ENTRY_TYPE.SETTLEMENT, payerShare: 0 }, config),
+  settings: settingsSheet(config),
+}
+
+/**
+ * The two sheets under the same stress. The form is not covered by `OVERLAYS.form`,
+ * which uses the short-named config — and the form holds config text in a place the
+ * settings sheet does not: the split slider's label is the payer's own name in the
+ * possessive, in a grid whose other track is sized to its content, where
+ * `.sheet__body`'s `overflow-x: hidden` would CLIP an overflow rather than report it.
+ * The settings sheet is where the config tab's own text has least room to fit.
+ */
+const STRESS_FORM = entryForm({ ...stressEntries[0], payerShare: 0.7 }, stressConfig)
+const STRESS_SETTINGS = settingsSheet(stressConfig)
 
 function page(markup, lang, accent) {
   return `<!doctype html>

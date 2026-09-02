@@ -241,8 +241,6 @@ export default {
   'error.badShare': 'Split must be between 0 and 100%.',
   'error.missingCategory': 'Pick a category.',
   'warning.staleData': 'Showing saved data — could not reach the sheet.',
-  // A row whose amount cell cannot be read at all is left out of every total, so
-  // the balance is short by it. Naming the count is the only way anyone would know.
   // The config tab is gone or renamed, so every value falls back to a default —
   // including each person's default split, which decides how every expense divides.
   'warning.configMissing':
@@ -253,6 +251,8 @@ export default {
     one: '{count} row in the sheet has a date that cannot be read, so it appears in no month.',
     other: '{count} rows in the sheet have dates that cannot be read, so they appear in no month.',
   },
+  // A row whose amount cell cannot be read at all is left out of every total, so the
+  // balance is short by it. Naming the count is the only way anyone would know.
   'warning.undecodedRows': {
     one: '{count} row in the sheet has an amount that cannot be read, so it is left out of the totals.',
     other:

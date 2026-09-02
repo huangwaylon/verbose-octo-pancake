@@ -284,10 +284,9 @@ describe('rowToEntry', () => {
   })
 
   /**
-   * The type came from a cell once, and a hand-typed "Settlement" read as an expense
-   * inflated the month's spend and the category donut by the whole transfer. There is
-   * no cell to mistype now: the tab decides, so an expenses tab cannot produce a
-   * settlement at all.
+   * There is no `type` cell to mistype: the tab decides, so an expenses tab cannot
+   * produce a settlement at all. A hand-typed "Settlement" read as an expense would
+   * inflate the month's spend and the category donut by the whole transfer.
    */
   it('takes the type from the tab, so no cell can make an expense a settlement', () => {
     expect(P1.has('type')).toBe(false)
@@ -356,8 +355,8 @@ describe('entryToRow', () => {
   })
 
   it('writes an empty payer_share cell rather than the text "undefined" or "NaN"', () => {
-    // Pre-stringifying this field once defeated the null guard in the map and
-    // permanently polluted the cell, visible to anyone editing in Sheets.
+    // Pre-stringifying this field would defeat the null guard in the map and
+    // permanently pollute the cell, visible to anyone editing in Sheets.
     const share = P1.index('payer_share')
     for (const payerShare of [undefined, null, NaN, Infinity, 'half']) {
       const row = entryToRow({ ...fullEntry(), payerShare }, P1)
@@ -439,7 +438,7 @@ describe('rowToEntry / entryToRow round trip', () => {
 })
 
 describe('makeEntry', () => {
-  it('is deterministic when id and now are supplied', () => {
+  it('is deterministic for the same input', () => {
     const a = makeEntry({ id: 'fixed', amountYen: 100 })
     const b = makeEntry({ id: 'fixed', amountYen: 100 })
     expect(a).toEqual(b)
@@ -469,8 +468,8 @@ describe('makeEntry', () => {
   it('passes an unrecognised payer through so validation can refuse it', () => {
     const entry = makeEntry({ id: 'a', payer: 'nonsense', type: 'nonsense' })
     expect(entry.type).toBe(ENTRY_TYPE.EXPENSE)
-    // Not rewritten to p1. Guessing made BAD_PAYER unreachable from every write
-    // path and filed the expense under the wrong person's tab.
+    // Not rewritten to p1: guessing makes BAD_PAYER unreachable from every write
+    // path and files the expense under the wrong person's tab.
     expect(entry.payer).toBe('nonsense')
     expect(validateEntryCodes(entry)).toContain(ENTRY_ERROR.BAD_PAYER)
     expect(entry.deletedAt).toBeNull()

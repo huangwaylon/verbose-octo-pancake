@@ -12,12 +12,12 @@ const KEYBOARD_INSET = '--keyboard-inset'
  * puts its own controls behind the keypad, which on the decimal pad has no Done key to
  * escape with. `scrollIntoView` cannot substitute: it moves content within a scroller,
  * and the controls in question are siblings of one (the sheet's footer) or centred in a
- * box exactly one viewport tall (the key screen), where there is nothing to scroll.
+ * box exactly one viewport tall (the key screen).
  *
  * Mounted by whichever surface owns a text field, rather than once for the app: the
  * `scroll` listener fires per frame while iOS follows the focused field, and the two
- * surfaces that need it are never on screen at the same time. The arithmetic itself is
- * in `lib/viewport.js`, where a test can reach it.
+ * surfaces that need it are never on screen at the same time. The arithmetic is in
+ * `lib/viewport.js`, where a test can reach it.
  */
 export function useKeyboardInset() {
   useEffect(() => {
@@ -36,10 +36,8 @@ export function useKeyboardInset() {
       // Only on a change. The property is inherited from the root, so every write
       // invalidates computed style for the whole document — the ledger still mounted
       // behind a sheet included — and `scroll` fires every frame while iOS shifts the
-      // visual viewport to follow the focused field. The inset is deliberately constant
-      // across exactly those events (`keyboardInset` subtracts `offsetTop` so that it
-      // is), so without this the keyboard animation pays for a full style invalidation
-      // per frame to publish the number it already had.
+      // visual viewport to follow the focused field. The inset is constant across
+      // exactly those events (`keyboardInset` subtracts `offsetTop` so that it is).
       if (inset === published) return
       published = inset
       root.style.setProperty(KEYBOARD_INSET, `${inset}px`)

@@ -54,24 +54,24 @@ owed all of it — so the balance is one sum over every row and the arithmetic h
 settlement branch; settlements never count toward spend totals or category breakdowns.
 Nothing in the interface writes one: we settle by wire transfer, which lands on a card
 statement and comes back in as ordinary spend, so the balance converges without a
-settle-up flow. Rows already there still read, display and edit correctly. The ledger is
-**yen only**: the yen has no sub-unit, so an amount is simply an integer number of yen
-and there is no scale anywhere to get wrong. Every write is `valueInputOption: RAW`, so a
-note of `=SUM(A:A)` stays literal text and dates are never reformatted. A row the app
-cannot fully read — an unparseable amount, a date the spreadsheet stored in its own
-locale, a renamed `config` tab — is counted and reported on screen, because a ledger
-quietly short one expense is worse than a notice.
+settle-up flow. Rows already there still read, display and edit correctly.
 
-A row records no `created_at` or `updated_at`. The transaction date is the fact worth
-keeping, and neither stamp was ever displayed — so the only timestamp left is
-`deleted_at`, which doubles as the tie-break when a payer move has left two tombstones
-under one id. Within a day the list orders by id: arbitrary, but stable, and independent
-of which tab the rows arrived from.
+The ledger is **yen only**: the yen has no sub-unit, so an amount is simply an integer
+number of yen and there is no scale anywhere to get wrong. Every write is
+`valueInputOption: RAW`, so a note of `=SUM(A:A)` stays literal text and dates are never
+reformatted. A row the app cannot fully read — an unparseable amount, a date the
+spreadsheet stored in its own locale, a renamed `config` tab — is counted and reported on
+screen, because a ledger quietly short one expense is worse than a notice.
 
-Both people are full Editors of one sheet, and edits are **last-write-wins**: an
-entry saved from two devices at once keeps whichever write landed second, with no
-conflict prompt. Deliberate for two people who can just ask each other, and the
-reason every write re-resolves its row by id first.
+A row records no `created_at` or `updated_at`; the transaction date is the fact worth
+keeping. The only timestamp is `deleted_at`, which doubles as the tie-break when a payer
+move has left two tombstones under one id. Within a day the list orders by id: arbitrary,
+but stable, and independent of which tab the rows arrived from.
+
+Both people are full Editors of one sheet, and edits are **last-write-wins**: an entry
+saved from two devices at once keeps whichever write landed second, with no conflict
+prompt. Deliberate for two people who can just ask each other, and the reason every write
+re-resolves its row by id first.
 
 Deletes are soft — `deleted_at` is stamped and the row filtered out client-side — because
 the Sheets API addresses rows by index, so a hard delete would shift every row below it
@@ -177,42 +177,35 @@ The only target. The install is **Share → Add to Home Screen**:
 `viewport-fit=cover`, the `apple-touch-icon` link and the `apple-mobile-web-app-*` meta
 tags Safari still reads.
 
-Standalone changes what can go wrong, and the rules that follow from it are in
-CLAUDE.md's Platform section: the keyboard covers a fixed footer without shrinking the
-viewport `dvh` reads, `:hover` latches after a tap, a flick from the top reloads the app
-out from under a half-typed entry, and safe-area insets are the app's problem because
-there is no browser chrome to absorb them. The entry form takes the whole screen there,
-which makes that last one its problem too. Layout is decided at 320px; `npx vite-node
-scripts/preview.jsx` writes seventeen pages for checking it, two of them deliberately
-pathological.
+Standalone changes what can go wrong — the keyboard covers a fixed footer without shrinking
+the viewport `dvh` reads, `:hover` latches after a tap, a flick from the top reloads the app
+out from under a half-typed entry, and safe-area insets are the app's problem because there
+is no browser chrome to absorb them. The rules that follow are in CLAUDE.md's Platform
+section. Layout is decided at 320px; `npx vite-node scripts/preview.jsx` writes eighteen
+pages for checking it, three of them deliberately pathological.
 
 ### Launch speed
 
-Two caches, and between them a cold launch paints the real ledger before any network
-reply.
+Two caches, and between them a cold launch paints the real ledger before any network reply.
 
-`npm run build` runs `scripts/build-sw.js`, which walks `dist/` and emits a service
-worker precaching every file in it — worth having even though the assets are
-content-hashed, because Pages serves them with `max-age=600` and cannot be told otherwise.
-Why it walks the tree and hashes contents rather than names is a rule for future edits, so
-it lives in CLAUDE.md.
+`npm run build` runs `scripts/build-sw.js`, which walks `dist/` and emits a service worker
+precaching every file in it — worth having even though the assets are content-hashed,
+because Pages serves them with `max-age=600` and cannot be told otherwise.
 
 `src/lib/snapshot.js` keeps the last successful read in `localStorage`, and `useLedger`
-paints from it before requesting anything. A launch with no network therefore shows the
-real ledger with a "showing saved data" notice rather than an error screen — with data on
-screen before any network call, offline included.
+paints from it before requesting anything. A launch with no network therefore shows the real
+ledger with a "showing saved data" notice rather than an error screen.
 
 The one request that cannot wait is the token, because everything after it is serialized:
 token, then the sheet read, then fresh figures. `src/main.jsx` starts it before the first
-React render rather than from an effect, which would have added the whole first paint to
-the wait — and that paint grows with the cached ledger.
+React render rather than from an effect, which would have added the whole first paint to the
+wait — and that paint grows with the cached ledger.
 
 Updates activate by reloading, which `src/lib/serviceWorker.js` only does when no entry is
 half-typed and no write is in flight. It also calls `registration.update()` when the app
 returns to the foreground: an installed iOS web app resumed from the app switcher never
 navigates, so without that a new version could wait unactivated for weeks. An update
-refused because a form was open is reconsidered the moment that form closes, since
-somebody who never leaves the app produces no foreground event to ask again.
+refused because a form was open is reconsidered the moment that form closes.
 
 ## Development
 
@@ -230,16 +223,15 @@ The explicit registry is required — a bare `npm install` behind a private mirr
 internal hosts into `package-lock.json` and fails on a GitHub runner. CLAUDE.md has the
 regeneration recipe; `test/lockfile.test.js` fails the build if it happens.
 
-The scripts are listed in CLAUDE.md. One caveat that is not obvious: the service worker
-only exists in a build, so exercising it means `npm run build && npm run preview`, and
-`preview` registers a real worker on port 4173 — shared with every other Vite project on
-the machine.
+The scripts are listed in CLAUDE.md. One caveat that is not obvious: the service worker only
+exists in a build, so exercising it means `npm run build && npm run preview`, and `preview`
+registers a real worker on port 4173 — shared with every other Vite project on the machine.
 
-A green suite says nothing about whether the page looks right; `npx vite-node
-scripts/preview.jsx` writes seventeen static pages with the real stylesheets, and
-`scripts/frames.html` renders a page at several widths at once with the measurements
-printed underneath — including, on a page carrying a sheet, whether Save still clears a
-simulated keyboard. CLAUDE.md has the invocation.
+A green suite says nothing about whether the page looks right. `npx vite-node
+scripts/preview.jsx` writes eighteen static pages with the real stylesheets, and
+`scripts/frames.html` renders one at several widths at once with the measurements printed
+underneath — including, on a page carrying a sheet, whether Save still clears a simulated
+keyboard. CLAUDE.md has the invocation.
 
 ## Layout
 
@@ -247,25 +239,25 @@ simulated keyboard. CLAUDE.md has the invocation.
 | --- | --- |
 | `index.html` | entry HTML, the CSP, the manifest and Home Screen tags |
 | `base.js`, `vite.config.js` | the Pages base path, in one place; React plugin and vitest config |
-| `src/components/LedgerScreen.jsx` | the whole signed-in surface; `App`, the visual harness and one render test are its three callers |
-| `src/lib/viewport.js` | how much of the layout viewport the software keyboard covers |
 | `apps-script/` | the token endpoint: `Code.gs` and its manifest, deployed by hand |
-| `public/` | `manifest.webmanifest` and the PNG app icons, copied verbatim into `dist/` |
 | `src/schema.js` | the sheet contract: columns, ranges, row ↔ entry mapping |
 | `src/config.js` | build-time values, storage keys, defaults and their merge, `localStorage` wrappers |
 | `src/lib/sheets.js` | every Sheets API call |
-| `src/lib/sheetConfig.js` | the `config` tab: the key map, one parser per kind, and what a fresh tab is seeded with |
+| `src/lib/sheetConfig.js` | the `config` tab: the key map, one parser per kind, what a fresh tab is seeded with |
 | `src/lib/money.js` | whole yen: parse, format, split, sum |
 | `src/lib/balance.js` | who-owes-whom and the month aggregates; pure |
+| `src/lib/ledgerState.js` | the optimistic list transitions, the status decisions, duplicate-id reconciliation; pure |
+| `src/lib/split.js` | the payer's default share and the split control's transitions; pure |
 | `src/lib/connection.js` | the app key, the minted token, and the failure taxonomy |
 | `src/lib/snapshot.js` | the launch cache: last successful read, kept on the device |
 | `src/lib/serviceWorker.js` | registration, and when it is safe to activate an update |
-| `src/lib/ledgerState.js` | the optimistic list transitions, the status decisions, and duplicate-id reconciliation; pure |
-| `src/lib/split.js` | the payer's default share and the split control's transitions; pure |
+| `src/lib/viewport.js` | how much of the layout viewport the software keyboard covers |
 | `src/lib/{identity,dates,theme}.js` | which person this device is; ISO date helpers; accent presets |
 | `src/state/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts`, `useKeyboardInset` |
+| `src/components/LedgerScreen.jsx` | the whole signed-in surface; `App`, the visual harness and one render test are its three callers |
 | `src/i18n/`, `src/components/`, `src/styles/` | engine and `en`/`ja` catalogs; one file per view with inline-SVG icons and chart; `tokens`/`base`/`primitives`/`app` in that order |
-| `test/`, `scripts/preview.jsx` | vitest specs; the static-HTML visual harness |
-| `scripts/frames.html` | views a preview page at several widths and heights, measuring each rather than eyeballing it |
+| `test/` | vitest specs; shared harnesses under `test/support/` |
+| `scripts/preview.jsx`, `scripts/frames.html` | the static-HTML visual harness, and the viewer that measures it at several widths |
 | `scripts/build-sw.js` | walks `dist/` and emits the service worker; importable, so its silent failure modes are tested |
+| `scripts/bank_to_ledger.py` | turns a bank CSV into pasteable rows; the one place outside `schema.js` that knows the columns |
 | `.github/workflows/deploy.yml` | test, build, deploy to Pages |

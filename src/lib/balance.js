@@ -38,26 +38,25 @@ function hasDate(entry) {
 /**
  * What the non-payer owes the payer for a single entry, in yen.
  *
- * Routed through splitYen so the payer's and the other person's portions
- * always add back up to amountYen exactly.
+ * Routed through splitYen so the payer's and the other person's portions always add back
+ * up to amountYen exactly.
  *
  * @param {object} entry
  * @returns {number} whole yen (0 when the payer covered their own share)
  */
 export function owedToPayerYen(entry) {
-  // Coerced because `makeEntry` is the only thing that normalises a form's
-  // '0.5' into a number, and this runs over rows straight from the sheet too.
-  // Genuinely non-numeric shares still throw in splitYen rather than
-  // silently becoming 0 and moving money.
+  // Coerced because `makeEntry` is the only thing that normalises a form's '0.5' into a
+  // number, and this runs over rows straight from the sheet too. Genuinely non-numeric
+  // shares still throw in splitYen rather than silently becoming 0 and moving money.
   return splitYen(entry.amountYen, Number(entry.payerShare)).otherYen
 }
 
 /**
  * The single number the whole app exists to show.
  *
- * `netYen` is signed from p1's perspective: positive means p2 owes p1.
- * Expenses and settlements both flow through the same formula, so recording a
- * settlement for exactly the outstanding amount drives netYen to 0.
+ * `netYen` is signed from p1's perspective: positive means p2 owes p1. Expenses and
+ * settlements both flow through the same formula, so recording a settlement for exactly
+ * the outstanding amount drives netYen to 0.
  *
  * @param {object[]} entries
  * @returns {{netYen: number, debtor: string|null, creditor: string|null, amountYen: number}}
@@ -83,12 +82,10 @@ export function computeBalance(entries) {
 /**
  * Total money that actually left the household, in yen.
  *
- * Settlements are transfers BETWEEN the two people, not spending, so they
- * never appear in spend totals or category breakdowns — counting them would
- * double-count money already counted as the original expense.
- *
- * Per-payer and per-category figures come from `spendByPerson` and
- * `spendByCategory`, which is why this takes no filters.
+ * Settlements are transfers BETWEEN the two people, not spending, so they never appear in
+ * spend totals or category breakdowns — counting them would double-count money already
+ * counted as the original expense. Per-payer and per-category figures come from
+ * `spendByPerson` and `spendByCategory`, which is why this takes no filters.
  *
  * @param {object[]} entries
  * @returns {number} whole yen
@@ -140,15 +137,14 @@ export function spendByPerson(entries) {
 /**
  * Whether an entry's ISO date falls inside a 'YYYY-MM' key.
  *
- * Deliberately a string prefix comparison. Constructing a Date from
- * 'YYYY-MM-DD' parses as UTC midnight and then shifts under the local timezone,
- * which silently moves the 1st and the last day of every month into the
- * neighbouring one for anyone west of UTC. A blank date is in no month rather
- * than guessed at.
+ * Deliberately a string prefix comparison. Constructing a Date from 'YYYY-MM-DD' parses
+ * as UTC midnight and then shifts under the local timezone, which silently moves the 1st
+ * and the last day of every month into the neighbouring one for anyone west of UTC. A
+ * blank date is in no month rather than guessed at.
  */
 function inMonth(entry, monthKey) {
-  // `isMonthKey`, not a second regex: a local one accepted month 13 while
-  // `shiftMonth` rejected it, so the two disagreed about what a month even is.
+  // `isMonthKey`, not a second regex: a local one accepted month 13 while `shiftMonth`
+  // rejected it, so the two disagreed about what a month even is.
   if (!isMonthKey(monthKey)) return false
   return hasDate(entry) && entry.date.slice(0, 7) === monthKey
 }
@@ -166,10 +162,9 @@ export function filterByMonth(entries, monthKey) {
 
 /**
  * Every month present in the data, newest first. 'YYYY-MM' strings sort
- * lexicographically the same way they sort chronologically, so no date parsing is
- * needed here either. `initialMonthKey` is the only caller in the app; it stays
- * exported because its ordering and de-duplication are what `balance.test.js`
- * pins directly.
+ * lexicographically the same way they sort chronologically, so no date parsing is needed
+ * here either. `initialMonthKey` is the only caller in the app; it stays exported because
+ * its ordering and de-duplication are what `balance.test.js` pins directly.
  *
  * @param {object[]} entries
  * @returns {string[]}
@@ -199,14 +194,13 @@ export function initialMonthKey(entries, currentKey) {
 }
 
 /**
- * One month's soft-deleted entries, most recently deleted first — the restore
- * surface, and the one view in the app that wants exactly the rows everything
- * else filters out.
+ * One month's soft-deleted entries, most recently deleted first — the restore surface,
+ * and the one view in the app that wants exactly the rows everything else filters out.
  *
- * Month-scoped for the same reason the list above it is: it sits under a month
- * switcher, so a tombstone from another month showing there reads as belonging
- * to the month on screen. Sheet-wide is what `compact` is for, and its count in
- * settings is deliberately not this number.
+ * Month-scoped for the same reason the list above it is: it sits under a month switcher,
+ * so a tombstone from another month showing there reads as belonging to the month on
+ * screen. Sheet-wide is what `compact` is for, and its count in settings is deliberately
+ * not this number.
  *
  * @param {object[]} entries
  * @param {string} monthKey 'YYYY-MM'
@@ -225,15 +219,13 @@ export function deletedEntries(entries, monthKey) {
  * arbitrary order within a day.
  *
  * Within-day order is by id — arbitrary, but STABLE, and immune to the order the tabs
- * were read in. Leaving the rows in the order they arrived would sort every one of p1's
- * expenses above every one of p2's on the same day, and an optimistic row is appended so
- * it would sit at the bottom of its day and then visibly jump when the next refresh
- * returned the sheet's own order.
+ * were read in. Leaving the rows in arrival order would sort every one of p1's expenses
+ * above every one of p2's on the same day, and an optimistic row is appended so it would
+ * sit at the bottom of its day and then visibly jump on the next refresh.
  *
- * `totalYen` is the day's SPEND, so settlements are excluded from it for
- * consistency with totalSpend — but the settlement entries themselves are
- * still listed, because the list is a ledger the user needs to see and be able
- * to tap. Entries with a blank date are kept under a '' date and sort last, so
+ * `totalYen` is the day's SPEND, so settlements are excluded from it — but the settlement
+ * entries themselves are still listed, because the list is a ledger the user needs to see
+ * and be able to tap. Entries with a blank date are kept under a '' date and sort last, so
  * a malformed row is visible and fixable rather than invisible.
  *
  * @param {object[]} entries

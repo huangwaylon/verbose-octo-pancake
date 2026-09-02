@@ -214,18 +214,14 @@ describe('an edit', () => {
   })
 
   it('clears pending on the row it puts back, whatever it was handed', () => {
-    /**
-     * `previous` can itself be a pending copy: tap Restore while the delete is still
-     * in flight, and the delete's `previous` is the row the restore already marked.
-     * A `pending` flag left set there is permanent — `mergeLoaded` keeps a pending
-     * row over the server's forever, so the row freezes, stops receiving the other
-     * person's edits, and blocks `compact` for the life of the install.
-     */
+    // `previous` can itself be a pending copy: tap Restore while the delete is still in
+    // flight, and the delete's `previous` is the row the restore already marked.
+    // `reverted` says what a flag left set there costs.
     const stillGoing = { ...original, pending: true }
     const [next] = reverted(withPendingEdit([original], edited), 'a', stillGoing)
     expect(next.pending).toBe(false)
     expect(next.description).toBe('shop')
-    // And a pending row put back this way is no longer sticky in a merge.
+    // And a pending row put back this way is not sticky in a merge.
     expect(mergeLoaded([next], [edited])[0].description).toBe('Ozeki')
   })
 
@@ -383,7 +379,7 @@ describe('reconcileById', () => {
   })
 
   /**
-   * The case the old array-order rule got backwards, spelled out: an entry created
+   * The case an array-order tie-break gets backwards, spelled out: an entry created
    * under p2, moved to p1, then deleted. p2's row was tombstoned by the MOVE and p1's
    * by the delete, so p1's stamp is later and p1's is the copy to keep — even though
    * p1's is the one decoded first.

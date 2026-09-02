@@ -12,18 +12,16 @@ import { TrashIcon } from './icons.jsx'
 /**
  * Add or edit a single entry.
  *
- * The order is by how often a field is touched, not by how the sheet reads: the amount
- * and the note are typed every time, so they lead and are both reachable with the
- * keyboard up. The payer defaults to this device's person, the date to today and the
- * split to the payer's configured default, so those three are usually already right —
- * and the category is third because `config.categories[0]` is a guess rather than a
- * default anyone chose.
+ * The order is by how often a field is touched, not by how the sheet reads: the amount and
+ * the note are typed every time, so they lead and are both reachable with the keyboard up.
+ * The payer defaults to this device's person, the date to today and the split to the
+ * payer's configured default, so those three are usually already right — and the category
+ * is third because `config.categories[0]` is a guess rather than a default anyone chose.
  *
- * Nothing in the app creates a settlement any more, but a settlement row already in the
- * sheet still opens here: its split is pinned to 0, so the category, note and split
- * controls are the ones that drop away rather than there being a second form. They now
- * sit either side of the payer and date controls, which is why there are two
- * `!isSettlement` blocks and not one.
+ * Nothing in the app creates a settlement, but a settlement row already in the sheet still
+ * opens here: its split is pinned to 0, so the category, note and split controls are the
+ * ones that drop away rather than there being a second form. They sit either side of the
+ * payer and date controls, which is why there are two `!isSettlement` blocks and not one.
  */
 export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose }) {
   const { t } = useT()
@@ -49,12 +47,10 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
   const payerShare = isSettlement ? 0 : split.payerShare
 
   /**
-   * Derived from the exact value a submit rejected, so it clears the instant the field
-   * is edited and never returns without another submit. Stored as a message it would
-   * linger over a value that is now fine; keyed on a plain "has submitted" flag it
-   * would come back mid-edit — every select-all-and-retype passes through the empty
-   * string — and a `role="status"` that appears and vanishes as someone types both
-   * shifts the field below it and re-announces itself on each keystroke.
+   * Derived from the exact value a submit rejected, so it clears the instant the field is
+   * edited and never returns without another submit. Stored as a message it would linger
+   * over a value that is now fine; keyed on a plain "has submitted" flag it would come
+   * back mid-edit — every select-all-and-retype passes through the empty string.
    */
   const amountError =
     rejected != null && amount === rejected ? t('form.amountError', { example: '1250' }) : null
@@ -93,11 +89,10 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
     setSaveError(null)
     if (yen == null) {
       setRejected(amount)
-      // Focus follows the refusal. The error is a newly INSERTED `role="status"`,
-      // which iOS announces unreliably, and the button that was pressed is at the
-      // foot of a full-screen form — so without this a VoiceOver user taps Save,
-      // hears nothing, and has no idea which field is wrong. `BottomSheet`'s
-      // `focusin` handler scrolls it into view from here.
+      // Focus follows the refusal. The error is a newly INSERTED `role="status"`, which
+      // iOS announces unreliably, and the button that was pressed is at the foot of a
+      // full-screen form — so without this a VoiceOver user taps Save, hears nothing, and
+      // has no idea which field is wrong. `BottomSheet`'s `focusin` handler scrolls it in.
       amountInput.current?.focus()
       return
     }

@@ -40,20 +40,19 @@ let accessToken = null
 let expiresAt = 0
 
 /**
- * True once the endpoint has rejected the stored key. The key is deliberately
- * KEPT: `unauthorized` is indistinguishable from a request-shape bug on our
- * side, and deleting it makes someone re-type 64 characters on a phone for a
- * failure that may not be theirs. It buys no safety either — the threat is XSS
- * on this origin, which reads the key whether we keep it or not.
+ * True once the endpoint has rejected the stored key. The key is deliberately KEPT:
+ * `unauthorized` is indistinguishable from a request-shape bug on our side, and deleting
+ * it makes someone re-type 64 characters on a phone for a failure that may not be theirs.
+ * It buys no safety either — the threat is XSS on this origin, which reads the key whether
+ * we keep it or not.
  */
 let keySuspect = false
 
 /**
- * Bumped whenever the token is deliberately discarded. A mint that began before
- * the bump cannot satisfy a caller that asked afterwards: on a 401 the in-flight
- * mint may well be carrying the very token that was just rejected, and handing
- * it to the retry — which runs with `allowRetry: false` — turns a recoverable
- * blip into a hard failure.
+ * Bumped whenever the token is deliberately discarded. A mint that began before the bump
+ * cannot satisfy a caller that asked afterwards: on a 401 the in-flight mint may well be
+ * carrying the very token that was just rejected, and handing it to the retry — which runs
+ * with `allowRetry: false` — turns a recoverable blip into a hard failure.
  */
 let generation = 0
 
@@ -77,13 +76,12 @@ function discardToken() {
 }
 
 /**
- * Rehydrate at module load. Anything malformed or already past the margin is
- * dropped rather than trusted, so a corrupt entry cannot wedge the app into
- * believing it has a usable token.
+ * Rehydrate at module load. Anything malformed or already past the margin is dropped
+ * rather than trusted, so a corrupt entry cannot wedge the app into believing it has a
+ * usable token.
  *
- * No network happens here: these modules also load under vitest's `node`
- * environment, and the eager mint belongs in `main.jsx` for the same reason
- * `syncDocumentAccent` does.
+ * No network happens here: these modules also load under vitest's `node` environment, and
+ * the eager mint belongs in `main.jsx`.
  */
 function restoreToken() {
   const raw = readStored(STORAGE_KEYS.token)
@@ -108,15 +106,13 @@ function restoreToken() {
 restoreToken()
 
 /**
- * Every failure this module can report. Exported so `test/i18n.test.js` can prove
- * each has a translation: these codes are attached to errors rather than passed to
- * `t()`, so the catalog scan cannot see them, and its dead-key check exempts the
- * `error.` prefix — between them a typo here would reach someone as the bare
- * string "scriptUnavailable".
+ * Every failure this module can report. Exported so `test/i18n.test.js` can prove each has
+ * a translation: these codes are attached to errors rather than passed to `t()`, so the
+ * catalog scan cannot see them, and its dead-key check exempts the `error.` prefix —
+ * between them a typo here would reach someone as the bare string "scriptUnavailable".
  *
- * `BAD_KEY` is the only terminal one. Everything else is transient, because
- * telling someone their key is wrong when the network merely hiccuped is the worse
- * mistake of the two.
+ * `BAD_KEY` is the only terminal one. Everything else is transient, because telling someone
+ * their key is wrong when the network merely hiccuped is the worse mistake of the two.
  */
 export const CONNECTION_ERROR = {
   BAD_KEY: 'badKey',
@@ -339,13 +335,13 @@ export function refreshToken() {
 }
 
 /**
- * Drop everything this device knows. The snapshot goes too: leaving it would
- * paint one person's cached ledger for whoever connects next.
+ * Drop everything this device knows. The snapshot goes too: leaving it would paint one
+ * person's cached ledger for whoever connects next.
  *
- * Through `clearSnapshot` rather than a direct write, because that module also
- * remembers the last payload it wrote in order to skip redundant writes — wiping
- * the key without resetting that would leave the next load convinced it had
- * already saved, and no snapshot would ever be written again.
+ * Through `clearSnapshot` rather than a direct write, because that module also remembers
+ * the last payload it wrote in order to skip redundant writes — wiping the key without
+ * resetting that would leave the next load convinced it had already saved, and no snapshot
+ * would ever be written again.
  */
 export function forgetKey() {
   appKey = null

@@ -31,10 +31,10 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
   const titleId = useId()
 
   /**
-   * Read through a ref so the effects below do not depend on `onClose`'s identity.
-   * Every caller passes a fresh inline arrow, so a re-render of the screen behind
-   * the sheet — a focus refresh landing while someone types — would otherwise
-   * re-run the open effect and yank focus back to the first field mid-entry.
+   * Read through a ref so the effects below do not depend on `onClose`'s identity. Every
+   * caller passes a fresh inline arrow, so a re-render of the screen behind the sheet — a
+   * focus refresh landing while someone types — would otherwise re-run the open effect
+   * and yank focus back to the first field mid-entry.
    */
   const close = useRef(onClose)
   close.current = onClose
@@ -48,17 +48,15 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
      * Both elements, not just `body`. Setting it on `body` alone reaches the viewport
      * only through the spec's propagation rule, which applies while `html` declares no
      * `overflow` of its own — one declaration added to that rule in `base.css` and the
-     * ledger silently pans behind every sheet again. Safari is also the platform where
-     * a body-only lock is least reliable for touch panning. `overflow: hidden` keeps
-     * the scroll position, unlike the `position: fixed` version of this trick.
+     * ledger silently pans behind every sheet again. `overflow: hidden` keeps the scroll
+     * position, unlike the `position: fixed` version of this trick.
      */
     root.style.overflow = 'hidden'
     document.body.style.overflow = 'hidden'
 
     /**
      * Where focus came from, so closing can put it back. Without this the VoiceOver
-     * cursor lands on `<body>` every time a sheet closes, and a phone user restarts
-     * from the top of the page after every entry.
+     * cursor lands on `<body>` every time a sheet closes.
      */
     const opener = document.activeElement
 

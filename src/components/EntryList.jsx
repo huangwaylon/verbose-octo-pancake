@@ -9,11 +9,8 @@ import { WalletIcon } from './icons.jsx'
  *
  * There is no loading state here. `App` shows a gate for `idle` and `loading` and
  * paints the cached ledger for everything else, so this component only ever
- * renders real rows or a genuine empty month.
- *
- * The day labels and the two people's names are resolved once here rather than
- * per row: a long month otherwise rebuilds the same three strings for every
- * entry.
+ * renders real rows or a genuine empty month. The day labels and the two people's
+ * names are resolved once here rather than per row.
  *
  * Memoised, and it is the memo that matters most in the app: `App` re-renders on
  * every toast, every refresh and every month change, and this subtree is the only

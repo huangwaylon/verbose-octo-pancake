@@ -89,8 +89,9 @@ describe('the generated worker', () => {
   })
 
   it('serves a navigation from the index key rather than the request', () => {
-    // A start_url launch asks for BASE; the precached key is BASE + index.html.
-    expect(source).toContain('caches.match(INDEX')
+    // A start_url launch asks for BASE; the precached key is BASE + index.html, so
+    // matching the request itself would miss and fall through to the network.
+    expect(source).toMatch(/mode === 'navigate' \? INDEX :/)
   })
 
   it('ignores Vary, or the cache silently only works online', () => {

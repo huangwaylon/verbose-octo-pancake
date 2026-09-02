@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   currentMonthKey,
   dayLabel,
+  isIsoDate,
   isMonthKey,
   monthLabel,
   shiftMonth,
@@ -66,6 +67,33 @@ describe('shiftMonth', () => {
     // empty month rather than as a bug.
     for (const key of ['', 'nope', '2026', '2026-13', undefined, null, {}]) {
       expect(shiftMonth(key, 1)).toBe('')
+    }
+  })
+})
+
+/**
+ * The only test of a 'YYYY-MM-DD' day, and the companion to `isMonthKey` below.
+ * `schema.js` reaches it through `rowToEntry` and `validateEntryCodes`, neither of
+ * which can distinguish "rejected the shape" from "rejected the calendar".
+ */
+describe('isIsoDate', () => {
+  it('accepts a real calendar day', () => {
+    for (const value of ['2026-08-05', '2026-01-01', '2026-12-31', '2024-02-29']) {
+      expect(isIsoDate(value)).toBe(true)
+    }
+  })
+
+  it('rejects a day the calendar does not have, which the regex alone accepts', () => {
+    // These are the cases a shape check passes and a month switcher then shows as a
+    // bogus month: the UTC round-trip is what catches them.
+    for (const value of ['2026-02-31', '2026-13-45', '2026-00-10', '2026-08-00', '2025-02-29']) {
+      expect(isIsoDate(value)).toBe(false)
+    }
+  })
+
+  it('rejects anything that is not a full ISO day', () => {
+    for (const value of ['2026-08', '2026-8-5', '26-08-05', ' 2026-08-05', '', undefined, null]) {
+      expect(isIsoDate(value)).toBe(false)
     }
   })
 })

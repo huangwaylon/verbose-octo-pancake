@@ -168,10 +168,10 @@
   display: grid;
   gap: var(--space-6);
   width: 100%;
-  /* Nothing floats over the ledger any more, so the bottom inset only has to clear
-     the home indicator without ending the list flush against it. A toast can still
-     overlap the last row; `.toast-stack` in primitives.css says why that is accepted
-     rather than reserved for. */
+  /* Nothing floats over the ledger, so the bottom inset only has to clear the home
+     indicator without ending the list flush against it. A toast can still overlap the
+     last row; `.toast-stack` in primitives.css says why that is accepted rather than
+     reserved for. */
   padding: var(--space-5) var(--space-4) calc(var(--space-7) + var(--safe-bottom));
 }
 
@@ -280,9 +280,9 @@
   border-radius: var(--radius-full);
 }
 
-/* The wash is 1.04:1 against the track, i.e. invisible, which made the bar read
-   as "p1 paid everything". The hairline is what carries the boundary — the same
-   treatment the legend swatch below already had. */
+/* The wash is 1.04:1 against the track, i.e. invisible, so the hairline is what carries
+   the boundary — without it the bar reads as "p1 paid everything". Same treatment as
+   the legend swatch below. */
 .summary__meter-fill--other {
   background-color: var(--accent-wash);
   box-shadow: inset 0 0 0 1px var(--line-input);
@@ -340,9 +340,9 @@
   gap: var(--space-4);
 }
 
-/* 26rem, not 22rem: at 22rem the switch landed mid-phone, so a 430px handset
-   got the side-by-side form with ~98px of legend and truncated every category
-   name while a 390px one showed them in full. Now every phone stacks. */
+/* 26rem, not 22rem: at 22rem the switch lands mid-phone, so a 430px handset gets the
+   side-by-side form with ~98px of legend and truncates every category name while a
+   390px one shows them in full. Every phone stacks. */
 @container (min-width: 26rem) {
   .chart {
     flex-direction: row;
@@ -539,9 +539,9 @@ button.entry__main:active {
 }
 
 /* Deliberately not a flex container. text-overflow only paints on a block box
-   overflowing with inline content, so as a flex box this clipped the
-   description mid-glyph with no ellipsis while the meta line right below it
-   truncated correctly. The settlement icon is inline instead. */
+   overflowing with inline content, so as a flex box this clips the description
+   mid-glyph with no ellipsis while the meta line right below it truncates
+   correctly. The settlement icon is inline instead. */
 .entry__desc {
   overflow: hidden;
   color: var(--ink);

@@ -95,24 +95,16 @@ self.addEventListener('fetch', (event) => {
 
   // A start_url launch requests BASE itself, but the precached key is
   // BASE + 'index.html', so matching the request would miss.
-  //
+  const key = event.request.mode === 'navigate' ? INDEX : event.request
+
   // ignoreVary because caches.match honours Vary by default and the servers
   // involved set it: GitHub Pages sends 'Vary: Accept-Encoding', vite preview
   // sends 'Vary: Origin'. A header difference between the precache fetch and the
   // page's own request would then miss and fall through to the network, which
   // offline means failing — a cache that silently only works online. These are
   // content-hashed immutable files, so the URL is the only key that matters.
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      caches.match(INDEX, { ignoreVary: true }).then((hit) => hit || fetch(event.request)),
-    )
-    return
-  }
-
   event.respondWith(
-    caches
-      .match(event.request, { ignoreVary: true })
-      .then((hit) => hit || fetch(event.request)),
+    caches.match(key, { ignoreVary: true }).then((hit) => hit || fetch(event.request)),
   )
 })
 

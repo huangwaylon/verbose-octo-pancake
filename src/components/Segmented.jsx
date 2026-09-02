@@ -3,13 +3,11 @@ import { Field } from './Field.jsx'
 
 /**
  * The segmented radio group: two or three mutually exclusive options, styled as
- * one control.
+ * one control. Four call sites — payer, split mode, identity and language.
  *
- * Four places wanted this — payer, split mode, identity and language — and each
- * hand-rolled copy carried the same accessibility gap. A `<div>` of radios has no
- * accessible name of its own, so the visible `field__label` beside it was not
- * announced with the group; `role="radiogroup"` plus `aria-labelledby` is what
- * ties them together. The `name` still has to be unique per group, since radios
+ * A `<div>` of radios has no accessible name of its own, so the visible `field__label`
+ * beside it is not announced with the group; `role="radiogroup"` plus `aria-labelledby`
+ * is what ties them together. The `name` still has to be unique per group, since radios
  * with a shared name are one group to the browser regardless of markup.
  *
  * @param {object} props
@@ -23,7 +21,7 @@ import { Field } from './Field.jsx'
  * @param {import('react').ReactNode} [props.hint] shown last, under the control
  */
 export function Segmented({ name, label, value, options, onChange, children, hint }) {
-  const labelId = `${useId()}-label`
+  const labelId = useId()
 
   return (
     <Field label={label} labelId={labelId} hint={hint}>

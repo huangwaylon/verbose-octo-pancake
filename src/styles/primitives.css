@@ -422,7 +422,7 @@
   /* The software keyboard covers the bottom of the LAYOUT viewport, which is what
      `position: fixed` and `dvh` are both anchored to — so without this the panel
      keeps its full height and the footer's Save button sits behind the keyboard.
-     BottomSheet publishes the overlap from `window.visualViewport`. */
+     `useKeyboardInset` is the only publisher of the overlap. */
   padding-bottom: var(--keyboard-inset, 0px);
 }
 
@@ -595,12 +595,11 @@
    Feedback: toasts, spinner, empty state
    ========================================================================= */
 
-/* Nothing in a toast is interactive, so the stack takes no pointer events: it
-   overlays the last rows of the ledger and their delete controls, and a toast that
-   swallowed a tap for its whole life would be worse than one that briefly covers
-   something. The offset clears the home indicator, nothing more — the layout no
-   longer reserves a band down here, since a transient overlap is acceptable and
-   permanent dead space is not. */
+/* Nothing in a toast is interactive, so the stack takes no pointer events: it overlays
+   the last rows of the ledger and their delete controls, and a toast that swallowed a
+   tap for its whole life would be worse than one that briefly covers something. The
+   offset clears the home indicator, nothing more — the layout reserves no band down
+   here, since a transient overlap is acceptable and permanent dead space is not. */
 .toast-stack {
   position: fixed;
   left: 50%;
@@ -685,8 +684,8 @@
    on a universal override, which would need !important to win the cascade. */
 
 /* A fixed length, not a percentage: this keyframe only runs below 48rem, where the
-   panel can now be the whole screen, and 6% of an 852px phone is a 51px slide — a
-   band of scrim flashing under the Dynamic Island for the whole transition. */
+   panel can be the whole screen, and 6% of an 852px phone is a 51px slide — a band of
+   scrim flashing under the Dynamic Island for the whole transition. */
 @keyframes sheet-slide-up {
   from {
     transform: translateY(1.5rem);

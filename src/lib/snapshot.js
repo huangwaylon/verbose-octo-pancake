@@ -13,23 +13,20 @@ import { isPerson } from '../schema.js'
 
 /**
  * A drop marker, never a migration. An unrecognised version means the snapshot is
- * ignored and re-fetched, which is free — the sheet is the source of truth and
- * this is only a cache. Bump it whenever the stored shape changes.
+ * ignored and re-fetched, which is free — the sheet is the source of truth.
  *
- * One bump covers the currency column, both timestamp columns and the settlements
- * split, because they ship as a single deploy. Shipping any of those separately would
- * need a bump each: `isRestorable` checks the id, amount, share and payer only, so a
- * snapshot written by an intermediate build restores and paints one stale frame — with
- * extra keys that defeat `sameEntry`'s key-count check — which is the whole reason the
- * cache exists.
+ * Bump it whenever the stored shape changes, and bump it per deploy rather than per
+ * field: `isRestorable` checks the id, amount, share and payer only, so a snapshot
+ * written by a build with a different shape restores and paints one stale frame — with
+ * extra keys that defeat `sameEntry`'s key-count check.
  */
 const VERSION = 2
 
 /**
- * Roughly 5,000 entries at the current row shape. WebKit charges localStorage in
- * UTF-16 code units, so the stored cost is about twice the byte length of this string;
- * the cap keeps a very long history from silently blowing the origin's quota, since
- * `writeStored` swallows the resulting error and the app would just stay slow forever.
+ * Roughly 5,000 entries at the current row shape. WebKit charges localStorage in UTF-16
+ * code units, so the stored cost is about twice this string's byte length; the cap keeps
+ * a very long history from silently blowing the origin's quota, since `writeStored`
+ * swallows the resulting error and the app would just stay slow forever.
  */
 const MAX_CHARS = 800_000
 
@@ -38,10 +35,9 @@ const MAX_CHARS = 800_000
  *
  * The cache is the one input the app trusts without having decoded it through
  * `rowToEntry`, and it is restored in a `useState` initializer, so it paints during the
- * FIRST render — before any network call. `splitYen` throws on a non-numeric share and
- * `sumYen` on a non-integer amount, and those run inside `useLedgerView`'s memos, so a
- * single bad row from an un-bumped `VERSION` would white-screen the app with no way in
- * to clear it. Cheaper to check here and re-fetch: the sheet is the source of truth.
+ * FIRST render. `splitYen` throws on a non-numeric share and `sumYen` on a non-integer
+ * amount, and those run inside `useLedgerView`'s memos — so a single bad row from an
+ * un-bumped `VERSION` would white-screen the app with no way in to clear it.
  */
 function isRestorable(entry) {
   return (
@@ -60,10 +56,9 @@ function isRestorable(entry) {
 }
 
 /**
- * What storage is believed to hold, so an unchanged ledger does not pay for a
- * second write. Comparing against storage instead would mean reading the whole
- * string back, which is the cost we are trying to avoid. Set by a successful read
- * as well as by a write — see `readSnapshot`.
+ * What storage is believed to hold, so an unchanged ledger does not pay for a second
+ * write. Comparing against storage instead would mean reading the whole string back,
+ * which is the cost we are trying to avoid. Set by a successful read as well as a write.
  */
 let lastPayload = null
 
@@ -71,10 +66,10 @@ let lastPayload = null
  * The exact list and config that produced it, by reference.
  *
  * `lastPayload` is the backstop for a refresh that returned equal content in a fresh
- * array; this is for the cached launch, where the list on screen IS the one just
- * restored. It catches that case BEFORE the serialize rather than after, which is the
- * expensive half — a thousand-entry ledger is a quarter of a megabyte of JSON built to
- * be thrown away, on the frame someone is waiting for.
+ * array; this is for the cached launch, where the list on screen IS the one just restored.
+ * It catches that case BEFORE the serialize rather than after, which is the expensive
+ * half — a thousand-entry ledger is a quarter of a megabyte of JSON built to be thrown
+ * away, on the frame someone is waiting for.
  */
 let lastSource = null
 
@@ -102,11 +97,8 @@ export function readSnapshot(spreadsheetId) {
     // `useLedger` persists whatever is on screen once nothing is pending, and on a
     // cached launch that is this very list — so without this every launch pays a full
     // serialize plus a synchronous `setItem` of bytes already there, on the one frame
-    // the person is waiting for. The reference pair is what skips the serialize; the
-    // string is the backstop, byte-identical by construction because it was produced
-    // by `writeSnapshot` from an equal list and `JSON.stringify` follows insertion
-    // order, which `JSON.parse` preserves. If it ever were not, the cost is one
-    // redundant write rather than a wrong cache.
+    // the person is waiting for. The reference pair skips the serialize; the string is
+    // the backstop.
     lastPayload = raw
     lastSource = { entries: saved.entries, config: saved.config }
     return { entries: saved.entries, config: saved.config }

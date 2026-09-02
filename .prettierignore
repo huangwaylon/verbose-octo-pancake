@@ -1,10 +1,4 @@
-# The format gate is JavaScript only, on purpose: `npm run format` globs
-# **/*.{js,jsx}, so only entries that can match a .js or .jsx file matter here.
-#
-# The four stylesheets and the three docs are hand-tuned — grouped selectors,
-# aligned comments carrying measured contrast ratios, hand-wrapped prose — and a
-# reflow would rewrite every paragraph and bury the next real edit. They are outside
-# the glob already, so they need no entry.
-#
-# dist/ does need one: dist/sw.js is generated JavaScript, so the glob reaches it.
+# The format gate globs **/*.{js,jsx}, so only entries matching a .js or .jsx file
+# matter here. The stylesheets and docs are hand-tuned and already outside the glob.
+# dist/ does need an entry: dist/sw.js is generated JavaScript, so the glob reaches it.
 dist/

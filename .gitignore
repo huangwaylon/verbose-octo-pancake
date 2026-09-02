@@ -5,6 +5,7 @@ dist/
 .DS_Store
 *.log
 coverage/
+__pycache__/
 
 # Visual-check output from scripts/preview.jsx
 scripts/preview-*.html

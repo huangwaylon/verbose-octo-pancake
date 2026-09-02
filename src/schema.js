@@ -12,6 +12,7 @@
  * column — non-empty on every row — and hard-deleting every live settlement.
  */
 
+import { isIsoDate } from './lib/dates.js'
 import { parseAmountToYen, parseShare, yenToSheetString } from './lib/money.js'
 
 export const PERSON = {
@@ -183,25 +184,6 @@ export function tabOf(entry) {
   return entry?.type === ENTRY_TYPE.SETTLEMENT ? SETTLEMENTS : expenseTab(entry?.payer)
 }
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
-
-/**
- * Shape *and* calendar validity. The regex alone accepts 2026-02-31 and
- * 2026-13-45, which would surface as a bogus month in the month switcher.
- */
-function isRealDate(value) {
-  if (!ISO_DATE.test(value ?? '')) return false
-  const [year, month, day] = value.split('-').map(Number)
-  // The UTC round-trip is the whole check: a month or day out of range lands in
-  // a different month or year, which the three comparisons below catch.
-  const probe = new Date(Date.UTC(year, month - 1, day))
-  return (
-    probe.getUTCFullYear() === year &&
-    probe.getUTCMonth() === month - 1 &&
-    probe.getUTCDate() === day
-  )
-}
-
 /** A cell as trimmed text. Sheets returns numbers as numbers and gaps as holes. */
 export function cellText(row, index) {
   const value = row?.[index]
@@ -214,7 +196,7 @@ export function cellText(row, index) {
  * The tab carries what the row itself cannot: its type, and — for an expenses tab — its
  * payer. The row's position is deliberately not part of the result: it shifts whenever
  * anyone edits the sheet in the Sheets UI, so every write re-resolves id → row
- * immediately beforehand and a stored position could only ever be a trap.
+ * immediately beforehand.
  *
  * @param {string[]} row  Cell values as returned by values.get
  * @param {object}   tab  the tab descriptor this row was read from
@@ -240,8 +222,7 @@ export function rowToEntry(row, tab) {
 
   // The tab's answer where it has one; the cell only in the settlements tab. Folded for
   // case because that cell is hand-typed, and refused rather than defaulted: the payer
-  // decides the SIGN of this row's contribution, so guessing is a wrong balance rather
-  // than a missing row. `loadAll` counts what this drops.
+  // decides the SIGN of this row's contribution. `loadAll` counts what this drops.
   const payer = tab.payer ?? get('payer').toLowerCase()
   if (!isPerson(payer)) return null
 
@@ -256,7 +237,7 @@ export function rowToEntry(row, tab) {
   return {
     id,
     type: tab.type,
-    date: isRealDate(date) ? date : '',
+    date: isIsoDate(date) ? date : '',
     payer,
     amountYen,
     category: get('category'),
@@ -298,14 +279,14 @@ export function entryToRow(entry, tab) {
 /**
  * Build a complete entry from partial user input, minting an id if there is none.
  *
- * Takes no clock, because an entry carries no timestamp of its own: the sheet records
- * the transaction DATE, and `deleted_at` — the one timestamp left — is stamped by
- * whoever performs the delete. That is also why nothing here has to be injected for a
- * test to be deterministic.
+ * Takes no clock, because an entry carries no timestamp of its own: the sheet records the
+ * transaction DATE, and `deleted_at` — the one timestamp left — is stamped by whoever
+ * performs the delete. That is also why nothing here has to be injected for a test to be
+ * deterministic.
  *
- * Nothing here guesses: an unrecognised payer is passed through so
- * `validateEntryCodes` can refuse it, rather than being rewritten to p1 — which
- * made BAD_PAYER unreachable and filed the expense under the wrong person's tab.
+ * Nothing here guesses: an unrecognised payer is passed through so `validateEntryCodes`
+ * can refuse it. Rewriting it to p1 would make BAD_PAYER unreachable and file the expense
+ * under the wrong person's tab.
  */
 export function makeEntry(input) {
   const type = input.type === ENTRY_TYPE.SETTLEMENT ? ENTRY_TYPE.SETTLEMENT : ENTRY_TYPE.EXPENSE
@@ -347,7 +328,7 @@ export const ENTRY_ERROR = {
 export function validateEntryCodes(entry) {
   const errors = []
   if (!entry.id) errors.push(ENTRY_ERROR.MISSING_ID)
-  if (!isRealDate(entry.date)) errors.push(ENTRY_ERROR.BAD_DATE)
+  if (!isIsoDate(entry.date)) errors.push(ENTRY_ERROR.BAD_DATE)
   if (!Number.isInteger(entry.amountYen) || entry.amountYen <= 0) {
     errors.push(ENTRY_ERROR.BAD_AMOUNT)
   }

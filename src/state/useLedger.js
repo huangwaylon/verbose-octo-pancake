@@ -69,10 +69,9 @@ export function useLedger(spreadsheetId) {
   const [error, setError] = useState(null)
   /**
    * What the last read found in the sheet and could not put in `entries`: tombstones
-   * `reconcileById` hid behind a live row, rows whose amount is unreadable, rows with no
-   * real date, and settlements whose payer cell names neither person. All of them are
-   * things the person needs told about, and none can be recovered from the entry list,
-   * because being absent from it is the point.
+   * `reconcileById` hid, rows whose amount is unreadable, rows with no real date, and
+   * settlements whose payer names neither person. None can be recovered from the entry
+   * list, because being absent from it is the point.
    */
   const [sheetExtras, setSheetExtras] = useState(EMPTY_EXTRAS)
 
@@ -81,22 +80,22 @@ export function useLedger(spreadsheetId) {
   const everLoaded = useRef(Boolean(seed))
 
   /**
-   * `entries` as of the last render, so a write can read the entry it is about to
-   * replace WITHOUT side-effecting inside a `setEntries` updater. An updater only
-   * runs synchronously while React's eager-state bailout applies, which any other
-   * pending update on this component defeats — and `App` sets its own state in the
-   * same handler as a delete. Reading through the updater therefore leaves
-   * `previous` undefined exactly when a revert matters, and a failed delete stays
-   * tombstoned on screen while the row is still live in the sheet.
+   * `entries` as of the last render, so a write can read the entry it is about to replace
+   * WITHOUT side-effecting inside a `setEntries` updater. An updater only runs
+   * synchronously while React's eager-state bailout applies, which any other pending
+   * update on this component defeats — and `App` sets its own state in the same handler as
+   * a delete. Reading through the updater therefore leaves `previous` undefined exactly
+   * when a revert matters, and a failed delete stays tombstoned on screen while the row is
+   * still live in the sheet.
    */
   const entriesRef = useRef(entries)
   entriesRef.current = entries
 
   /**
-   * Serialising the whole ledger is the expensive half of the cache, and
-   * `applyLoad` runs on every focus refresh — exactly as someone returns to the
-   * app and reaches for a button. Defer past the interaction.
-   * `requestIdleCallback` would fit better but Safari does not implement it.
+   * Serialising the whole ledger is the expensive half of the cache, and `applyLoad` runs
+   * on every focus refresh — exactly as someone returns to the app and reaches for a
+   * button. Defer past the interaction. `requestIdleCallback` would fit better but Safari
+   * does not implement it.
    */
   const persistTimer = useRef(null)
   const persist = useCallback((id, nextEntries, sheetConfig) => {
@@ -136,11 +135,11 @@ export function useLedger(spreadsheetId) {
   /**
    * Persist whatever is on screen, once nothing is in flight.
    *
-   * Driven by the list rather than by each write, because the two can disagree: a
-   * refresh that started before a delete returns the row still live, and persisting
-   * that read would put a deleted expense back into the next cold launch's balance.
-   * Waiting for `pending` to clear is also what keeps the documented rule — an
-   * unacknowledged optimistic row must never reach the cache — true by construction.
+   * Driven by the list rather than by each write, because the two can disagree: a refresh
+   * that started before a delete returns the row still live, and persisting that read
+   * would put a deleted expense back into the next cold launch's balance. Waiting for
+   * `pending` to clear is also what keeps the rule — an unacknowledged optimistic row
+   * must never reach the cache — true by construction.
    */
   useEffect(() => {
     if (!spreadsheetId || !everLoaded.current) return
@@ -280,14 +279,14 @@ export function useLedger(spreadsheetId) {
       /**
        * Refuse rather than guess which tab the row is in.
        *
-       * `previous.payer` is the row's CURRENT tab, which is what `updateEntry`
-       * needs before it can move the row. Passing `undefined` makes
-       * `previousPayer !== entry.payer` true, so the write takes the payer-changed
-       * branch: it appends a second row and then looks for the original in
-       * whichever tab it guessed. A duplicate expense, silently.
+       * `previous.payer` is the row's CURRENT tab, which is what `updateEntry` needs
+       * before it can move the row. Passing `undefined` makes `previousPayer !==
+       * entry.payer` true, so the write takes the payer-changed branch: it appends a
+       * second row and then looks for the original in whichever tab it guessed. A
+       * duplicate expense, silently.
        *
-       * The entry can genuinely be gone — the other person deleted it and a focus
-       * refresh dropped it while this form was open.
+       * The entry can genuinely be gone — the other person deleted it and a focus refresh
+       * dropped it while this form was open.
        */
       const previous = entryById(entriesRef.current, entry.id)
       if (!previous) throw i18nError('error.entryGone')
@@ -308,10 +307,9 @@ export function useLedger(spreadsheetId) {
   const setDeleted = useCallback(
     async (id, deletedAt) => {
       // The row's CURRENT tab comes from local state, exactly as `editEntry` takes it,
-      // and being absent is refused rather than guessed: `sheets` would throw the same
-      // `entryGone` a moment later, but only after a read, and the revert below needs
-      // `previous` anyway. There is deliberately no payer parameter — a caller cannot
-      // pass one that would be ignored, or one this layer would have to choose between.
+      // and being absent is refused rather than guessed. There is deliberately no payer
+      // parameter — a caller cannot pass one that would be ignored, or one this layer
+      // would have to choose between.
       const previous = entryById(entriesRef.current, id)
       if (!previous) throw i18nError('error.entryGone')
 
@@ -338,12 +336,11 @@ export function useLedger(spreadsheetId) {
     if (refusal) return refusal
 
     // Read the gids, never `ensureStructure`: that path writes, and it would re-seed a
-    // deleted config tab with this build's defaults — silently taking away the notice
-    // that said the sheet's own values were unknown. `values.batchGet` cannot carry a
+    // deleted config tab with this build's defaults. `values.batchGet` cannot carry a
     // gid, so this read is unavoidable and happens every time.
     const gids = await sheets.readSheetGids(spreadsheetId)
-    // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab
-    // it cannot name, which is right for it and wrong to leave unsaid here.
+    // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab it
+    // cannot name, which is right for it and wrong to leave unsaid here.
     if (missingDataGid(gids)) throw i18nError('error.missingTabs')
 
     const result = await sheets.compact(spreadsheetId, gids)
@@ -353,12 +350,10 @@ export function useLedger(spreadsheetId) {
 
   /**
    * What `compact` would remove, which is every tombstone in the sheet — so the ones
-   * `reconcileById` hid behind a live row count too, or the button offers nothing to
-   * remove while the sheet still holds removable rows.
+   * `reconcileById` hid behind a live row count too.
    *
-   * Memoised because only the closed settings sheet reads it, and a full pass over
-   * the ledger on every render of `App` — one per toast, per month change, per
-   * keystroke that reaches a gate — buys a number nobody is looking at.
+   * Memoised because only the closed settings sheet reads it, and a full pass over the
+   * ledger on every render of `App` buys a number nobody is looking at.
    */
   const tombstones = useMemo(
     () => tombstoneCount(entries) + sheetExtras.supersededRows,

@@ -160,9 +160,8 @@ describe('resolving a row before writing to it', () => {
   /**
    * An id is NOT unique within a tab: `updateEntry` tombstones the old row whenever the
    * payer moves, so a payer that has gone p1 -> p2 -> p1 leaves the id in p1 twice.
-   * Resolving to the first match writes to the dead row, and every consequence is
-   * silent — `reconcileById` collapses the duplicate on screen and `supersededRows`
-   * counts tombstones only, so a hidden live copy is never reported.
+   * `resolveRow` says what resolving to the first match costs, and why every
+   * consequence of it is silent.
    */
   describe('when the same id appears twice in one tab', () => {
     const duplicated = (call) =>
@@ -1046,14 +1045,9 @@ describe('ensureStructure', () => {
 })
 
 describe('readSheetGids', () => {
-  /**
-   * `compact` needs gids and nothing else. It must never reach them through
-   * `ensureStructure`, which WRITES: a ledger whose config tab has been deleted
-   * reports `configMissing` and is deliberately never repaired, but
-   * `ensureStructure` would add the tab back and seed it with this build's
-   * defaults — an even split included — taking the notice away with them and
-   * moving money on every later expense whose payer had a different default.
-   */
+  // `compact` needs gids and nothing else, and must never reach them through
+  // `ensureStructure`, which WRITES — `readSheetGids` says what that would cost. So the
+  // assertion that matters here is the absence of any write.
   it('reads the gids and writes nothing at all', async () => {
     const calls = installSheets((call) =>
       call.url.includes('fields=sheets')
