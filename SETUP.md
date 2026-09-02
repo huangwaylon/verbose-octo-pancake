@@ -24,7 +24,8 @@ what that buys and what it costs.
 1. Create a new Google account. Unique strong password, 2FA on, used for nothing
    else.
 2. Signed in as that account, create one spreadsheet. Do not add tabs — the app
-   builds `expenses_p1`, `expenses_p2`, `settlements` and `config` on its first run.
+   builds `expenses_p1`, `expenses_p2`, `settlements`, `recurring` and `config` on its
+   first run.
 3. Copy the id out of the URL:
    `https://docs.google.com/spreadsheets/d/`**`<this part>`**`/edit`
 4. **Share** it with both people's own Google addresses as **Editor**, and leave
@@ -53,8 +54,10 @@ Cloud console silently acts as the wrong account when several are signed in.
    editor**.
 4. Back in **Editor**, replace `appsscript.json` with
    [`apps-script/appsscript.json`](apps-script/appsscript.json). It pins the scope
-   to `spreadsheets` alone and sets the web app to run as the owner with anonymous
-   access.
+   to `spreadsheets` alone, sets the web app to run as the owner with anonymous
+   access, and pins the script's timezone to `Asia/Tokyo` — which step 9 depends on,
+   because `new Date()` is UTC underneath and a 03:00 JST run on the 1st would
+   otherwise compute the previous month.
 5. **Project Settings** → **Script Properties** → **Add script property**, twice:
 
    | Property | Value |
@@ -156,6 +159,46 @@ retype the key and the ledger rebuilds from the sheet.
 Then pick which of the two people you are. That is a per-device choice and nothing
 detects it, because the token belongs to the sheet's owner rather than to either of
 you.
+
+## 9. The recurring-cost trigger (optional)
+
+Only needed if you want rent to land in the sheet without anyone opening the app.
+Without this step the app still shows an **Expected this month** card for every
+`recurring` row the month is missing, and a tap fills in the form — which is the whole
+feature for anyone happy to confirm the figure. [README.md](README.md#recurring-tab)
+describes the tab; fill in at least one row before setting this up, or there is nothing
+to see.
+
+Same script project as the token minter: it already holds `SHEET_ID` and the
+`spreadsheets` authorization, and `postRecurring` is already in the `Code.gs` from step 3.
+
+1. Confirm the manifest from step 3 carries `"timeZone": "Asia/Tokyo"`.
+2. **Editor** → clock icon (**Triggers**) → **Add Trigger**: function `postRecurring`,
+   deployment **Head**, event source **Time-driven**, **Day timer**, **3am to 4am**.
+3. Set **Failure notification settings** to **Notify me immediately** — not the
+   **daily** default. That mail is the only channel that reports this stopping, and the
+   app cannot see it.
+4. **Save**, and authorize when prompted.
+5. Run `postRecurring` once from the editor and check **Executions**.
+
+Create the trigger in the UI rather than with `ScriptApp.newTrigger`, which would need
+the `script.scriptapp` scope adding to `oauthScopes` — and pinning that list to
+`spreadsheets` alone is worth keeping.
+
+Two things about how this deploys, both deliberate:
+
+**Triggers run HEAD; the web app runs the pinned deployment.** Saving `Code.gs` changes
+tonight's 3am run immediately, while the token endpoint keeps serving the version from
+step 6. So adding the poster needs no new deployment — and a half-finished edit left
+saved in the editor runs unattended.
+
+**An uncaught throw here is the monitoring.** `exceptionLogging: STACKDRIVER` plus the
+notification in step 3 means a failure mails you, which is the deliberate opposite of
+`doPost`, where a throw returns Google's HTML error page and the app reads it as a
+transient blip.
+
+Cost is about 90 seconds of runtime a month against the free 90 minutes **per day**,
+which the token minter also draws on.
 
 ## Rotating the app key
 

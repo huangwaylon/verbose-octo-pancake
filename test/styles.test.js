@@ -333,4 +333,15 @@ describe('the rules an installed iOS web app depends on', () => {
     expect(declares(FILES.primitives, '.segmented__option', 'min-width')).toBe(true)
     expect(declares(FILES.primitives, '.pill', 'max-width')).toBe(true)
   })
+
+  it('never lets a LEDGER column be sized by its widest unbreakable child', () => {
+    // Both grid tracks, because a grid item's automatic minimum is its min-content
+    // WIDTH: one non-wrapping descendant sizes the whole column and the page scrolls
+    // sideways at 320px. The aside is the one that catches people — it held only
+    // wrapping prose until the recurring card's truncated names arrived, and what
+    // breaks is the truncation itself, so nothing on a wide screen looks wrong.
+    for (const selector of ['.layout__aside', '.layout__main']) {
+      expect(declares(FILES.app, selector, 'min-width')).toBe(true)
+    }
+  })
 })

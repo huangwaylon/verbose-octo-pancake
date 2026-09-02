@@ -3,8 +3,11 @@ import { readFileSync } from 'node:fs'
 import {
   DATA_TABS,
   EXPENSE_COLUMNS,
+  RECURRING,
+  RECURRING_COLUMNS,
   SETTLEMENT_COLUMNS,
   SETTLEMENTS,
+  SHEET_TABS,
   ENTRY_ERROR,
   ENTRY_TYPE,
   PEOPLE,
@@ -77,6 +80,29 @@ describe('column contract', () => {
   })
 
   /**
+   * The recurring tab is hand-authored, so its header row is the only instruction anyone
+   * gets about what to type where — and a reorder relabels every existing template under
+   * the wrong field while `ensureStructure` quietly rewrites the header to match.
+   * `payer_share` next to `payer`, and the four scheduling columns together.
+   */
+  it('is exactly these recurring columns, in this order', () => {
+    expect(RECURRING_COLUMNS).toEqual([
+      'description',
+      'amount',
+      'category',
+      'payer',
+      'payer_share',
+      'months',
+      'day_of_month',
+      'active_from',
+      'active_to',
+      'id',
+    ])
+    expect(RECURRING.dataRange).toBe('recurring!A2:J')
+    expect(RECURRING.headerRange).toBe('recurring!A1:J1')
+  })
+
+  /**
    * The two layouts put `deleted_at` at DIFFERENT indexes, which is the whole reason
    * every positional lookup hangs off a tab rather than the module. Stated as literals
    * on both sides: one shared index would have `compact` reading the settlements tab's
@@ -94,6 +120,25 @@ describe('column contract', () => {
     expect(P2.title).toBe('expenses_p2')
     expect(SETTLEMENTS.title).toBe('settlements')
     expect(DATA_TABS.map((tab) => tab.title)).toEqual(['expenses_p1', 'expenses_p2', 'settlements'])
+  })
+
+  /**
+   * `recurring` is a tab the app maintains a header for and NEVER a data tab. `compact`
+   * and every read's row-to-tab mapping walk `DATA_TABS`, so its being in that list would
+   * hard-delete templates whose `active_to` column happens to be non-empty at the index
+   * `deleted_at` sits in for an expense.
+   *
+   * And the data tabs are the PREFIX of `SHEET_TABS`, because `loadAll` maps the first
+   * `DATA_TABS.length` replies back through `DATA_TABS`.
+   */
+  it('keeps the recurring tab out of DATA_TABS and at the end of SHEET_TABS', () => {
+    expect(DATA_TABS).not.toContain(RECURRING)
+    expect(SHEET_TABS.map((tab) => tab.title)).toEqual([
+      'expenses_p1',
+      'expenses_p2',
+      'settlements',
+      'recurring',
+    ])
   })
 
   /**
@@ -134,8 +179,9 @@ describe('column contract', () => {
     // Letters come from `String.fromCharCode(65 + index)`, so a 27th column would
     // answer '[' and the API would reject every range built from it. This assertion is
     // the whole guard: every caller passes a name from a list, so a list growing is the
-    // only way the limit can be crossed.
-    for (const tab of DATA_TABS) expect(tab.columns.length).toBeLessThanOrEqual(26)
+    // only way the limit can be crossed. `SHEET_TABS`, not `DATA_TABS`: the recurring
+    // layout is the widest of the four and the one most likely to gain a column.
+    for (const tab of SHEET_TABS) expect(tab.columns.length).toBeLessThanOrEqual(26)
   })
 
   it('lists exactly the two people, each with their own tab', () => {
@@ -214,6 +260,19 @@ describe('rowToEntry', () => {
     // reading, and every entry it decodes would be attributed wrongly.
     expect(() => rowToEntry(row, PERSON.P1)).toThrow(TypeError)
     expect(() => rowToEntry(row, undefined)).toThrow(TypeError)
+  })
+
+  /**
+   * The `recurring` tab has a real column list, so nothing about its SHAPE stops it being
+   * handed to either mapper — and the failure would be silent both ways. Read, every
+   * template answers null because there is no payer at that index, so the tab looks empty.
+   * Written, six of its ten columns fill with an entry's values under fields that mean
+   * something else. `type: null` is what makes both a throw.
+   */
+  it('refuses a tab that holds no entries, rather than answering null for every row', () => {
+    const template = RECURRING.columns.map(() => 'x')
+    expect(() => rowToEntry(template, RECURRING)).toThrow(/data tab/)
+    expect(() => entryToRow(fullEntry(), RECURRING)).toThrow(/data tab/)
   })
 
   describe('the settlements tab, where the payer IS a cell', () => {
@@ -613,6 +672,67 @@ describe('the importer script agrees about the column list', () => {
   // seeing. The script's own assert is what pins each RULE to this vocabulary.
   it('classifies into the categories a fresh config offers', () => {
     expect(pythonList('CATEGORIES', '()')).toEqual(DEFAULT_CONFIG.categories)
+  })
+})
+
+/**
+ * `apps-script/Code.gs` posts recurring instances into the expenses tabs and reads the
+ * recurring tab, and it carries its own copies of both lists for the same reason the
+ * Python script does — it cannot import this module.
+ *
+ * It is the worse of the two homes, and this is the only thing that can see it: `Code.gs`
+ * is PASTED into the Apps Script editor rather than deployed from the repo, so a
+ * disagreement is invisible in a build AND in the running script. What it costs is a
+ * nightly unattended write with every value one field over.
+ *
+ * Parsed out of the source, which is also why the `.gs` arrays are written one string per
+ * line and stay outside Prettier's `{js,jsx}` glob.
+ */
+describe('the recurring poster agrees about the column lists', () => {
+  const source = readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8')
+
+  const gsList = (name) => {
+    const match = source.match(new RegExp(`^var ${name} = \\[$([\\s\\S]*?)^\\]$`, 'm'))
+    expect(match, `${name} not found in Code.gs`).toBeTruthy()
+    return [...match[1].matchAll(/'([^']+)'/g)].map((found) => found[1])
+  }
+
+  it('builds its rows from the same expense columns, in the same order', () => {
+    expect(gsList('EXPENSE_COLUMNS')).toEqual(EXPENSE_COLUMNS)
+  })
+
+  it('reads the recurring tab at the same layout', () => {
+    expect(gsList('RECURRING_COLUMNS')).toEqual(RECURRING_COLUMNS)
+  })
+
+  it('appends to the tabs this module names, not to titles of its own', () => {
+    // Both people, because a payer change moves a row and a payer-only handled-scan
+    // would post a second copy under the other person.
+    const declared = source.match(/^var EXPENSE_TABS = \{(.*)\}$/m)
+    expect(declared, 'EXPENSE_TABS not found in Code.gs').toBeTruthy()
+    const titles = [...declared[1].matchAll(/'([^']+)'/g)].map((found) => found[1])
+    expect(titles).toEqual(PEOPLE.map((person) => expenseTab(person).title))
+  })
+
+  /**
+   * The instance id is the whole of "already recorded", and the two derivations have to
+   * agree character for character or the poster and the card each post their own copy of
+   * every month's rent. `test/recurring.test.js` pins the client's side to the same shape.
+   */
+  it('joins the template id and the month with the same separator', () => {
+    expect(source).toContain("template.id + '#' + monthKey")
+  })
+
+  /**
+   * `setValues` coerces like the `USER_ENTERED` the schema contract forbids, so the range
+   * has to be text-formatted BEFORE the write or '2026-09-01' becomes a date serial that
+   * reads back in the spreadsheet's locale — which `rowToEntry` rejects and `loadAll`
+   * counts as `undatedRows`.
+   */
+  it('sets the range to text before writing to it', () => {
+    const append = source.slice(source.indexOf('function appendInstance'))
+    expect(append.indexOf("setNumberFormat('@')")).toBeGreaterThan(-1)
+    expect(append.indexOf("setNumberFormat('@')")).toBeLessThan(append.indexOf('setValues('))
   })
 })
 

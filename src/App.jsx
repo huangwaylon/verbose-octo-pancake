@@ -37,7 +37,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false)
 
   const config = ledger.config
-  const view = useLedgerView(ledger.entries, monthKey)
+  const view = useLedgerView(ledger.entries, monthKey, ledger.templates)
   useInitialMonth(ledger.status, view.active, setMonthKey)
 
   const setMe = useCallback((person) => {
@@ -63,6 +63,14 @@ export default function App() {
    * ledger must not be rebuilt.
    */
   const editDraft = useCallback((entry) => setDraft({ mode: 'edit', entry }), [])
+
+  /**
+   * A recurring cost tapped on the "expected this month" card: an ordinary ADD, prefilled
+   * from the `recurring` tab. Nothing auto-posts here, so the draft's deterministic id is
+   * the only thing standing between two taps and two rent rows — and it is enough, because
+   * the optimistic row carries that id and `templatesDue` drops the card row for it.
+   */
+  const addExpected = useCallback((entry) => setDraft({ mode: 'add', entry }), [])
 
   /**
    * The write paths that report to a toast. `useLedger` has already reverted the
@@ -160,6 +168,7 @@ export default function App() {
         onDelete={setPendingDelete}
         onRestore={restoreEntry}
         onAdd={openAdd}
+        onAddExpected={addExpected}
       />
 
       {draft && (

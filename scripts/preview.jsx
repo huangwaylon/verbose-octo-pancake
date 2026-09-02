@@ -19,8 +19,9 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { DEFAULT_CONFIG } from '../src/config.js'
 import { setLocale, t } from '../src/i18n/index.js'
-import { ENTRY_TYPE, EVEN_SHARE, PERSON, makeEntry } from '../src/schema.js'
+import { ENTRY_TYPE, EVEN_SHARE, PERSON, RECURRING, makeEntry } from '../src/schema.js'
 import { ACCENTS } from '../src/lib/theme.js'
+import { rowToTemplate, templatesDue } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
@@ -84,18 +85,42 @@ const deleted = [
 const noop = () => {}
 
 /**
+ * Two recurring costs the previewed month has no row for: one with a figure and one
+ * variable, which are the card's two shapes. Built from `recurring` rows through the app's
+ * own decoder, so the card is rendering what a real tab produces — including the ¥220,000
+ * that makes it the widest thing in the aside.
+ *
+ * `templatesDue` needs a day, and it must be one where both are already due: these pages
+ * are a fixed month, so the clock is pinned rather than read.
+ */
+const recurringRows = [
+  ['rent', 'Rent', '220000', 'Rent', 'p1', '80', '27'],
+  ['gas', 'ガス', '', '日用品', 'p2', '', '10'],
+].map(([id, description, amount, category, payer, payer_share, day_of_month]) =>
+  rowToTemplate(
+    RECURRING.columns.map(
+      (column) =>
+        ({ id, description, amount, category, payer, payer_share, day_of_month })[column] ?? '',
+    ),
+  ),
+)
+
+const expected = templatesDue(recurringRows, [], '2026-08', '2026-08-31')
+
+/**
  * The same shape `useLedgerView` hands the screen. Built here rather than by calling
  * the hook, which needs a renderer — the figures still come from `balance.js`, so
  * they are the app's own arithmetic and not a fixture pretending to be it. One
  * builder, so a new page cannot forget a field.
  */
-const viewOf = (list, tombstones = []) => ({
+const viewOf = (list, tombstones = [], due = expected) => ({
   balance: computeBalance(list),
   monthSpend: totalSpend(list),
   byCategory: spendByCategory(list),
   byPerson: spendByPerson(list),
   groups: groupByDate(list),
   deleted: tombstones,
+  expected: due,
 })
 
 const baseView = viewOf(entries, deleted)
@@ -122,6 +147,7 @@ function body(overlay, { view = baseView, config: pageConfig = config } = {}) {
         onDelete={noop}
         onRestore={noop}
         onAdd={noop}
+        onAddExpected={noop}
       />
       {overlay}
     </div>,
@@ -186,7 +212,34 @@ const stressEntries = [
   }),
 ]
 
-const stressView = viewOf(stressEntries)
+/**
+ * The recurring card under the same stress: a description with no break opportunity and
+ * an eight-figure amount, in a card whose whole job is to keep a name and a figure on one
+ * line. `.sheet__body`'s clipping does not apply here — the aside would simply scroll
+ * sideways — so this is the page that says whether the ellipsis actually lands.
+ */
+const stressExpected = templatesDue(
+  [
+    rowToTemplate(
+      RECURRING.columns.map(
+        (column) =>
+          ({
+            id: 'stress',
+            description: 'Groceries and household supplies for the whole month, split evenly',
+            amount: '123456789',
+            category: 'Groceries and household supplies',
+            payer: 'p1',
+            payer_share: '70',
+          })[column] ?? '',
+      ),
+    ),
+  ],
+  [],
+  '2026-08',
+  '2026-08-31',
+)
+
+const stressView = viewOf(stressEntries, [], stressExpected)
 
 /**
  * One builder per sheet, so a stress page cannot drift from the page it stresses:

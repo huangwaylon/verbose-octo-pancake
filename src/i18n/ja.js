@@ -76,6 +76,11 @@ export default {
   'entry.delete': '{description}を削除',
   'entry.metaSeparator': '・',
 
+  // --- expected this month --------------------------------------------------
+  'expected.title': '今月の予定',
+  'expected.hint': 'recurring タブにあって、今月まだ記録していないものです。タップして入力します。',
+  'expected.amountVaries': '金額は変動',
+
   // --- deleted entries ------------------------------------------------------
   'deleted.title': {
     other: '削除ずみ・{count}件',
@@ -214,5 +219,8 @@ export default {
   },
   'warning.unattributedRows': {
     other: '支払った人を読み取れない精算が {count} 件あるため、残高に含まれていません。',
+  },
+  'warning.undecodedTemplates': {
+    other: 'recurring タブに読み取れない行が {count} 行あるため、上には表示されません。',
   },
 }

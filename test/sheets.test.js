@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DATA_TABS, PERSON, SETTLEMENTS, expenseTab } from '../src/schema.js'
+import { DATA_TABS, PERSON, RECURRING, SETTLEMENTS, SHEET_TABS, expenseTab } from '../src/schema.js'
 import { DEFAULT_CONFIG } from '../src/config.js'
 import { expense as entry, row, settlement, settlementRow } from './support/entries.js'
 import {
@@ -44,18 +44,31 @@ afterEach(() => {
 const P1 = expenseTab(PERSON.P1)
 const P2 = expenseTab(PERSON.P2)
 
-const GIDS = { expenses_p1: 111, expenses_p2: 222, settlements: 444, config: 333 }
+const GIDS = { expenses_p1: 111, expenses_p2: 222, settlements: 444, recurring: 555, config: 333 }
 
 /** Every tab a fully built ledger has, for the gid listing fixtures. */
-const ALL_TABS = [...DATA_TABS.map((tab) => tab.title), 'config']
+const ALL_TABS = [...SHEET_TABS.map((tab) => tab.title), 'config']
 
-/** The four value ranges a read now asks for, in `loadAll`'s own order. */
-const FOUR_RANGES = [P1.dataRange, P2.dataRange, SETTLEMENTS.dataRange, 'config!A:B']
+/** The five value ranges a read asks for, in `loadAll`'s own order. */
+const FIVE_RANGES = [
+  P1.dataRange,
+  P2.dataRange,
+  SETTLEMENTS.dataRange,
+  RECURRING.dataRange,
+  'config!A:B',
+]
 
-/** A reply shaped for those four ranges: two expenses tabs, settlements, then config. */
-const ranges4 = ({ p1 = {}, p2 = {}, settlements = {}, config = {} } = {}) => ({
-  valueRanges: [p1, p2, settlements, config],
+/**
+ * A reply shaped for those five ranges: the three data tabs, recurring, then config.
+ * Named per range rather than positional, because a positional literal goes on passing
+ * while every range it holds lands one slot out.
+ */
+const ranges5 = ({ p1 = {}, p2 = {}, settlements = {}, recurring = {}, config = {} } = {}) => ({
+  valueRanges: [p1, p2, settlements, recurring, config],
 })
+
+/** Five empty ranges — what most of these cases want from a batchGet. */
+const EMPTY_RANGES = { valueRanges: [{}, {}, {}, {}, {}] }
 
 describe('every write is RAW', () => {
   it('never sends USER_ENTERED, on any path', async () => {
@@ -63,7 +76,7 @@ describe('every write is RAW', () => {
       // Checked before the row range: a batchGet's `ranges` never carry `!A2:G`
       // (`ensureStructure` asks for header rows), but matching it first cannot go
       // wrong either way.
-      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}, {}] }
+      if (call.url.includes('values:batchGet')) return EMPTY_RANGES
       if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
       if (call.url.includes('fields=sheets')) {
         return {
@@ -316,12 +329,12 @@ describe('appendEntry', () => {
 })
 
 describe('loadAll', () => {
-  it('asks for both tabs and the config, in the order it maps them back', async () => {
-    const calls = installSheets(() => ({ valueRanges: [{}, {}, {}, {}] }))
+  it('asks for every tab and the config, in the order it maps them back', async () => {
+    const calls = installSheets(() => EMPTY_RANGES)
 
     await sheets.loadAll(SHEET)
 
-    expect(rangesOf(calls[0])).toEqual(FOUR_RANGES)
+    expect(rangesOf(calls[0])).toEqual(FIVE_RANGES)
   })
 
   it('parses the config from the LAST range, not a hardcoded index', async () => {
@@ -329,14 +342,12 @@ describe('loadAll', () => {
     // feeding ledger rows to the config parser — where no key matches, every value
     // silently falls back to a default, and `configMissing` stays false because the
     // read succeeded.
-    installSheets(() => ({
-      valueRanges: [
-        values([row({ id: 'a', date: '2026-08-05', amount: '1250' })]),
-        {},
-        {},
-        values([['categories', 'Groceries, Dining']]),
-      ],
-    }))
+    installSheets(() =>
+      ranges5({
+        p1: values([row({ id: 'a', date: '2026-08-05', amount: '1250' })]),
+        config: values([['categories', 'Groceries, Dining']]),
+      }),
+    )
 
     const { entries, config, configMissing } = await sheets.loadAll(SHEET)
 
@@ -362,7 +373,7 @@ describe('loadAll', () => {
     // does not — so a retry which DROPPED that range would succeed here, and this test
     // fails only if it does.
     const calls = installSheets((call) =>
-      call.url.includes(SETTLEMENTS.dataRange) ? { __status: 400 } : ranges4(),
+      call.url.includes(SETTLEMENTS.dataRange) ? { __status: 400 } : ranges5(),
     )
 
     await expect(sheets.loadAll(SHEET)).rejects.toMatchObject({ status: 400 })
@@ -371,9 +382,26 @@ describe('loadAll', () => {
     for (const call of calls) expect(call.url).toContain(SETTLEMENTS.dataRange)
   })
 
+  /**
+   * The same thing for the `recurring` range, which is the one every existing ledger is
+   * missing on its first read under this build. It sits BEFORE the config range for
+   * exactly this reason: dropped by the retry instead, the read would succeed and report
+   * `configMissing` over a config tab that is fine, while the tab nobody can author a
+   * template without would never be created.
+   */
+  it('lets a missing recurring range fail too, rather than reporting a config problem', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes(RECURRING.dataRange) ? { __status: 400 } : ranges5(),
+    )
+
+    await expect(sheets.loadAll(SHEET)).rejects.toMatchObject({ status: 400 })
+    expect(calls).toHaveLength(2)
+    for (const call of calls) expect(call.url).toContain(RECURRING.dataRange)
+  })
+
   it('reads the settlements tab, at its own layout', async () => {
     installSheets(() =>
-      ranges4({
+      ranges5({
         p1: values([row({ id: 'e1', date: '2026-08-05', amount: '1000' })]),
         settlements: values([
           settlementRow({ id: 's1', date: '2026-08-06', amount: '400', payer: 'p2' }),
@@ -406,7 +434,7 @@ describe('loadAll', () => {
    */
   it('counts a settlement whose payer names neither person, rather than guessing', async () => {
     installSheets(() =>
-      ranges4({
+      ranges5({
         settlements: values([
           settlementRow({ id: 'ok', date: '2026-08-06', amount: '400', payer: 'p1' }),
           settlementRow({ id: 'who', date: '2026-08-06', amount: '900', payer: 'Waylon' }),
@@ -427,7 +455,7 @@ describe('loadAll', () => {
 
   it('still counts a settlement whose AMOUNT is the unreadable part as undecoded', async () => {
     installSheets(() =>
-      ranges4({
+      ranges5({
         settlements: values([
           settlementRow({ id: 'bad', date: '2026-08-06', amount: 'about ten', payer: 'p1' }),
         ]),
@@ -441,14 +469,12 @@ describe('loadAll', () => {
   })
 
   it('attributes each tab’s rows to that tab’s person', async () => {
-    installSheets(() => ({
-      valueRanges: [
-        values([row({ id: 'a', date: '2026-08-05', amount: '100' })]),
-        values([row({ id: 'b', date: '2026-08-05', amount: '200' })]),
-        {},
-        {},
-      ],
-    }))
+    installSheets(() =>
+      ranges5({
+        p1: values([row({ id: 'a', date: '2026-08-05', amount: '100' })]),
+        p2: values([row({ id: 'b', date: '2026-08-05', amount: '200' })]),
+      }),
+    )
 
     const { entries } = await sheets.loadAll(SHEET)
 
@@ -463,8 +489,9 @@ describe('loadAll', () => {
     const calls = installSheets(() => {
       attempt += 1
       if (attempt === 1) return { __status: 400 }
+      // Four ranges, because the retry dropped the config one off the END.
       return {
-        valueRanges: [values([row({ id: 'a', date: '2026-08-05', amount: '4210' })]), {}, {}],
+        valueRanges: [values([row({ id: 'a', date: '2026-08-05', amount: '4210' })]), {}, {}, {}],
       }
     })
 
@@ -472,7 +499,7 @@ describe('loadAll', () => {
 
     // Sliced from the END of the range list, so a data range added later still gets
     // requested on the retry rather than silently dropping out of it.
-    expect(rangesOf(calls[1])).toEqual(FOUR_RANGES.slice(0, -1))
+    expect(rangesOf(calls[1])).toEqual(FIVE_RANGES.slice(0, -1))
     // Defaults win for every config value.
     expect(config.categories).toEqual(DEFAULT_CONFIG.categories)
     expect(entries[0].amountYen).toBe(4210)
@@ -527,16 +554,14 @@ describe('loadAll', () => {
     // Exactly what `updateEntry`'s move branch leaves behind: p1's row tombstoned,
     // p2's row live, one id. Unreconciled, the tombstone is the copy every id
     // lookup finds first, because p1's tab is read first.
-    installSheets(() => ({
-      valueRanges: [
-        values([
+    installSheets(() =>
+      ranges5({
+        p1: values([
           row({ id: 'moved', date: '2026-08-05', amount: '1000', deleted_at: '2026-08-06T00:00Z' }),
         ]),
-        values([row({ id: 'moved', date: '2026-08-05', amount: '1000' })]),
-        {},
-        {},
-      ],
-    }))
+        p2: values([row({ id: 'moved', date: '2026-08-05', amount: '1000' })]),
+      }),
+    )
 
     const { entries, supersededRows } = await sheets.loadAll(SHEET)
 
@@ -551,20 +576,17 @@ describe('loadAll', () => {
   it('reports rows whose amount cannot be read, rather than dropping them silently', async () => {
     // A hand-typed amount that no rule can parse leaves the ledger short by that
     // expense, with nothing on screen saying the balance is incomplete.
-    installSheets(() => ({
-      valueRanges: [
-        values([
+    installSheets(() =>
+      ranges5({
+        p1: values([
           row({ id: 'ok', date: '2026-08-05', amount: '1000' }),
           row({ id: 'bad', date: '2026-08-05', amount: '12,34.5' }),
           row({ id: 'also-bad', date: '2026-08-05', amount: 'about ten' }),
           // A row with no id is a blank one. Expected, and says nothing.
           row({ amount: '999' }),
         ]),
-        {},
-        {},
-        {},
-      ],
-    }))
+      }),
+    )
 
     const { entries, undecodedRows } = await sheets.loadAll(SHEET)
 
@@ -577,14 +599,12 @@ describe('loadAll', () => {
     // `updateEntry` appends before it tombstones, on purpose. `reconcileById` hides
     // one, but `compact` removes tombstones only — so counting it would offer a
     // removal that can never happen and a count that never clears.
-    installSheets(() => ({
-      valueRanges: [
-        values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
-        values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
-        {},
-        {},
-      ],
-    }))
+    installSheets(() =>
+      ranges5({
+        p1: values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
+        p2: values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
+      }),
+    )
 
     const { entries, supersededRows } = await sheets.loadAll(SHEET)
 
@@ -595,29 +615,24 @@ describe('loadAll', () => {
   it('does not report a tombstoned row as missing from the totals', async () => {
     // It is correctly out of them already, so the notice would say the balance is
     // short when it is not — and the row is not in `entries` to be cleared either.
-    installSheets(() => ({
-      valueRanges: [
-        values([
+    installSheets(() =>
+      ranges5({
+        p1: values([
           row({ id: 'bad', date: '2026-08-05', amount: 'nonsense', deleted_at: '2026-08-06' }),
         ]),
-        {},
-        {},
-        {},
-      ],
-    }))
+      }),
+    )
 
     expect(await sheets.loadAll(SHEET)).toMatchObject({ undecodedRows: 0 })
   })
 
   it('reports no counts for an ordinary sheet', async () => {
-    installSheets(() => ({
-      valueRanges: [
-        values([row({ id: 'a', date: '2026-08-05', amount: '100' })]),
-        values([row({ id: 'b', date: '2026-08-05', amount: '200' })]),
-        {},
-        {},
-      ],
-    }))
+    installSheets(() =>
+      ranges5({
+        p1: values([row({ id: 'a', date: '2026-08-05', amount: '100' })]),
+        p2: values([row({ id: 'b', date: '2026-08-05', amount: '200' })]),
+      }),
+    )
 
     expect(await sheets.loadAll(SHEET)).toMatchObject({
       supersededRows: 0,
@@ -628,7 +643,7 @@ describe('loadAll', () => {
   })
 
   /**
-   * The four things `loadAll` reports about what the sheet holds and the app cannot
+   * The five things `loadAll` reports about what the sheet holds and the app cannot
    * show. `ledgerState.test.js` covers how `noticeKeys` turns each into a sentence;
    * these cover that `loadAll` ever produces one, which nothing else did — every
    * flag below could be deleted from `sheets.js` with a green suite.
@@ -639,7 +654,7 @@ describe('loadAll', () => {
       installSheets(() => {
         attempt += 1
         if (attempt === 1) return { __status: 400 }
-        return { valueRanges: [{}, {}, {}] }
+        return { valueRanges: [{}, {}, {}, {}] }
       })
 
       // Without this the app runs the whole sheet on JPY with nothing said, which on a
@@ -648,20 +663,17 @@ describe('loadAll', () => {
     })
 
     it('counts live rows whose date is not a real day', async () => {
-      installSheets(() => ({
-        valueRanges: [
-          values([
+      installSheets(() =>
+        ranges5({
+          p1: values([
             // What Sheets hands back for a hand-typed date it stored AS a date: reads
             // are FORMATTED_VALUE, so it arrives in the spreadsheet's own locale.
             row({ id: 'a', date: '8/5/2026', amount: '100' }),
             row({ id: 'b', date: '2026-02-31', amount: '100' }),
             row({ id: 'ok', date: '2026-08-05', amount: '100' }),
           ]),
-          {},
-          {},
-          {},
-        ],
-      }))
+        }),
+      )
 
       // They reach the balance but belong to no month, so they appear in no month's
       // list and cannot be found and fixed from the app.
@@ -669,18 +681,14 @@ describe('loadAll', () => {
     })
 
     it('does not count a blank date as an unreadable one', async () => {
-      installSheets(() => ({
-        valueRanges: [values([row({ id: 'a', amount: '100' })]), {}, {}, {}],
-      }))
+      installSheets(() => ranges5({ p1: values([row({ id: 'a', amount: '100' })]) }))
 
       // The cell has to have held SOMETHING for the notice to be true.
       expect(await sheets.loadAll(SHEET)).toMatchObject({ undatedRows: 0 })
     })
 
     it('returns the sheet’s own partial config, not the merged one', async () => {
-      installSheets(() => ({
-        valueRanges: [{}, {}, {}, values([['default_split_p1', '80']])],
-      }))
+      installSheets(() => ranges5({ config: values([['default_split_p1', '80']]) }))
 
       const { sheetConfig, config } = await sheets.loadAll(SHEET)
       // The snapshot stores this, and it must be the pre-merge copy: a merged one
@@ -691,23 +699,100 @@ describe('loadAll', () => {
     })
 
     it('takes the FIRST usable value for a config key', async () => {
-      installSheets(() => ({
-        valueRanges: [
-          {},
-          {},
-          {},
+      installSheets(() =>
+        ranges5({
           // Somebody added a row at the top and forgot the old one lower down.
-          values([
+          config: values([
             ['default_split_p1', '80'],
             ['default_split_p1', '50'],
           ]),
-        ],
-      }))
+        }),
+      )
 
       const { config } = await sheets.loadAll(SHEET)
       // Last-wins would run the sheet at an even split, moving money on every expense
       // this person paid for.
       expect(config.defaultSplitP1).toBe(0.8)
+    })
+
+    /**
+     * The `recurring` tab is read in the same batch and decoded by a different reader,
+     * so the two ways this can go wrong are the range landing in the wrong slot — which
+     * would silently hand ledger rows to `rowToTemplate` and answer no templates at all
+     * — and a refused row going uncounted.
+     */
+    describe('the recurring tab', () => {
+      const recurringRow = (fields) => RECURRING.columns.map((column) => fields[column] ?? '')
+
+      it('decodes it from its own range, not from a ledger one', async () => {
+        installSheets(() =>
+          ranges5({
+            p1: values([row({ id: 'e1', date: '2026-08-05', amount: '1000' })]),
+            recurring: values([
+              recurringRow({
+                id: 'rent',
+                description: 'Rent',
+                amount: '220000',
+                category: 'Rent',
+                payer: 'p1',
+                payer_share: '80',
+                day_of_month: '27',
+              }),
+            ]),
+          }),
+        )
+
+        const { templates, entries, undecodedTemplates } = await sheets.loadAll(SHEET)
+
+        expect(templates).toEqual([
+          {
+            id: 'rent',
+            description: 'Rent',
+            amountYen: 220000,
+            category: 'Rent',
+            payer: PERSON.P1,
+            payerShare: 0.8,
+            months: null,
+            dayOfMonth: 27,
+            activeFrom: null,
+            activeTo: null,
+          },
+        ])
+        // And the ledger row is still an entry rather than having been read as a template.
+        expect(entries.map((item) => item.id)).toEqual(['e1'])
+        expect(undecodedTemplates).toBe(0)
+      })
+
+      it('counts a row somebody filled in that it cannot use', async () => {
+        installSheets(() =>
+          ranges5({
+            recurring: values([
+              recurringRow({ id: 'ok', amount: '8000', payer: 'p2' }),
+              // Every one of these is a cell a person typed and this cannot read.
+              recurringRow({ id: 'no-payer', amount: '8000' }),
+              recurringRow({ description: 'Gym', amount: '8000', payer: 'p1' }),
+              recurringRow({ id: 'bad-day', payer: 'p1', day_of_month: 'last' }),
+              // Blank rows are what the rest of the tab is. They say nothing.
+              recurringRow({}),
+              [],
+            ]),
+          }),
+        )
+
+        const { templates, undecodedTemplates } = await sheets.loadAll(SHEET)
+
+        expect(templates.map((template) => template.id)).toEqual(['ok'])
+        expect(undecodedTemplates).toBe(3)
+      })
+
+      it('reports no templates for a sheet whose tab is empty', async () => {
+        installSheets(() => EMPTY_RANGES)
+
+        expect(await sheets.loadAll(SHEET)).toMatchObject({
+          templates: [],
+          undecodedTemplates: 0,
+        })
+      })
     })
   })
 })
@@ -878,7 +963,7 @@ describe('ensureStructure', () => {
   it('adopts a freshly created spreadsheet, which has exactly one tab', async () => {
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(['Sheet1'])
-      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}, {}] }
+      if (call.url.includes('values:batchGet')) return EMPTY_RANGES
       return {}
     })
 
@@ -889,6 +974,7 @@ describe('ensureStructure', () => {
       'expenses_p1',
       'expenses_p2',
       'settlements',
+      'recurring',
       'config',
     ])
   })
@@ -902,6 +988,7 @@ describe('ensureStructure', () => {
             values([P1.columns]), // already correct
             values([['id', 'date']]), // truncated
             values([SETTLEMENTS.columns]), // already correct
+            values([RECURRING.columns]), // already correct
             values([
               ['key', 'value'],
               ['person1_name', 'Waylon'],
@@ -919,13 +1006,46 @@ describe('ensureStructure', () => {
     expect(write.body.valueInputOption).toBe('RAW')
   })
 
-  it('never reseeds a config tab that already has values', async () => {
+  /**
+   * The `recurring` tab gets a header like every other one, and it is the header that
+   * makes the tab usable at all: nothing in the app writes a template, so those ten
+   * words are the only thing telling whoever opens the sheet what to type where.
+   */
+  it('writes the recurring header when the tab has just been created', async () => {
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       if (call.url.includes('values:batchGet')) {
         return {
           valueRanges: [
             ...DATA_TABS.map((tab) => values([tab.columns])),
+            {},
+            values([
+              ['key', 'value'],
+              ['person1_name', 'Waylon'],
+            ]),
+          ],
+        }
+      }
+      return {}
+    })
+
+    await sheets.ensureStructure(SHEET)
+
+    const write = writes(calls).find((call) => call.body?.data)
+    expect(write.body.data).toHaveLength(1)
+    // The literal range, not `RECURRING.headerRange`: ten columns is what `A1:J1`
+    // spells, and deriving it would pin nothing.
+    expect(write.body.data[0].range).toBe('recurring!A1:J1')
+    expect(write.body.data[0].values[0]).toContain('day_of_month')
+  })
+
+  it('never reseeds a config tab that already has values', async () => {
+    const calls = installSheets((call) => {
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
+      if (call.url.includes('values:batchGet')) {
+        return {
+          valueRanges: [
+            ...SHEET_TABS.map((tab) => values([tab.columns])),
             values([
               ['key', 'value'],
               ['person1_name', 'Waylon'],
@@ -945,7 +1065,7 @@ describe('ensureStructure', () => {
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       if (call.url.includes('values:batchGet')) {
-        return { valueRanges: [...DATA_TABS.map((tab) => values([tab.columns])), {}] }
+        return { valueRanges: [...SHEET_TABS.map((tab) => values([tab.columns])), {}] }
       }
       return {}
     })
@@ -972,7 +1092,7 @@ describe('ensureStructure', () => {
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       if (call.url.includes('values:batchGet')) {
-        return { valueRanges: [...DATA_TABS.map((tab) => values([tab.columns])), {}] }
+        return { valueRanges: [...SHEET_TABS.map((tab) => values([tab.columns])), {}] }
       }
       return {}
     })
@@ -996,7 +1116,7 @@ describe('ensureStructure', () => {
       if (call.url.includes('values:batchGet')) {
         return {
           valueRanges: [
-            ...DATA_TABS.map((tab) => values([tab.columns])),
+            ...SHEET_TABS.map((tab) => values([tab.columns])),
             values([
               ['key', 'value'],
               ['person1_name', 'Waylon'],
@@ -1014,7 +1134,8 @@ describe('ensureStructure', () => {
       expenses_p1: 100,
       expenses_p2: 101,
       settlements: 102,
-      config: 103,
+      recurring: 103,
+      config: 104,
     })
   })
 
@@ -1024,7 +1145,7 @@ describe('ensureStructure', () => {
     // that runs on a phone with nothing cached.
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(['Sheet1'])
-      if (call.url.includes('values:batchGet')) return { valueRanges: [{}, {}, {}, {}] }
+      if (call.url.includes('values:batchGet')) return EMPTY_RANGES
       if (call.url.includes(`/${SHEET}:batchUpdate`)) {
         return {
           replies: [
@@ -1068,7 +1189,7 @@ describe('a rejected token', () => {
     let attempt = 0
     installSheets(() => {
       attempt += 1
-      return attempt === 1 ? { __status: 401 } : { valueRanges: [{}, {}, {}, {}] }
+      return attempt === 1 ? { __status: 401 } : EMPTY_RANGES
     })
 
     await sheets.loadAll(SHEET)
@@ -1086,7 +1207,7 @@ describe('a rejected token', () => {
   })
 
   it('sends the token as a bearer header', async () => {
-    const calls = installSheets(() => ({ valueRanges: [{}, {}, {}, {}] }))
+    const calls = installSheets(() => EMPTY_RANGES)
     await sheets.loadAll(SHEET)
     expect(calls[0].headers.Authorization).toBe('Bearer ya29.stub-token')
   })

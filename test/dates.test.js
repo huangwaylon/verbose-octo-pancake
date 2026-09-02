@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   currentMonthKey,
+  dayInMonth,
   dayLabel,
   isIsoDate,
   isMonthKey,
   monthLabel,
+  monthNumber,
   shiftMonth,
   todayIso,
 } from '../src/lib/dates.js'
@@ -136,6 +138,53 @@ describe('isMonthKey', () => {
       {},
     ]) {
       expect(isMonthKey(value)).toBe(false)
+    }
+  })
+})
+
+describe('monthNumber', () => {
+  it('answers the month of a key, and null for anything that is not one', () => {
+    expect(monthNumber('2026-01')).toBe(1)
+    expect(monthNumber('2026-12')).toBe(12)
+    // Null rather than NaN: the caller compares it against the `months` column's list,
+    // and NaN would silently match nothing, so a quarterly cost would never be offered.
+    for (const value of ['2026-13', '2026-08-05', '', undefined]) {
+      expect(monthNumber(value)).toBeNull()
+    }
+  })
+})
+
+/**
+ * The clamp is the whole point. A recurring cost dated the 31st has to land on the last
+ * day of a short month; `new Date(2026, 1, 31)` rolls forward to March 3rd, which files the
+ * row under the wrong month entirely and puts it in neither month's list where it belongs.
+ */
+describe('dayInMonth', () => {
+  it('builds the day inside the month', () => {
+    expect(dayInMonth('2026-08', 5)).toBe('2026-08-05')
+    expect(dayInMonth('2026-08', 27)).toBe('2026-08-27')
+    expect(dayInMonth('2026-12', 31)).toBe('2026-12-31')
+  })
+
+  it('clamps to the last day of a short month, February included', () => {
+    expect(dayInMonth('2026-02', 31)).toBe('2026-02-28')
+    expect(dayInMonth('2026-02', 30)).toBe('2026-02-28')
+    expect(dayInMonth('2024-02', 31)).toBe('2024-02-29') // leap
+    expect(dayInMonth('2000-02', 31)).toBe('2000-02-29') // leap, divisible by 400
+    expect(dayInMonth('1900-02', 31)).toBe('1900-02-28') // not leap, divisible by 100
+    expect(dayInMonth('2026-04', 31)).toBe('2026-04-30')
+    expect(dayInMonth('2026-11', 31)).toBe('2026-11-30')
+  })
+
+  it('falls back to the 1st for a day that is not one', () => {
+    for (const day of [0, -3, 5.5, NaN, undefined, null, '5']) {
+      expect(dayInMonth('2026-08', day)).toBe('2026-08-01')
+    }
+  })
+
+  it('answers empty for anything that is not a month key', () => {
+    for (const monthKey of ['2026-13', '2026-08-05', '', undefined, null]) {
+      expect(dayInMonth(monthKey, 5)).toBe('')
     }
   })
 })

@@ -314,14 +314,16 @@ export function entryFromInput(input) {
  *
  * Each reports a state where the numbers on screen are incomplete or suspect, and every
  * one is otherwise silent. Order is worst-first, because they stack above the balance and
- * the top one is the one that gets read.
+ * the top one is the one that gets read. `undecodedTemplates` is last for that reason: it
+ * is the only one where nothing on screen is actually wrong — a recurring cost is merely
+ * not being offered.
  *
  * A notice, never a gate: the sheet has not changed just because something about it cannot
  * be shown. `staleData` needs an `error` to be real — `stale` alone is where a cached
  * launch starts, before any read has failed.
  *
  * @param {{status: string, error: unknown, configMissing: boolean, undecodedRows: number,
- *   undatedRows: number, unattributedRows: number}} state
+ *   undatedRows: number, unattributedRows: number, undecodedTemplates: number}} state
  * @returns {{key: string, vars?: object}[]}
  */
 export function noticeKeys(state = {}) {
@@ -336,6 +338,12 @@ export function noticeKeys(state = {}) {
   }
   if (state.unattributedRows > 0) {
     notices.push({ key: 'warning.unattributedRows', vars: { count: state.unattributedRows } })
+  }
+  if (state.undecodedTemplates > 0) {
+    notices.push({
+      key: 'warning.undecodedTemplates',
+      vars: { count: state.undecodedTemplates },
+    })
   }
   return notices
 }

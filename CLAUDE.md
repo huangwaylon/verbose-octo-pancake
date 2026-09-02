@@ -24,12 +24,22 @@ Desktop is a convenience. Every layout decision is made at 320px first.
 ## The sheet contract
 
 - **`src/schema.js` is the only file in `src/` that knows the sheet layout.** Never hardcode a
-  range or a column index elsewhere — use a tab's own `letter`/`index`. The one exception is
-  `scripts/bank_to_ledger.py`; see Testing for the pin that keeps the two in step.
-- **There are TWO layouts, and every positional lookup hangs off a TAB, never the module.**
-  `deleted_at` is index 5 in `EXPENSE_COLUMNS` and 4 in `SETTLEMENT_COLUMNS`. See `dataTab`,
-  and `idCell`/`deletedCell` in `sheets.js`.
-- **Both column lists are append-only.** Letters and ranges come from array *position*, and
+  range or a column index elsewhere — use a tab's own `letter`/`index`. The two exceptions are
+  `scripts/bank_to_ledger.py` and `apps-script/Code.gs`; see Testing for the pins that keep
+  all three in step.
+- **There are TWO entry layouts, and every positional lookup hangs off a TAB, never the
+  module.** `deleted_at` is index 5 in `EXPENSE_COLUMNS` and 4 in `SETTLEMENT_COLUMNS`. See
+  `sheetTab`, and `idCell`/`deletedCell` in `sheets.js`.
+- **`DATA_TABS` holds entries; `SHEET_TABS` is that list plus `RECURRING`, in that order.**
+  `compact` and every read's row-to-tab mapping walk the first; `ensureStructure` and
+  `loadAll`'s range list walk the second, and the data tabs have to stay its PREFIX because
+  `loadAll` maps the first `DATA_TABS.length` replies back through `DATA_TABS`. `RECURRING` in
+  `DATA_TABS` would have `compact` hard-deleting a template whose `active_to` cell is non-empty
+  at the index `deleted_at` sits at for an expense.
+- **`RECURRING.type` is null, and `rowToEntry`/`entryToRow` refuse a tab without one.** That is
+  what makes "the recurring tab is not a data tab" enforced rather than documented: decoded as
+  entries its rows all answer null, so the tab would just look permanently empty.
+- **Every column list is append-only.** Letters and ranges come from array *position*, and
   `ensureStructure` rewrites a mismatched header without touching data rows. The one reorder
   that happened (to match the bank CSV's 取引日 / 摘要 / 引出額, `id` last) shipped with a
   manual migration of the single live sheet. `letterAt` carries a 26-column cap that only
@@ -54,10 +64,12 @@ Desktop is a convenience. Every layout decision is made at 320px first.
 
 ## Reads and writes
 
-- **`loadAll`'s ranges are positionally coupled to `DATA_TABS`**, so the range list and the
-  `valueRanges[index]` mapping both come from that one list. It also derives the config's index
-  from `ranges.length`, and its no-config retry slices from the END of that list — neither may
-  become a literal.
+- **`loadAll`'s ranges are positionally coupled to `SHEET_TABS`**, so the range list, the
+  `valueRanges[index]` mapping through `DATA_TABS` and the templates' own index all come from
+  that one list. It also derives the config's index from `ranges.length`, and its no-config
+  retry slices from the END of that list — none may become a literal. The recurring range sits
+  BEFORE the config range for that reason: dropped by the retry instead, a missing `recurring`
+  tab would read as a missing `config` tab and never get built.
 - **An id is not unique across the two tabs, and not within one either.** Every *read* goes
   through `reconcileById`; the tombstones it hides are real rows, so `supersededRows` is added
   back to the count the compact button acts on. Every *write to an existing row* goes through
@@ -75,13 +87,59 @@ Desktop is a convenience. Every layout decision is made at 320px first.
   `deleted_at` column, serializes its tab reads rather than batching them, and deletes in
   **descending** row order within each tab. All three protect row numbers derived from
   position.
-- **`compact` and `missingDataGid` cover `DATA_TABS`, not just the expenses tabs.**
+- **`compact` and `missingDataGid` cover `DATA_TABS`, not just the expenses tabs** — and not
+  the recurring tab, which holds no tombstones and whose rows nothing else references.
 - **`compact` never runs while a write is in flight, and reports `busy` rather than
   `{removed: 0}`.** `compactRefusal` holds both refusals.
 - **Do not add conflict detection, and do not describe the app as if it had any.**
   Last-write-wins is the accepted design (README).
 - **There is no migration code, and no users to need it.** Do not add a back-compatibility
   branch to "keep an existing sheet working".
+
+## Recurring costs
+
+`recurring` is a tab of DECLARATIONS, hand-authored and read-only from the app. Everything the
+card decides is in `src/lib/recurring.js`; `README.md` documents the columns.
+
+- **`${templateId}#${monthKey}` is the whole of "already recorded", and TWO writers derive
+  it** — the card and `postRecurring` in `apps-script/Code.gs`. That is what makes them safe to
+  coexist and a re-run a no-op. Never key it on category or description: both are fields a
+  person edits, so `Rent (Aug)` posts a second rent and two templates sharing a category and a
+  note collapse into one.
+- **`templatesDue` takes the RAW entry list, tombstones included**, and it is the one place in
+  the codebase where the deleted rows are the ones that count. A tombstone means the month is
+  handled — otherwise deleting a double-charged rent nags for the rest of the month. It is also
+  what makes a pending optimistic row close the double-tap hole for free.
+- **Due is ONE comparison, `date <= today`, against the instance's own date.** That covers a
+  past month, the current month's `day_of_month` gate and a future month with no branch.
+  Offering the 27th's rent on the 1st has the balance claiming half of it owed for three weeks
+  before the money moves.
+- **A blank cell takes its documented default; a cell that was FILLED IN and cannot be read
+  refuses the whole row**, and `loadAll` counts it. The deliberate opposite of `config`, where
+  an unreadable value falls back quietly, because a default here either moves money
+  (`payer_share`) or decides whether a cost is offered at all. **A blank `payer_share` must
+  stay null so `defaultSplitFor(payer)` applies** — reading it as `EVEN_SHARE`, which is right
+  for an already-written row, splits every rent 50/50 on a sheet running 80/20.
+- **Templates are deliberately NOT in the launch snapshot.** It is the one input never decoded
+  through a schema reader and it is restored in a `useState` initializer, so a bad cached row
+  white-screens the first render; a reminder loses nothing by arriving one round trip late.
+  Adding them means a validator of their own and a `VERSION` bump.
+- **`postRecurring` only posts a template that spells out BOTH its amount and its share.**
+  Anything blank is the card's job, where a person confirms. That is what keeps the percentage-
+  versus-fraction rule out of `Code.gs` and the config tab out of the trigger's reads.
+- **`doPost` must be incapable of throwing; `postRecurring` must be allowed to.** A throw in
+  the web app returns Google's HTML error page, which `connection.js` classifies as transient;
+  an uncaught throw in a TRIGGER mails the owner, and that mail is the only channel reporting
+  the poster stopping. Comment the asymmetry rather than tidying it.
+- **`setValues` coerces like `USER_ENTERED`.** `Code.gs` sets the range's number format to `@`
+  BEFORE writing, or `2026-09-01` becomes a date serial that reads back in the spreadsheet's
+  locale and `loadAll` reports as `undatedRows`. Every date there goes through
+  `Utilities.formatDate` in the script's own zone, and the manifest pins that zone.
+- **The card never auto-posts, and it is not a notice.** A tap prefills `EntryFormSheet` as an
+  ADD, so validation, `splitYen`, `tabOf` and the toasts all apply unchanged. `noticeKeys`
+  means "the sheet holds something the app cannot show"; a missing rent row is the opposite.
+- **`bank_to_ledger.py` is untouched by any of this.** It knows the two entry column lists,
+  not this one.
 
 ## Optimistic state
 
@@ -106,9 +164,10 @@ Desktop is a convenience. Every layout decision is made at 320px first.
   reachable from a test. Every list transition, status decision and refusal lives in
   `ledgerState.js` (`reconcileById`, `looksUninitialized`, `entryFromInput`, `hasPendingWrite`,
   `compactRefusal`, `newDraftEntry`, `shouldRefresh`, `noticeKeys`, `gateFor`), `balance.js`
-  (`initialMonthKey` and the aggregates) or `split.js` (`toSplit`, `nextSplit`). Put new logic
-  there, or it cannot be tested at all. Hooks are not confined to `src/state/`: `useEntrySplit`
-  sits beside the one control that holds its state.
+  (`initialMonthKey` and the aggregates), `split.js` (`toSplit`, `nextSplit`) or `recurring.js`
+  (`rowToTemplate`, `entryFromTemplate`, `templatesDue`). Put new logic there, or it cannot be
+  tested at all. Hooks are not confined to `src/state/`: `useEntrySplit` sits beside the one
+  control that holds its state.
 
 ## Money, dates and the split
 
@@ -139,7 +198,8 @@ Desktop is a convenience. Every layout decision is made at 320px first.
   UTC midnight and shifts a day west of UTC. `src/lib/dates.js` owns every date helper and both
   shape checks: `isIsoDate` (shape, then a UTC round-trip, since the regex alone accepts
   `2026-02-31`) and `isMonthKey`. `monthParts` checks the SHAPE before the numbers, because
-  `split('-')` alone reads a full ISO day as a valid month.
+  `split('-')` alone reads a full ISO day as a valid month. **`dayInMonth` CLAMPS**, because
+  `new Date(2026, 1, 31)` rolls silently into March and files a row under the wrong month.
 - **Display formatters are cached, keyed on everything that decides one.** `money.js` keys on
   the locale ALONE, because the currency and its zero fraction digits are fixed; no cache may
   key on less than the full set of options it passes.
@@ -171,9 +231,11 @@ Desktop is a convenience. Every layout decision is made at 320px first.
 ## Telling the truth on screen
 
 - **Anything the sheet holds and the app cannot show is counted and said out loud.** `loadAll`
-  returns four such counts; `noticeKeys` turns them into notices and owns their precedence.
-  Never repair the `configMissing` case: re-seeding writes this build's defaults — an even
-  split included — into a sheet whose real values are unknown, and takes the notice with them.
+  returns five such counts; `noticeKeys` turns them into notices and owns their precedence,
+  worst first — `undecodedTemplates` is last because it is the only one where no figure on
+  screen is wrong. Never repair the `configMissing` case: re-seeding writes this build's
+  defaults — an even split included — into a sheet whose real values are unknown, and takes the
+  notice with them.
 - **No raw error text ever reaches the screen.** `i18nError` is the only way to throw something
   a person will read. `sheets.js` and `connection.js` keep the API's own English on `.message`
   for consoles and attach an `i18nKey` instead; `errorMessage(cause, fallbackKey)` is the only
@@ -380,8 +442,11 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
 - **Nothing may scroll sideways at 320px.** `.sheet__body` sets `overflow-x: hidden` explicitly,
   because with `overflow-y` set the spec computes a `visible` overflow-x to `auto`. Anything
   holding config-tab text needs `min-width: 0` and `overflow-wrap: anywhere` (`break-word` does
-  not reduce min-content width). The three `preview-en-stress*` pages are the check; that
-  `hidden` CLIPS rather than reports, so the harness measures `.sheet__body`'s own scroll width.
+  not reduce min-content width). **Both `.layout` tracks carry `min-width: 0`** for the same
+  reason one layer up: a grid item's automatic minimum is its min-content WIDTH, so one
+  non-wrapping descendant — the recurring card's truncated names — sizes the whole column. The
+  three `preview-en-stress*` pages are the check; that `hidden` CLIPS rather than reports, so the
+  harness measures `.sheet__body`'s own scroll width.
 - **The toast stack takes no pointer events**, or it would swallow a tap on a delete control for
   the toast's whole life. The layout deliberately reserves no band for it.
 - **A row is a row, not text.** `button.entry__main` suppresses selection and the callout: a
@@ -471,7 +536,12 @@ Specs live in `test/**/*.test.{js,jsx}`, with shared harnesses under `test/suppo
 
 `sheets.test.js` runs against a fake Sheets API in `test/support/sheets-api.js` that records
 every request, because this layer's failures are writes: the assertions are about what was
-*sent*, not what came back.
+*sent*, not what came back. `apps-script.test.js` does the same for `postRecurring` through
+`test/support/apps-script.js`, which `new Function`s `Code.gs` against a fake `SpreadsheetApp`
+— so it also proves the file PARSES, which nothing else does, since it is pasted into an editor
+rather than built. Each of the six traps in its header has a case that fails when the trap is
+sprung; the two that read backwards from everything else in the codebase are the tombstoned-id
+scan and the day clamp happening BEFORE the due comparison.
 
 `connection`, `snapshot`, `sw-build`, `styles`, `preferences` and `viewport` exist because their
 failures are invisible in a build and on screen — a misclassified endpoint reply, a cached row
@@ -479,14 +549,17 @@ the balance cannot survive, a precache list that stops any worker activating, a 
 on the wrong block, an accent that writes an attribute CSS has no rule for, a keyboard inset
 that leaves Save covered.
 
-**`scripts/bank_to_ledger.py` is the one place outside `schema.js` that knows the column
-lists**, because it is Python and cannot import them. A disagreement is silent in the worst way:
-the script keeps emitting its old order, the rows paste in looking plausible, and every value
-lands under the neighbouring field. `test/schema.test.js` parses both Python literals and
-compares them to `EXPENSE_COLUMNS` and `SETTLEMENT_COLUMNS` — change them together, and never
-add a third home. **Its `CATEGORIES` is pinned to `DEFAULT_CONFIG.categories` the same way,**
-order included, because the app pre-selects `categories[0]`; the script's own module-level
-`assert` holds each RULE to that list.
+**`scripts/bank_to_ledger.py` and `apps-script/Code.gs` are the two places outside `schema.js`
+that know a column list**, because neither can import it. A disagreement is silent in the worst
+way: the code keeps emitting its old order, the rows land looking plausible, and every value
+sits under the neighbouring field. `test/schema.test.js` parses the literals out of both sources
+and compares them — change them together, and never add a third home. It also pins the
+`.gs` copy of the instance-id join and the number-format-before-write ordering, because
+**`Code.gs` is pasted into the Apps Script editor rather than deployed from the repo**, so
+drift there is invisible in a build *and* in the running script. `bank_to_ledger.py`'s
+`CATEGORIES` is pinned to `DEFAULT_CONFIG.categories` the same way, order included, because the
+app pre-selects `categories[0]`; the script's own module-level `assert` holds each RULE to that
+list.
 
 **A test that cannot fail is worse than no test**, because it reads as coverage. Do not assert a
 function against itself, do not assert a property of the platform, and do not name a test after
@@ -514,7 +587,9 @@ net to zero, with odd-unit amounts so rounding is genuinely exercised.
 `LedgerScreen` to static HTML with the real stylesheets, eighteen pages: every accent, both
 languages, the four overlays, the settled balance, and three stress pages holding everything a
 320px phone has no room for. The settlement form earns its own page because it is the sparsest
-thing the entry form renders and the only place its two `!isSettlement` blocks are visible.
+thing the entry form renders and the only place its two `!isSettlement` blocks are visible. The
+stress page's `SIDEWAYS` readout is what caught the recurring card sizing the whole aside by its
+longest name — no assertion in the suite could see it.
 
 ```sh
 npx vite-node scripts/preview.jsx     # writes scripts/preview-*.html (gitignored)

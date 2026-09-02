@@ -10,10 +10,10 @@ app key, and the browser then talks straight to the Sheets API. Google Cloud set
 
 ## Data model
 
-One spreadsheet, four tabs — `expenses_p1`, `expenses_p2`, `settlements`, `config` —
-laid out in exactly one place, `src/schema.js`. Each person has their own expenses tab, so
-which tab an expense lives in *is* the payer and no column can disagree with it. Row 1 is
-the header, data starts at row 2, and editing an expense to change who paid appends it to
+One spreadsheet, five tabs — `expenses_p1`, `expenses_p2`, `settlements`, `recurring`,
+`config` — laid out in exactly one place, `src/schema.js`. Each person has their own expenses
+tab, so which tab an expense lives in *is* the payer and no column can disagree with it. Row 1
+is the header, data starts at row 2, and editing an expense to change who paid appends it to
 the other person's tab and tombstones the original row — in that order, so a failure
 between the two leaves the entry visible rather than gone. Both rows then carry the same
 id until a compact runs, and the client keeps the live one.
@@ -78,6 +78,54 @@ under the other person's cached positions. Deleting asks for confirmation and is
 write, reversible from the collapsed **Deleted** section at the bottom of the month being
 viewed. The manual **compact** action is the only hard delete, and the only thing that spans
 every month at once.
+
+### `recurring` tab
+
+Rent, the gym, a subscription: costs whose amount and split are known in advance, where the
+only real failure mode is forgetting to type them. The tab is a **declaration** of what
+recurs, not a log of what happened — it holds no date and no `deleted_at`, and nothing in the
+app writes to it. Author a row by hand; delete the row to retire it.
+
+| Col | Field | Example | Notes |
+| --- | --- | --- | --- |
+| A | `description` | `Rent` | What the entry's note will say |
+| B | `amount` | `220000` | Blank means recurring but **variable** — a utility bill. The card lists it with no figure and the form opens empty |
+| C | `category` | `Rent` | Blank falls through to the first configured category |
+| D | `payer` | `p1` | Whose tab the instance lands in; case-folded on read |
+| E | `payer_share` | `80` | As in the expense column. Blank means "follow that payer's `default_split`" — **not** an even split |
+| F | `months` | `1, 7` | Blank means every month; `1,7` covers annual and quarterly. There is no weekly: the app is month-scoped throughout |
+| G | `day_of_month` | `27` | Nothing is offered before its day, and 31 is clamped to the month's last day. Blank means the 1st |
+| H | `active_from` | `2026-04` | Month keys, so an ended lease stops nagging without deleting what it cost. Both blank means always |
+| I | `active_to` | `2027-03` | as above |
+| J | `id` | `rent` | Yours to invent, and it has to be stable — see below |
+
+A blank cell takes its default; a cell that was **filled in and cannot be read refuses the
+whole row**, and the count is reported on screen. That is the opposite of the `config` tab,
+where an unreadable value quietly falls back, because a default here either moves money or
+stops a cost being offered at all.
+
+A month's instance of a template gets the deterministic id `<template id>#<YYYY-MM>` — so
+`rent#2026-09`. That id, present in either expenses tab, **live or tombstoned**, is the whole
+of "already recorded": deleting a rent that was double-charged marks the month handled rather
+than re-offering it. It is derived rather than matched on category and description, both of
+which are fields a person edits: renaming a note to `Rent (Aug)` would otherwise post a second
+rent, and two templates sharing a category and a note — one gym membership each — would
+collapse into one.
+
+Two writers use that id and neither can post a month twice:
+
+- **The app** shows an *Expected this month* card of whatever the month on screen is missing.
+  A tap prefills the ordinary entry form, so a person confirms the figure and Save is the same
+  optimistic write as any other. Nothing auto-posts here.
+- **`postRecurring`** in the Apps Script project runs on a daily trigger, so rent lands even if
+  nobody opens the app for a month. It is deliberately stricter: it only posts a template that
+  spells out **both** its amount and its share, because anything left blank is a figure a
+  person should confirm. `SETUP.md` step 9 sets it up.
+
+Daily rather than on the 1st: Google can delay or skip a scheduled run, and this trigger's
+documented failure mode — the consent screen lapsing — is silent, so a monthly trigger that
+misses its one run does nothing for 30 days. The card is also what tells you the poster has
+died, since a row it should have written shows up there.
 
 ### `config` tab
 

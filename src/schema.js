@@ -73,6 +73,32 @@ export const EXPENSE_COLUMNS = [
  */
 export const SETTLEMENT_COLUMNS = ['date', 'description', 'amount', 'payer', 'deleted_at', 'id']
 
+/**
+ * The `recurring` tab: what recurs, not what happened. Authored by hand in the Sheet like
+ * `config` is, and read-only from the app.
+ *
+ * Deliberately NOT a data tab. It holds declarations rather than entries — no date, no
+ * `deleted_at`, no id that any row in the ledger shares — so `compact` must not walk it
+ * and `rowToEntry` must refuse it outright. `lib/recurring.js` is the only reader.
+ *
+ * It carries its own `payer` column for the same reason the settlements tab does: one tab
+ * cannot say who pays. There is no `deleted_at` because nothing references a template, so
+ * deleting the row is the retire path — and `active_to` is how a lease ends without
+ * losing the history of what it cost.
+ */
+export const RECURRING_COLUMNS = [
+  'description',
+  'amount',
+  'category',
+  'payer',
+  'payer_share',
+  'months',
+  'day_of_month',
+  'active_from',
+  'active_to',
+  'id',
+]
+
 /** Sheet rows are 1-indexed and row 1 is the header, so data starts at 2. */
 export const FIRST_DATA_ROW = 2
 
@@ -89,14 +115,15 @@ function letterAt(index) {
 }
 
 /**
- * A data tab: its title, its column list, and every positional lookup derived from
- * that list alone.
+ * A tab: its title, its column list, and every positional lookup derived from that list
+ * alone.
  *
  * `type` and `payer` are what the tab itself asserts about its rows. `payer` is null for
  * the settlements tab, meaning "this tab does not know — read the cell"; for an expenses
- * tab it is the answer, and no cell can contradict it.
+ * tab it is the answer, and no cell can contradict it. A `type` of null means the tab
+ * holds no entries at all, which is what `rowToEntry` and `entryToRow` refuse on.
  */
-function dataTab({ title, columns, type, payer }) {
+function sheetTab({ title, columns, type, payer }) {
   const byName = new Map(columns.map((column, index) => [column, index]))
   const last = letterAt(columns.length - 1)
 
@@ -130,13 +157,13 @@ function dataTab({ title, columns, type, payer }) {
 }
 
 const EXPENSES = {
-  [PERSON.P1]: dataTab({
+  [PERSON.P1]: sheetTab({
     title: 'expenses_p1',
     columns: EXPENSE_COLUMNS,
     type: ENTRY_TYPE.EXPENSE,
     payer: PERSON.P1,
   }),
-  [PERSON.P2]: dataTab({
+  [PERSON.P2]: sheetTab({
     title: 'expenses_p2',
     columns: EXPENSE_COLUMNS,
     type: ENTRY_TYPE.EXPENSE,
@@ -144,10 +171,21 @@ const EXPENSES = {
   }),
 }
 
-export const SETTLEMENTS = dataTab({
+export const SETTLEMENTS = sheetTab({
   title: 'settlements',
   columns: SETTLEMENT_COLUMNS,
   type: ENTRY_TYPE.SETTLEMENT,
+  payer: null,
+})
+
+/**
+ * The recurring declarations. `type: null` is load-bearing: it is what makes "this is not
+ * a data tab" something `rowToEntry` enforces rather than something a comment asks for.
+ */
+export const RECURRING = sheetTab({
+  title: 'recurring',
+  columns: RECURRING_COLUMNS,
+  type: null,
   payer: null,
 })
 
@@ -165,11 +203,23 @@ export function expenseTab(person) {
 }
 
 /**
- * Every tab holding entries, in the order `loadAll` requests them. The one list those
- * ranges, `ensureStructure`'s tab list and `compact`'s gid lookup all read, so none of
- * the three can be given a tab the others do not know about.
+ * Every tab holding entries, in the order `loadAll` requests them. The one list
+ * `compact`'s gid lookup and every read's row-to-tab mapping share, so none of them can
+ * be given a tab the others do not know about — and the `recurring` tab is absent by
+ * construction, since a template decoded as an entry has no type and no payer.
  */
 export const DATA_TABS = [expenseTab(PERSON.P1), expenseTab(PERSON.P2), SETTLEMENTS]
+
+/**
+ * Every tab the app maintains a header row for, with the DATA tabs as the PREFIX.
+ *
+ * That order is load-bearing twice. `loadAll` builds its ranges from this list and maps
+ * the first `DATA_TABS.length` replies back through `DATA_TABS`, so a tab inserted ahead
+ * of them would decode ledger rows against the wrong layout. And `ensureStructure` reads
+ * the same list, which is what stops it building a tab nothing reads — or reading one it
+ * never builds.
+ */
+export const SHEET_TABS = [...DATA_TABS, RECURRING]
 
 export const CONFIG_RANGE = `${CONFIG_TAB}!A:B`
 
@@ -204,9 +254,11 @@ export function cellText(row, index) {
  */
 export function rowToEntry(row, tab) {
   // Refuse rather than guess. A caller that cannot name the tab has lost track of what
-  // it is reading, and every entry it produced would carry the wrong type or payer.
-  if (!tab?.columns) {
-    throw new TypeError(`rowToEntry needs a tab descriptor, got ${String(tab)}`)
+  // it is reading, and every entry it produced would carry the wrong type or payer. A tab
+  // with no `type` is the `recurring` one: its rows are declarations, and decoded here
+  // every one of them would answer null anyway — silently, which is the problem.
+  if (!tab?.columns || !tab.type) {
+    throw new TypeError(`rowToEntry needs a data tab descriptor, got ${String(tab?.title ?? tab)}`)
   }
   if (!Array.isArray(row)) return null
 
@@ -256,8 +308,10 @@ export function rowToEntry(row, tab) {
  * @returns {string[]}
  */
 export function entryToRow(entry, tab) {
-  if (!tab?.columns) {
-    throw new TypeError(`entryToRow needs a tab descriptor, got ${String(tab)}`)
+  // A tab with no `type` holds no entries, so writing one into it would fill six of the
+  // `recurring` tab's ten columns with values that mean something else entirely.
+  if (!tab?.columns || !tab.type) {
+    throw new TypeError(`entryToRow needs a data tab descriptor, got ${String(tab?.title ?? tab)}`)
   }
   const byField = {
     id: entry.id,

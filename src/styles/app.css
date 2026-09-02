@@ -179,6 +179,12 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  /* Same guard as `.layout__main` below, and for the same reason: a grid item's
+     automatic minimum is its MIN-CONTENT width, so one non-wrapping descendant sizes
+     the whole column and the page scrolls sideways at 320px. The recurring card's names
+     are that descendant — they truncate like the ledger's rows do, and truncation is
+     what stops working when this is missing, rather than anything looking wrong here. */
+  min-width: 0;
 }
 
 .layout__main {
@@ -233,6 +239,76 @@
      pill read the radius scale rules out. */
   border-radius: var(--radius-lg);
   font-size: var(--fs-body);
+}
+
+/* =========================================================================
+   Expected this month
+   =========================================================================
+   Recurring costs the month has no row for yet. Rows rather than chips: the
+   amount is half of what makes one recognisable, and it belongs at the trailing
+   edge where every amount in the ledger already sits. */
+
+.expected {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.expected__list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Inset divider, full-bleed press: the hairline stops at the text like the entry
+   list's does, while the row below spills into the card's padding so a finger's
+   worth of the highlight is not a stripe narrower than the tap it answers. */
+.expected__row + .expected__row {
+  border-top: 1px solid var(--line);
+}
+
+.expected__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--tap-target);
+  margin-inline: calc(var(--space-2) * -1);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.expected__item:active {
+  background-color: var(--sunken);
+}
+
+@media (hover: hover) {
+  .expected__item:hover {
+    background-color: var(--sunken);
+  }
+}
+
+/* Truncates rather than wraps, so one long note cannot make this card taller than
+   the summary below it. A block box overflowing with inline content is what
+   text-overflow needs; `min-width: 0` is what lets the flex item get there. */
+.expected__name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expected__amount {
+  flex: none;
+  color: var(--ink-2);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  line-height: var(--lh-tight);
 }
 
 /* =========================================================================

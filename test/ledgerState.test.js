@@ -547,6 +547,13 @@ describe('noticeKeys', () => {
     expect(keysFor({ unattributedRows: 0 })).toEqual([])
   })
 
+  it('reports recurring rows it cannot read, so one never stops being offered silently', () => {
+    expect(noticeKeys({ undecodedTemplates: 2 })).toEqual([
+      { key: 'warning.undecodedTemplates', vars: { count: 2 } },
+    ])
+    expect(keysFor({ undecodedTemplates: 0 })).toEqual([])
+  })
+
   it('stacks worst first, because the top one is the one that gets read', () => {
     expect(
       keysFor({
@@ -556,6 +563,7 @@ describe('noticeKeys', () => {
         undecodedRows: 1,
         undatedRows: 1,
         unattributedRows: 1,
+        undecodedTemplates: 1,
       }),
     ).toEqual([
       'warning.staleData',
@@ -563,6 +571,8 @@ describe('noticeKeys', () => {
       'warning.undecodedRows',
       'warning.undatedRows',
       'warning.unattributedRows',
+      // Last: it is the only one where no figure on screen is wrong.
+      'warning.undecodedTemplates',
     ])
   })
 })

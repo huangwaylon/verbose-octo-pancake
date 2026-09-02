@@ -61,11 +61,13 @@ export function todayIso(now = new Date()) {
   return toIso(now)
 }
 
+/** Two-digit zero padding, which every 'YYYY-MM[-DD]' string below is built from. */
+function pad(value) {
+  return String(value).padStart(2, '0')
+}
+
 function toIso(date) {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
 export function currentMonthKey(now = new Date()) {
@@ -102,12 +104,44 @@ export function isMonthKey(value) {
   return monthParts(value) != null
 }
 
+/**
+ * The month of a 'YYYY-MM' key as 1-12, or null.
+ *
+ * The one caller compares a month against a LIST of them — the `recurring` tab's `months`
+ * column, which is how quarterly and annual costs are spelled — rather than against
+ * another key, so a string comparison cannot serve it.
+ */
+export function monthNumber(monthKey) {
+  return monthParts(monthKey)?.month ?? null
+}
+
+/**
+ * A day of a 'YYYY-MM' as an ISO day, CLAMPED to that month's last day.
+ *
+ * The clamp is the point: a recurring cost dated the 31st has to land on the 28th in
+ * February, where `new Date(year, 1, 31)` would silently roll forward into March and file
+ * the row under the wrong month entirely. Day 0 of the NEXT month is the length of this
+ * one, so there is no table of month lengths and no leap-year rule here to get wrong.
+ *
+ * A day that is not an integer falls back to the 1st rather than throwing: this reads a
+ * hand-typed cell, and `rowToTemplate` has already refused anything outside 1-31.
+ *
+ * @returns {string} '' for anything that is not a month key
+ */
+export function dayInMonth(monthKey, day) {
+  const parts = monthParts(monthKey)
+  if (!parts) return ''
+  const last = new Date(parts.year, parts.month, 0).getDate()
+  const clamped = Math.min(Math.max(Number.isInteger(day) ? day : 1, 1), last)
+  return `${parts.year}-${pad(parts.month)}-${pad(clamped)}`
+}
+
 /** Shift a 'YYYY-MM' key by n months. A key that is not one is returned as ''. */
 export function shiftMonth(monthKey, delta) {
   const parts = monthParts(monthKey)
   if (!parts) return ''
   const date = new Date(parts.year, parts.month - 1 + delta, 1)
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
 }
 
 /**

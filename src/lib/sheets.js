@@ -15,6 +15,7 @@ import {
   CONFIG_TAB,
   DATA_TABS,
   FIRST_DATA_ROW,
+  SHEET_TABS,
   cellText,
   entryToRow,
   expenseTab,
@@ -25,6 +26,7 @@ import {
 import { reconcileById, tombstoneCount } from './ledgerState.js'
 import { parseAmountToYen } from './money.js'
 import { getAccessToken, refreshToken } from './connection.js'
+import { rowToTemplate } from './recurring.js'
 import { defaultConfigRows, parseConfigRows } from './sheetConfig.js'
 import { i18nError } from '../i18n/index.js'
 
@@ -174,12 +176,19 @@ function updateValues(spreadsheetId, range, values) {
  * Reported rather than repaired: seeding a fresh tab would write this build's defaults
  * into a sheet whose real values are unknown, and take the notice away with them.
  *
- * @returns {Promise<{entries: object[], config: object, sheetConfig: object,
- *   supersededRows: number, undecodedRows: number, undatedRows: number,
- *   unattributedRows: number, configMissing: boolean}>}
+ * `undecodedTemplates` — `recurring` rows somebody filled in that `rowToTemplate` refused.
+ * Nothing on screen is wrong because of one, which is why it is the least urgent notice;
+ * what it costs is a recurring cost silently never offered, which is the one thing that
+ * feature exists to prevent.
+ *
+ * @returns {Promise<{entries: object[], templates: object[], config: object,
+ *   sheetConfig: object, supersededRows: number, undecodedRows: number, undatedRows: number,
+ *   unattributedRows: number, undecodedTemplates: number, configMissing: boolean}>}
  */
 export async function loadAll(spreadsheetId) {
-  const ranges = [...DATA_TABS.map((tab) => tab.dataRange), CONFIG_RANGE]
+  // Built from `SHEET_TABS`, whose data tabs come first, so the mapping back below is
+  // derived from the same list rather than from a second one that could drift.
+  const ranges = [...SHEET_TABS.map((tab) => tab.dataRange), CONFIG_RANGE]
   let valueRanges
   let configMissing = false
 
@@ -234,14 +243,29 @@ export async function loadAll(spreadsheetId) {
   )
 
   const entries = reconcileById(decoded)
+
+  // The recurring range sits immediately after the data ones in `SHEET_TABS`, so this
+  // index is derived rather than a literal for the same reason the config one is.
+  let undecodedTemplates = 0
+  const templates = []
+  for (const row of valueRanges[DATA_TABS.length]?.values ?? []) {
+    const template = rowToTemplate(row)
+    if (template) templates.push(template)
+    // A row somebody filled in and `rowToTemplate` refused. A wholly blank one says
+    // nothing — the range runs to the bottom of the tab, so most of them are blank.
+    else if ((row ?? []).some((_, index) => cellText(row, index))) undecodedTemplates += 1
+  }
+
   return {
     entries,
+    templates,
     config,
     sheetConfig,
     supersededRows: tombstoneCount(decoded) - tombstoneCount(entries),
     undecodedRows,
     undatedRows,
     unattributedRows,
+    undecodedTemplates,
     configMissing,
   }
 }
@@ -457,19 +481,19 @@ export async function readSheetGids(spreadsheetId) {
  */
 export async function ensureStructure(spreadsheetId) {
   const sheetIds = await readSheetGids(spreadsheetId)
-  const wantedTabs = [...DATA_TABS.map((tab) => tab.title), CONFIG_TAB]
+  const wantedTabs = [...SHEET_TABS.map((tab) => tab.title), CONFIG_TAB]
   const missing = wantedTabs.filter((title) => !(title in sheetIds))
 
   // Refuse to build structure in a spreadsheet that is evidently somebody's existing
   // work. The id arrives from the script's SHEET_ID property rather than from a person
-  // choosing a file, so a wrong one is a configuration mistake — and adding four tabs to
+  // choosing a file, so a wrong one is a configuration mistake — and adding five tabs to
   // an unrelated spreadsheet is not something undo can reach. A freshly created
   // spreadsheet has exactly one default tab.
   //
-  // The test is "none of ours", not "any missing": a ledger predating the settlements
-  // tab is missing exactly one of the four and must have it BUILT. Translated, because
-  // this is the one failure whose message a person has to act on — it names the property
-  // to fix, and it reaches an error gate.
+  // The test is "none of ours", not "any missing": a ledger predating the settlements or
+  // recurring tab is missing exactly one of the five and must have it BUILT. Translated,
+  // because this is the one failure whose message a person has to act on — it names the
+  // property to fix, and it reaches an error gate.
   if (missing.length === wantedTabs.length && Object.keys(sheetIds).length > 1) {
     throw i18nError('error.notOurSheet')
   }
@@ -490,14 +514,14 @@ export async function ensureStructure(spreadsheetId) {
   }
 
   const { valueRanges = [] } = await batchGetValues(spreadsheetId, [
-    ...DATA_TABS.map((tab) => tab.headerRange),
+    ...SHEET_TABS.map((tab) => tab.headerRange),
     CONFIG_RANGE,
   ])
 
   const data = []
-  DATA_TABS.forEach((tab, index) => {
+  SHEET_TABS.forEach((tab, index) => {
     const headerRow = valueRanges[index]?.values?.[0] ?? []
-    // Compared against THIS tab's own list, not one shared expectation: the two layouts
+    // Compared against THIS tab's own list, not one shared expectation: the layouts
     // differ, so a shared one would find the settlements header "wrong" every time and
     // rewrite it with the expenses columns.
     const matches =
@@ -506,7 +530,7 @@ export async function ensureStructure(spreadsheetId) {
     if (!matches) data.push({ range: tab.headerRange, values: [tab.columns] })
   })
 
-  const configRows = valueRanges[DATA_TABS.length]?.values ?? []
+  const configRows = valueRanges[SHEET_TABS.length]?.values ?? []
   const configIsEmpty = configRows.every((row) =>
     (row ?? []).every((_, index) => !cellText(row, index)),
   )

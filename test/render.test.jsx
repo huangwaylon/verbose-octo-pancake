@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { DEFAULT_CONFIG } from '../src/config.js'
-import { ENTRY_TYPE, PERSON } from '../src/schema.js'
+import { ENTRY_TYPE, PERSON, RECURRING } from '../src/schema.js'
 import { expense } from './support/entries.js'
+import { entryFromTemplate, rowToTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
@@ -14,6 +15,7 @@ import {
 import { currentMonthKey } from '../src/lib/dates.js'
 import { LedgerScreen } from '../src/components/LedgerScreen.jsx'
 import { SummaryCard } from '../src/components/SummaryCard.jsx'
+import { RecurringCard } from '../src/components/RecurringCard.jsx'
 import { EntryList } from '../src/components/EntryList.jsx'
 import { Header } from '../src/components/Header.jsx'
 import { MonthNav } from '../src/components/MonthNav.jsx'
@@ -294,6 +296,48 @@ describe('entry list renders', () => {
 })
 
 /**
+ * The recurring-cost card. Every figure it shows comes from the app's own decoder, so a
+ * page built from a `recurring` row is the same path a real sheet takes.
+ */
+describe('the expected-this-month card renders', () => {
+  const template = (fields) =>
+    rowToTemplate(RECURRING.columns.map((column) => ({ payer: 'p1', ...fields })[column] ?? ''))
+
+  const render = (expected) =>
+    renderToStaticMarkup(<RecurringCard expected={expected} onPick={noop} />)
+
+  const rent = entryFromTemplate(
+    template({ id: 'rent', description: 'Rent', amount: '220000', category: 'Rent' }),
+    '2026-08',
+  )
+
+  it('names each cost and its amount, as one tappable row', () => {
+    const markup = render([rent])
+    expect(markup).toContain('Expected this month')
+    expect(markup).toContain('Rent')
+    expect(markup).toContain('¥220,000')
+    expect(markup.match(/<button/g)).toHaveLength(1)
+  })
+
+  /**
+   * A blank amount is recurring-but-variable, and "¥0" would read as a bill for nothing
+   * — so the assertion is the absent symbol, not merely the present word: with the
+   * branch lost, the word is gone and `¥0` is what renders.
+   */
+  it('says the amount varies rather than printing a zero', () => {
+    const variable = entryFromTemplate(template({ id: 'gas', description: 'Gas' }), '2026-08')
+    const markup = render([variable])
+    expect(markup).toContain('Varies')
+    expect(markup).not.toContain('¥')
+  })
+
+  it('renders nothing at all when the month is not missing anything', () => {
+    // The common case by far: the card must not leave an empty heading on the screen.
+    expect(render([])).toBe('')
+  })
+})
+
+/**
  * The assembled surface. Nothing else in the suite renders it — only
  * `scripts/preview.jsx` does — so this is the one place the tree the app actually
  * ships can be checked for a control that was meant to be gone or duplicated.
@@ -306,6 +350,7 @@ describe('the signed-in surface renders', () => {
     byPerson: spendByPerson(entries),
     groups: groupByDate(entries),
     deleted: [],
+    expected: [],
   }
 
   const markup = renderToStaticMarkup(
@@ -323,6 +368,7 @@ describe('the signed-in surface renders', () => {
       onDelete={noop}
       onRestore={noop}
       onAdd={noop}
+      onAddExpected={noop}
     />,
   )
 

@@ -94,6 +94,14 @@ export default {
   'entry.delete': 'Delete {description}',
   'entry.metaSeparator': ' · ',
 
+  // --- expected this month --------------------------------------------------
+  // The recurring-cost card. "Expected" rather than "Due": the list is what the
+  // month should hold, and the app never posts one on its own.
+  'expected.title': 'Expected this month',
+  'expected.hint': 'From the recurring tab, and not in this month yet. Tap one to fill it in.',
+  // A template with a blank amount is recurring-but-variable, like a utility bill.
+  'expected.amountVaries': 'Varies',
+
   // --- deleted entries ------------------------------------------------------
   // The count is in the summary line because the section is collapsed: closed,
   // it is the only thing that says whether opening it is worth it.
@@ -264,5 +272,12 @@ export default {
   'warning.unattributedRows': {
     one: '{count} settlement names nobody who paid, so it is left out of the balance.',
     other: '{count} settlements name nobody who paid, so they are left out of the balance.',
+  },
+  // Nothing on screen is wrong because of one of these — which is why it is the last
+  // notice — but a recurring cost that stops being offered is exactly the forgetting
+  // the recurring tab exists to prevent, so it cannot be silent either.
+  'warning.undecodedTemplates': {
+    one: '{count} row in the recurring tab cannot be read, so it is not offered above.',
+    other: '{count} rows in the recurring tab cannot be read, so they are not offered above.',
   },
 }

@@ -35,6 +35,7 @@ const EMPTY_EXTRAS = {
   undecodedRows: 0,
   undatedRows: 0,
   unattributedRows: 0,
+  undecodedTemplates: 0,
   configMissing: false,
 }
 
@@ -67,6 +68,16 @@ export function useLedger(spreadsheetId) {
   const [config, setConfig] = useState(() => mergeConfig(seed?.config))
   const [status, setStatus] = useState(() => (seed ? 'stale' : 'idle'))
   const [error, setError] = useState(null)
+  /**
+   * The `recurring` tab as read, for the card that says what this month is still missing.
+   *
+   * Deliberately NOT in the launch snapshot, unlike the entries and the config. It would
+   * need a validator of its own — the snapshot is the one input never decoded through a
+   * schema reader, and it is restored in a `useState` initializer, so one bad cached row
+   * white-screens the first render with no way in to clear it — and a reminder loses
+   * nothing by arriving one round trip late.
+   */
+  const [templates, setTemplates] = useState([])
   /**
    * What the last read found in the sheet and could not put in `entries`: tombstones
    * `reconcileById` hid, rows whose amount is unreadable, rows with no real date, and
@@ -120,11 +131,13 @@ export function useLedger(spreadsheetId) {
     const changed = !sameSheetConfig(sheetConfigRef.current, data.sheetConfig)
     sheetConfigRef.current = data.sheetConfig
     if (changed) setConfig(mergeConfig(data.sheetConfig))
+    setTemplates(data.templates ?? [])
     setSheetExtras({
       supersededRows: data.supersededRows,
       undecodedRows: data.undecodedRows,
       undatedRows: data.undatedRows,
       unattributedRows: data.unattributedRows,
+      undecodedTemplates: data.undecodedTemplates,
       configMissing: data.configMissing,
     })
     setError(null)
@@ -217,6 +230,7 @@ export function useLedger(spreadsheetId) {
       sheetConfigRef.current = undefined
       setEntries([])
       setConfig(mergeConfig())
+      setTemplates([])
       setSheetExtras(EMPTY_EXTRAS)
       setStatus('idle')
       setError(null)
@@ -363,6 +377,8 @@ export function useLedger(spreadsheetId) {
   return {
     entries,
     config,
+    /** The `recurring` tab's declarations. `templatesDue` is what turns them into a card. */
+    templates,
     status,
     error,
     tombstoneCount: tombstones,
