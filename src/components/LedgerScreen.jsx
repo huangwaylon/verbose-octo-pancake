@@ -74,6 +74,7 @@ export function LedgerScreen({
           <MonthNav monthKey={monthKey} onChange={onMonthChange} />
           <EntryList
             groups={view.groups}
+            recurring={view.recurring}
             config={config}
             me={me}
             onEdit={onEdit}

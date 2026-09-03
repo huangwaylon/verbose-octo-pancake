@@ -97,6 +97,10 @@ export default {
   // No button here: the block button above the list is the one add affordance,
   // and two identical accent buttons on one screen read as two different actions.
   'list.emptyText': 'Add a grocery run or a meal you split.',
+  // The section above the days, holding what the recurring tab has recorded this
+  // month. The same words as `recurring.title`, because it is the same thing —
+  // the prefix follows the SURFACE, and this one is the ledger's.
+  'list.recurring': 'Recurring costs',
 
   'entry.expense': 'Expense',
   'entry.settled': 'Settled up',
@@ -143,6 +147,11 @@ export default {
   'recurring.stopped': 'stopped',
   'recurring.record': 'Record',
   'recurring.recordName': 'Record {name}',
+  // The same control on a cost whose day has not come — rent paid on the 3rd. The row
+  // still says "due on day 27" beside it, so what this word adds is that recording it is
+  // a decision rather than the schedule catching up.
+  'recurring.recordNow': 'Record now',
+  'recurring.recordNowName': 'Record {name} now',
 
   // --- recurring costs: the form --------------------------------------------
   'recurring.addTitle': 'Add a recurring cost',
@@ -152,8 +161,10 @@ export default {
   // Blank is a real answer here, and the one a utility bill needs.
   'recurring.amountHint': 'Leave it empty if the amount changes every month.',
   'recurring.day': 'Day of the month',
+  // "on its own", not "never": the page offers Record now before this day, and the daily
+  // poster is the thing this actually governs.
   'recurring.dayHint':
-    'Nothing is recorded before this day. A 31 lands on the last day of short months.',
+    'Nothing is recorded on its own before this day. A 31 lands on the last day of short months.',
   // Names the person and the number, because the mode saves a BLANK cell: the
   // figure shown is the config tab's and moves when that does.
   'recurring.splitDefault': 'Default',

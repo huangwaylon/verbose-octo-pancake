@@ -7,6 +7,7 @@ import { newTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
+  monthSections,
   shareByPerson,
   spendByCategory,
   spendByPerson,
@@ -335,6 +336,60 @@ describe('entry list renders', () => {
     expect(markup).toContain('Add a grocery run')
     expect(markup).not.toContain('<button')
   })
+
+  /**
+   * The fixed costs are lifted out of their days into one section above them. What has to hold
+   * is that a row appears ONCE: rendered in both places it reads as a double charge of money
+   * that moved once.
+   */
+  describe('the recurring section', () => {
+    const rent = entry({
+      id: 'rent#2026-08',
+      amountYen: 220000,
+      category: 'Rent',
+      description: 'Rent',
+      date: '2026-08-27',
+    })
+    const shop = entry({ id: 's', amountYen: 4210, category: 'Groceries', date: '2026-08-04' })
+
+    const render = (list) =>
+      renderToStaticMarkup(
+        <EntryList
+          {...monthSections(list)}
+          config={config}
+          me={PERSON.P1}
+          onEdit={noop}
+          onDelete={noop}
+        />,
+      )
+
+    it('leads with the fixed costs, above the first day, and names the section', () => {
+      const markup = render([shop, rent])
+      expect(markup).toContain('Recurring costs')
+      expect(markup.indexOf('Recurring costs')).toBeLessThan(markup.indexOf('Groceries'))
+      // Its own total, like a day's: 220,000 is rent alone, so it is the section being
+      // totalled rather than the month.
+      expect(markup).toContain('¥220,000')
+    })
+
+    it('renders a recurring entry once, not in its day as well', () => {
+      // The 27th holds nothing else, so a duplicated row would leave a second band with the
+      // same figure in it.
+      expect(render([shop, rent]).match(/¥220,000/g)).toHaveLength(2) // the row and the total
+      expect(render([shop, rent]).match(/entry__desc/g)).toHaveLength(2) // rent, and the shop
+    })
+
+    it('is not an empty month when the fixed costs are all it has', () => {
+      const markup = render([rent])
+      expect(markup).toContain('Recurring costs')
+      expect(markup).not.toContain('Nothing logged this month')
+    })
+
+    it('is absent entirely from a month with no recurring row', () => {
+      // Not a heading over nothing: `monthSections` answers null and this renders no band.
+      expect(render([shop])).not.toContain('Recurring costs')
+    })
+  })
 })
 
 /**
@@ -424,6 +479,25 @@ describe('the recurring page renders', () => {
   it('distinguishes "not loaded" from "none", so nobody adds a second copy', () => {
     expect(render({ templates: [], loaded: true })).toContain('Nothing set up yet')
     expect(render({ templates: [], loaded: false })).toContain('Not loaded yet')
+  })
+
+  /**
+   * A cost whose day has not come is still recordable — rent paid on the 3rd — and the row has
+   * to say both things at once: the schedule it is on, and that recording it now is a choice.
+   *
+   * 2099 rather than a month near today, because this component reads the real clock: any month
+   * that is currently in the future stops being one, and the case would then silently assert
+   * nothing. The suite's other rows deliberately use a month that has passed.
+   */
+  it('offers Record now, not Record, for a cost its day has not reached', () => {
+    const markup = render({ monthKey: '2099-08' })
+    expect(markup).toContain('>Record now<')
+    expect(markup).toContain('aria-label="Record Rent now"')
+    // Beside it, not instead of it: the day is what makes an early tap an informed one.
+    expect(markup).toContain('due on day 27')
+    // And a recorded row still offers nothing, whichever month is on screen.
+    const recorded = render({ monthKey: '2099-08', entries: [expense({ id: 'rent#2099-08' })] })
+    expect(recorded).not.toContain('Record now')
   })
 
   it('reports rows the sheet holds that it cannot use, where the person is standing', () => {
@@ -540,7 +614,7 @@ describe('the signed-in surface renders', () => {
     byCategory: spendByCategory(entries),
     byPerson: spendByPerson(entries),
     byShare: shareByPerson(entries),
-    groups: groupByDate(entries),
+    ...monthSections(entries),
     deleted: [],
   }
 

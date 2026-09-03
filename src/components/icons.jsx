@@ -101,6 +101,23 @@ export function SwapIcon(props) {
   )
 }
 
+/**
+ * The recurring marker, on the ledger's fixed-costs band. Two open arcs rather than the
+ * closed ring `RefreshIcon` draws: that one already means "read the sheet again" in the
+ * header, and one glyph cannot mean two things on one screen. It renders at 15px, so the
+ * arrowheads sit at the ends of the arcs where they stay legible at that size.
+ */
+export function RepeatIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 12V10.5A4 4 0 018 6.5h11" />
+      <path d="M16 3.5l3.5 3-3.5 3" />
+      <path d="M20 12v1.5a4 4 0 01-4 4H5" />
+      <path d="M8 20.5l-3.5-3 3.5-3" />
+    </svg>
+  )
+}
+
 export function WalletIcon(props) {
   return (
     <svg {...base} {...props}>

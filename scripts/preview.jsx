@@ -31,7 +31,7 @@ import { ACCENTS } from '../src/lib/theme.js'
 import { newTemplate } from '../src/lib/recurring.js'
 import {
   computeBalance,
-  groupByDate,
+  monthSections,
   shareByPerson,
   spendByCategory,
   spendByPerson,
@@ -53,6 +53,14 @@ const config = {
 }
 
 const raw = [
+  // Two recurring instances, at the ids the `templates` below mint — so the ledger's
+  // fixed-costs section is the app's own reading of an id rather than a flag, and the
+  // section holds two rows, which is what puts a hairline between them. Deliberately
+  // modest figures: rent's ¥220,000 would take 84% of the category ring and leave the
+  // palette — the whole reason these pages exist — five slivers. The big one is on the
+  // stress page, where geometry rather than colour is what is being read.
+  ['gas#2026-08', '2026-08-10', PERSON.P2, 7200, '日用品', 'ガス・水道', EVEN_SHARE],
+  ['gym#2026-08', '2026-08-01', PERSON.P2, 8000, '娯楽', 'ジムの会費', EVEN_SHARE],
   ['a', '2026-08-05', PERSON.P1, 4820, '食費', 'いつもの買い物', EVEN_SHARE],
   ['b', '2026-08-05', PERSON.P2, 1280, '外食', 'ラーメン', EVEN_SHARE],
   ['c', '2026-08-04', PERSON.P1, 12400, '日用品', '洗剤とティッシュ', EVEN_SHARE],
@@ -129,7 +137,7 @@ const viewOf = (list, tombstones = []) => ({
   byCategory: spendByCategory(list),
   byPerson: spendByPerson(list),
   byShare: shareByPerson(list),
-  groups: groupByDate(list),
+  ...monthSections(list),
   deleted: tombstones,
 })
 
@@ -218,6 +226,18 @@ const stressEntries = [
     amountYen: 9876543,
     category: '',
     payerShare: 0,
+  }),
+  /* The fixed-costs band under the same stress: its title carries an icon, so it has less
+     room for a section total than a day label does. */
+  makeEntry({
+    id: 'monthly-standing-order#2026-08',
+    type: ENTRY_TYPE.EXPENSE,
+    date: '2026-08-27',
+    payer: PERSON.P1,
+    amountYen: 98765432,
+    category: '公共料金と光熱費の支払い',
+    description: 'Rent for the apartment plus the parking space we agreed to split unevenly',
+    payerShare: 0.8,
   }),
 ]
 
@@ -334,6 +354,10 @@ const STRESS_SETTINGS = settingsSheet(stressConfig)
  * so the harness measures that element's own scroll width.
  */
 const STRESS_RECURRING = recurringSheet(stressConfig, {
+  /* A month nobody has reached, so every row is recordable but not yet due — which puts the
+     WIDER of the two record labels next to the widest name the tab can hold. The page with
+     the four row states is `preview-*-recurring`; this one is about the geometry. */
+  monthKey: '2099-08',
   templates: [
     rowToTemplate(
       RECURRING.columns.map(

@@ -111,11 +111,19 @@ Desktop is a convenience. Every layout decision is made at 320px first.
 beside its entry twin; every decision the page makes is in `src/lib/recurring.js`. `README.md`
 documents the columns.
 
-- **`${templateId}#${monthKey}` is the whole of "already recorded", and TWO writers derive it
-  identically** — `RecurringSheet`'s Record control and `postRecurring` in
-  `apps-script/Code.gs`; `instanceId` says why it is derived rather than matched on category and
-  description. Its corollary: **a template's id is minted once and NEVER changes**, or the poster
-  posts every month it has already handled again.
+- **`${templateId}#${monthKey}` is the whole of "already recorded", and THREE readers derive or
+  parse it identically** — `RecurringSheet`'s Record control, `postRecurring` in
+  `apps-script/Code.gs`, and `isRecurringInstance`, which is the INVERSE and the only way the
+  ledger knows a row is a fixed cost; `instanceId` says why it is derived rather than matched on
+  category and description. Its corollary: **a template's id is minted once and NEVER changes**,
+  or the poster posts every month it has already handled again.
+- **`isRecurringInstance` reads the ENTRY ALONE — never the templates, never the note.** A `↻`
+  in the description is lost the first time somebody fixes a typo, and it is the bank's own text
+  besides; a `template_id` column is a schema change in three files that cannot import each
+  other, with two writers to fill it in. Matching against the loaded templates would be worse
+  than either: they are deliberately absent from the snapshot, so the section would vanish on
+  the cached paint and appear a round trip later, and `deleteTemplate` orphans instances that
+  are still fixed costs.
 - **There are TWO ways to stop a cost, and retiring is the one to reach for.** `active_to` keeps
   the row, therefore the id, therefore the record of which months are handled — and it is
   reversible, so it needs no confirmation and is not `btn--danger`. `deleteTemplate` removes the
@@ -123,15 +131,22 @@ documents the columns.
   stay, the sheet's memory of them does not, so adding the cost back under a new id can post a
   month already paid. That cost is stated in the confirmation and in `recurring.deleteHint` — do
   not shorten either to "this cannot be undone", which is the part anyone can already guess.
-- **`recurringRows` is the ONE derivation of "due", and its three fields say four things.** Not
+- **`recurringRows` is the ONE derivation of "due", and its four fields say four things.** Not
   scheduled, scheduled but not yet due, due, recorded — rendered as two, rent-on-the-27th viewed
   on the 3rd is indistinguishable from rent already paid, so every row says which it is in words.
   "Stopped" and "not this month" are also different facts. Do not add a second predicate beside
   it.
+- **`draft`, not `due`, is what gates the Record control, and they are deliberately wider and
+  narrower.** `draft` is non-null for any month a cost may be recorded into — rent paid on the
+  3rd has to be enterable on the 3rd — while `due` only decides whether the control says Record
+  or Record now. Gate the button on `due` again and the sole way to enter an early payment is to
+  retype the whole cost by hand. The day still binds the one writer that must never run early,
+  `postRecurring`, which is a different file.
 - **`recurringRows` takes the RAW entry list, tombstones included.** A tombstone means the month
   is recorded — otherwise deleting a double-charged rent nags for the rest of the month.
-- **Due is ONE comparison, `date <= today`, against the instance's own date.** Offering the 27th's
-  rent on the 1st has the balance claiming half of it owed three weeks before the money moves.
+- **Due is ONE comparison, `date <= today`, against the instance's own date.** Calling the 27th's
+  rent due on the 1st has the balance claiming half of it owed three weeks before the money moves.
+  Recording it early is somebody's own decision, and the row says the day either way.
 - **The recurring page is scoped to the month on SCREEN; retiring is dated from TODAY.** A month
   missed while nobody was recording has to stay recordable, and `postRecurring` only ever posts
   the current one — but "stop this cost" is a decision about now, and dated from a month someone
@@ -187,11 +202,11 @@ documents the columns.
   reachable from a test. Every list transition, status decision and refusal lives in
   `ledgerState.js` (`reconcileById`, `looksUninitialized`, `entryFromInput`, `hasPendingWrite`,
   `compactRefusal`, `newDraftEntry`, `shouldRefresh`, `noticeKeys`, `gateFor`,
-  `templateFromInput`), `balance.js` (`initialMonthKey` and the aggregates), `split.js`
-  (`toSplit`, `nextSplit`) or `recurring.js` (`recurringRows`, `reconcileTemplates`,
-  `templateFormProblem`, `retiredTemplate`). Put new logic there, or it cannot be
-  tested at all. Hooks are not confined to `src/state/`: `useEntrySplit` sits beside the one
-  control that holds its state.
+  `templateFromInput`), `balance.js` (`initialMonthKey`, `monthSections` and the aggregates),
+  `split.js` (`toSplit`, `nextSplit`) or `recurring.js` (`recurringRows`, `isRecurringInstance`,
+  `reconcileTemplates`, `templateFormProblem`, `retiredTemplate`). Put new logic there, or it
+  cannot be tested at all. Hooks are not confined to `src/state/`: `useEntrySplit` sits beside
+  the one control that holds its state.
 
 ## Money, dates and the split
 
@@ -277,9 +292,16 @@ documents the columns.
   is its entry-shaped wrapper — `App` owns `pendingDelete` and nothing else calls `removeEntry`,
   and recovery is the collapsed `DeletedList`, never a toast action. The caller supplies the
   BODY, because only the caller knows whether the thing can be recovered.
-- **Nothing about recurring costs appears on the ledger** except the `undecodedTemplates`
-  notice, which is about rows the sheet holds and the app cannot use rather than a reminder.
-  Reminders live on the page: that is a product decision, not an oversight.
+- **The ledger shows recurring costs it has RECORDED, and never one it has not.** `monthSections`
+  lifts the month's instances into one section above the days; the `undecodedTemplates` notice is
+  the only other mention, and it is about rows the sheet holds and the app cannot use. There is
+  no "rent is not in yet" anywhere on this screen — reminders live on the page, and that is a
+  product decision rather than an oversight.
+- **A recurring instance appears in the SECTION or in its day, never both.** `monthSections`
+  partitions: rendered twice it reads as a double charge of money that moved once, and dropped
+  from both it vanishes off a list whose own totals still count it. Which is also why a day's
+  total is that day's remaining rows and the month's figures come from the month, not from these
+  sections.
 - **The deleted list is scoped to the month on screen**; settings' count stays sheet-wide,
   because that is what `compact` acts on.
 - **Nothing in the UI creates a settlement**, so the balance in `Header` carries no action and
@@ -630,10 +652,15 @@ that matters most is end-to-end: a settlement of exactly the outstanding balance
 net to zero, with odd-unit amounts so rounding is genuinely exercised.
 
 **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the real
-`LedgerScreen` to static HTML with the real stylesheets, twenty-four pages: every accent, both
+`LedgerScreen` to static HTML with the real stylesheets, twenty-six pages: every accent, both
 languages, the six overlays, the settled balance, the empty add form, both per-person summary
-views, and four stress pages holding everything a 320px phone has no room for. The settlement form earns its own page because it is the sparsest
-thing the entry form renders and the only place its two `!isSettlement` blocks are visible. The
+views, and four stress pages holding everything a 320px phone has no room for. The ledger
+fixture carries two recurring instances so the section renders on every one of them, and keeps
+them SMALL on purpose: rent's ¥220,000 would take 84% of the category ring and leave the palette
+five slivers. `preview-en-stress-recurring` is set to a month nobody has reached, which is what
+puts the wider of the two record labels beside the widest name the tab can hold. The settlement
+form earns its own page because it is the sparsest thing the entry form renders and the only
+place its two `!isSettlement` blocks are visible. The
 stress pages' `SIDEWAYS` readout is what caught the recurring list squeezing its name column to
 60px behind an eight-figure amount, and before that the aside being sized by its longest name —
 no assertion in the suite could see either.

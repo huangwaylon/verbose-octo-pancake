@@ -345,7 +345,7 @@
   gap: var(--space-3);
 }
 
-/* A section heading and its one control on a line, like the day group's label. */
+/* A section heading and its one control on a line, like the entry list's section label. */
 .summary__heading {
   display: flex;
   align-items: center;
@@ -517,24 +517,27 @@
 /* =========================================================================
    Entry list
    =========================================================================
-   One continuous white card per day, with rows divided by hairlines INSET to
-   align with the text. Edge-to-edge dividers are the Bootstrap list-group;
+   One continuous white card per section, with rows divided by hairlines INSET
+   to align with the text. Edge-to-edge dividers are the Bootstrap list-group;
    inset dividers are the editorial detail, and the difference is immediately
-   legible. */
+   legible.
 
-.day-group {
+   A section is a day, or the month's recurring costs above them all — one
+   treatment, because they are one kind of thing and only the title differs. */
+
+.entry-section {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.day-group + .day-group {
+.entry-section + .entry-section {
   margin-top: var(--space-5);
 }
 
 /* Sits outside the white card, on the page ground: structure by typography and
    whitespace rather than a tinted header bar. */
-.day-group__label {
+.entry-section__label {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -546,16 +549,22 @@
   line-height: var(--lh-tight);
 }
 
-.day-group__total {
+.entry-section__total {
   color: var(--ink-3);
   font-size: var(--fs-caption);
   font-weight: 400;
 }
 
-/* The day label is a heading so the Headings rotor can reach it, and this is what keeps
-   it looking like the band it sits in: base.css gives every heading `font-weight: 600`,
-   and that is a direct rule on the child, so it outranks the 500 it would inherit. */
-.day-group__day {
+/* The title is a heading so the Headings rotor can reach it, and `font: inherit` is what
+   keeps it looking like the band it sits in: base.css gives every heading
+   `font-weight: 600`, and that is a direct rule on the child, so it outranks the 500 it
+   would inherit. Flex for the recurring section's leading icon — centred on the text
+   rather than left on the baseline the label aligns the total to, which would sink a
+   15px glyph by its own descender space. */
+.entry-section__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
   font: inherit;
 }
 

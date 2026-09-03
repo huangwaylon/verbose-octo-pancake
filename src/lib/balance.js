@@ -15,6 +15,7 @@
 import { PERSON, ENTRY_TYPE, isActive, otherPerson } from '../schema.js'
 import { splitYen, sumYen } from './money.js'
 import { isMonthKey } from './dates.js'
+import { isRecurringInstance } from './recurring.js'
 
 /** Where a blank category lands. Exported so the UI labels exactly this bucket. */
 export const UNCATEGORIZED = 'Uncategorized'
@@ -247,4 +248,42 @@ export function groupByDate(entries) {
       totalYen: totalSpend(dayEntries),
     }))
     .sort((a, b) => descending(a.date, b.date))
+}
+
+/**
+ * The month's list as the two sections it renders: the recurring costs it has recorded, then
+ * the days.
+ *
+ * ONE function rather than a filter at each end, because the two halves have to PARTITION.
+ * A row in both reads as a double charge of money that moved once; a row in neither vanishes
+ * from the list while still counting in every total above it, which is the same bug the
+ * `undecodedRows` notice exists to confess.
+ *
+ * A recurring instance is lifted OUT of its day, so a day's total is what that day holds on
+ * screen. The month's own figures are untouched: `totalSpend` and the three breakdowns take
+ * the month, not these sections, so nothing above the list moves because rent was grouped
+ * differently.
+ *
+ * The section's order comes from `groupByDate` rather than a comparator of its own, so it
+ * cannot disagree with the days below it — a handful of rows a month, flattened.
+ *
+ * @returns {{recurring: {entries: object[], totalYen: number}|null, groups: object[]}}
+ */
+export function monthSections(entries) {
+  const recurring = []
+  const rest = []
+  for (const entry of activeEntries(entries)) {
+    ;(isRecurringInstance(entry) ? recurring : rest).push(entry)
+  }
+
+  return {
+    // Null rather than an empty section, so nothing renders a heading over no rows.
+    recurring: recurring.length
+      ? {
+          entries: groupByDate(recurring).flatMap((group) => group.entries),
+          totalYen: totalSpend(recurring),
+        }
+      : null,
+    groups: groupByDate(rest),
+  }
 }

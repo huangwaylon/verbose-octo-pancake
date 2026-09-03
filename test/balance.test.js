@@ -10,6 +10,7 @@ import {
   monthKeysPresent,
   initialMonthKey,
   groupByDate,
+  monthSections,
   deletedEntries,
 } from '../src/lib/balance.js'
 import { PERSON, ENTRY_TYPE, EVEN_SHARE } from '../src/schema.js'
@@ -669,6 +670,86 @@ describe('groupByDate', () => {
   it('returns [] for nothing to show', () => {
     expect(groupByDate([])).toEqual([])
     expect(groupByDate(null)).toEqual([])
+  })
+})
+
+/**
+ * The month's list as its two sections. What matters here is that they PARTITION: a row in
+ * both is a double charge of money that moved once, and a row in neither disappears off the
+ * list while still counting in every figure above it.
+ *
+ * The ids are the whole input — a recurring instance is recognised from its own id, with no
+ * template in sight, which is what lets the section survive a cold launch and a deleted
+ * declaration.
+ */
+describe('monthSections', () => {
+  const instance = (id, amountYen, over) => expense(id, amountYen, { date: '2026-03-05', ...over })
+
+  it('lifts recurring instances into their own section, out of the days', () => {
+    const entries = [
+      instance('rent#2026-03', 220000, { date: '2026-03-27' }),
+      instance('gym#2026-03', 8000, { date: '2026-03-01' }),
+      expense('shop', 4820, { date: '2026-03-05' }),
+    ]
+    const { recurring, groups } = monthSections(entries)
+
+    expect(recurring.entries.map((e) => e.id)).toEqual(['rent#2026-03', 'gym#2026-03'])
+    expect(recurring.totalYen).toBe(228000)
+    // And out of the day they were dated to: the 27th holds nothing else, so it is gone.
+    expect(groups.map((g) => g.date)).toEqual(['2026-03-05'])
+    expect(groups[0].entries.map((e) => e.id)).toEqual(['shop'])
+  })
+
+  it('puts every active row in exactly one of the two, and nothing in both', () => {
+    const entries = [
+      instance('rent#2026-03', 100),
+      expense('plain', 100),
+      settlement('paid-back', 100),
+      expense('gone', 100, { deletedAt: 'x' }),
+    ]
+    const { recurring, groups } = monthSections(entries)
+    const ids = [
+      ...recurring.entries.map((e) => e.id),
+      ...groups.flatMap((g) => g.entries.map((e) => e.id)),
+    ]
+    expect(ids.sort()).toEqual(['paid-back', 'plain', 'rent#2026-03'])
+  })
+
+  it('is null rather than an empty section when the month has no recurring row', () => {
+    // A heading over no rows, or a "0" total, would both be worse than the absence.
+    expect(monthSections([expense('a', 100, { date: '2026-03-01' })]).recurring).toBeNull()
+    expect(monthSections([]).recurring).toBeNull()
+    expect(monthSections(null)).toEqual({ recurring: null, groups: [] })
+  })
+
+  it('leaves the month total alone: the two sections only regroup it', () => {
+    const entries = [
+      instance('rent#2026-03', 220001, { date: '2026-03-27' }),
+      expense('shop', 4821, { date: '2026-03-05' }),
+      settlement('s', 9999, { date: '2026-03-05' }),
+    ]
+    const { recurring, groups } = monthSections(entries)
+    const sectioned = recurring.totalYen + groups.reduce((acc, g) => acc + g.totalYen, 0)
+    expect(sectioned).toBe(totalSpend(entries))
+  })
+
+  it('orders the section like the days below it, newest first then by id', () => {
+    const entries = [
+      instance('b#2026-03', 100, { date: '2026-03-01' }),
+      instance('a#2026-03', 100, { date: '2026-03-01' }),
+      instance('c#2026-03', 100, { date: '2026-03-09' }),
+    ]
+    const ids = ['c#2026-03', 'b#2026-03', 'a#2026-03']
+    expect(monthSections(entries).recurring.entries.map((e) => e.id)).toEqual(ids)
+    // Reversed too, so it is the sort being pinned rather than the fixture's order.
+    expect(monthSections([...entries].reverse()).recurring.entries.map((e) => e.id)).toEqual(ids)
+  })
+
+  it('does not mutate or reorder the input array', () => {
+    const entries = [instance('b#2026-03', 100), expense('a', 100, { date: '2026-03-09' })]
+    const snapshot = entries.map((e) => e.id)
+    monthSections(entries)
+    expect(entries.map((e) => e.id)).toEqual(snapshot)
   })
 })
 

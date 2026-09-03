@@ -26,6 +26,10 @@ import {
 import { dayInMonth, isMonthKey, monthNumber, shiftMonth, todayIso } from './dates.js'
 import { isShare, isYenAmount, parseAmountToYen } from './money.js'
 
+/** The join between a template id and a month key. Spelled once, so the two halves below
+ *  — minting an instance id and recognising one — cannot drift apart. */
+const INSTANCE_JOIN = '#'
+
 /**
  * A template's instance id for a month, and the one home of that join.
  *
@@ -35,7 +39,33 @@ import { isShare, isYenAmount, parseAmountToYen } from './money.js'
  * already posted would stop matching it.
  */
 function instanceId(templateId, monthKey) {
-  return `${templateId}#${monthKey}`
+  return `${templateId}${INSTANCE_JOIN}${monthKey}`
+}
+
+/**
+ * Whether an entry is some month's instance of a recurring cost — the inverse of
+ * `instanceId`, and the whole of how the ledger tells a fixed cost from an ordinary one.
+ *
+ * The ID, not a marker in the note and not a column of its own. The note is the bank's own
+ * text plus a person's, editable and searchable, so a `↻` in it is lost the first time
+ * anyone corrects a typo. A `template_id` column would be a schema change in three places
+ * that cannot import each other, and both writers would have to fill it in. The id already
+ * carries the fact, both writers already derive it identically, and it is written once and
+ * never edited.
+ *
+ * Deliberately reads the entry ALONE rather than matching against the loaded templates.
+ * Templates are not in the launch snapshot, so a list checked against them would have the
+ * section vanish on the cached paint and appear a round trip later; and `deleteTemplate`
+ * orphans every instance it posted, which is a row that is still a fixed cost.
+ *
+ * The last join wins, so a hand-authored template id containing one still resolves.
+ */
+export function isRecurringInstance(entry) {
+  const id = entry?.id
+  if (typeof id !== 'string') return false
+  const join = id.lastIndexOf(INSTANCE_JOIN)
+  // `> 0`, not `>= 0`: an id that is only a month key names no template.
+  return join > 0 && isMonthKey(id.slice(join + INSTANCE_JOIN.length))
 }
 
 /**
@@ -80,9 +110,16 @@ function scheduledIn(template, monthKey) {
  *   `scheduled`  applies to this month at all — false for a quarterly cost out of quarter, and
  *                for one retired through `active_to`
  *   `recorded`   its instance id is already in the ledger, LIVE OR TOMBSTONED
- *   `due`        the draft to record, or null: scheduled, not recorded, and its day has come
+ *   `due`        scheduled, not recorded, and its day has come
+ *   `draft`      the entry to record, or null when this month has nothing to record
  *
- * Three fields, four states: not scheduled, scheduled but not yet due, due, recorded.
+ * Four fields, four states: not scheduled, scheduled but not yet due, due, recorded.
+ *
+ * `draft` is non-null for every month a cost MAY be recorded into, which is wider than `due`:
+ * rent is recordable on the 3rd, it is simply not due yet, and someone who has already paid it
+ * needs a way to say so. So `due` decides what the control is CALLED and `draft` decides
+ * whether there is one — which keeps the page's one gate a single truthiness check, and keeps
+ * the unattended poster in `apps-script/Code.gs` the only thing bound by the day.
  *
  * `entries` must be the RAW ledger, TOMBSTONES INCLUDED — the one place in this codebase where
  * the deleted rows are the ones that count. Soft-delete a double-charged rent and a list built
@@ -97,7 +134,8 @@ function scheduledIn(template, monthKey) {
  * @param {object[]} entries the raw list, tombstones and pending rows included
  * @param {string} monthKey the month being looked at
  * @param {string} [today] injected by the tests; the app always takes the default
- * @returns {{template: object, scheduled: boolean, recorded: boolean, due: object|null}[]}
+ * @returns {{template: object, scheduled: boolean, recorded: boolean, due: boolean,
+ *            draft: object|null}[]}
  */
 export function recurringRows(templates, entries, monthKey, today = todayIso()) {
   if (!templates.length) return []
@@ -105,14 +143,16 @@ export function recurringRows(templates, entries, monthKey, today = todayIso()) 
   const real = isMonthKey(monthKey)
 
   return templates.map((template) => {
-    const draft = real ? entryFromTemplate(template, monthKey) : null
+    const instance = real ? entryFromTemplate(template, monthKey) : null
     const scheduled = Boolean(real && scheduledIn(template, monthKey))
-    const recorded = Boolean(draft && known.has(draft.id))
+    const recorded = Boolean(instance && known.has(instance.id))
+    const recordable = scheduled && !recorded
     return {
       template,
       scheduled,
       recorded,
-      due: scheduled && !recorded && draft.date <= today ? draft : null,
+      due: recordable && instance.date <= today,
+      draft: recordable ? instance : null,
     }
   })
 }

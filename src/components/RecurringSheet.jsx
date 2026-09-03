@@ -114,12 +114,13 @@ export function RecurringSheet({
  */
 function RecurringRow({ state, label, money, onEdit, onRecord }) {
   const { t } = useT()
-  const { template, due, recorded, scheduled } = state
+  const { template, draft, due, recorded, scheduled } = state
 
   /**
    * Why this row has no Record button, in words rather than by its absence. Retired first:
    * "stopped" and "not this month" are different facts, and a quarterly cost out of quarter is
-   * only the second.
+   * only the second. Still said for a row that CAN be recorded early — "due on day 27" beside
+   * "Record now" is the whole of what makes the second one an informed tap.
    */
   const status = recorded
     ? t('recurring.recorded')
@@ -153,16 +154,24 @@ function RecurringRow({ state, label, money, onEdit, onRecord }) {
         <span className="recurring__name">{name}</span>
         <span className="recurring__meta">{meta}</span>
       </button>
-      {due && (
+      {/* `draft`, not `due`: a cost this month has not recorded can be recorded whenever
+          somebody has actually paid it, and rent paid on the 3rd is the case that needs it.
+          `due` only decides the wording — the schedule still governs the unattended poster,
+          which is the one writer that must never run early. */}
+      {draft && (
         <button
           type="button"
           className="btn btn--sm btn--ghost"
-          onClick={() => onRecord(due)}
+          onClick={() => onRecord(draft)}
           /* Several identical "Record" buttons in a column say nothing about which cost
-             each one belongs to, which is the whole of what VoiceOver reads out. */
-          aria-label={t('recurring.recordName', { name })}
+             each one belongs to, which is the whole of what VoiceOver reads out. The name
+             goes between the two words rather than after them, so the visible label's own
+             words still read in order. */
+          aria-label={
+            due ? t('recurring.recordName', { name }) : t('recurring.recordNowName', { name })
+          }
         >
-          {t('recurring.record')}
+          {due ? t('recurring.record') : t('recurring.recordNow')}
         </button>
       )}
     </li>

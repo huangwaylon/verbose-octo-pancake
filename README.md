@@ -102,7 +102,7 @@ silently make it monthly.
 | D | `payer` | `p1` | Whose tab the instance lands in; case-folded on read |
 | E | `payer_share` | `80` | As in the expense column. Blank means "follow that payer's `default_split`" — **not** an even split |
 | F | `months` | `1, 7` | Blank means every month; `1,7` covers annual and quarterly. There is no weekly: the app is month-scoped throughout |
-| G | `day_of_month` | `27` | Nothing is offered before its day, and 31 is clamped to the month's last day. Blank means the 1st |
+| G | `day_of_month` | `27` | Nothing is recorded before its day unless somebody asks for it, and 31 is clamped to the month's last day. Blank means the 1st |
 | H | `active_from` | `2026-04` | Month keys, so an ended lease stops nagging without deleting what it cost. Both blank means always |
 | I | `active_to` | `2027-03` | as above |
 | J | `id` | `rent` | Minted by the app; yours to invent by hand. It has to be stable — see below |
@@ -125,18 +125,30 @@ Two writers use that id and neither can post a month twice:
 
 - **The app**, on the recurring page: every cost is listed with what the month on screen says
   about it — recorded, due now, not yet due, or not scheduled — and a **Record** button
-  wherever there is something to record. A tap prefills the ordinary entry form, so a person
-  confirms the figure and Save is the same optimistic write as any other. Nothing auto-posts
-  here. The page is scoped to the month the ledger is showing, so a month missed while nobody
-  was recording stays recordable.
+  wherever there is something to record. A cost whose day has not come yet is still
+  recordable, labelled **Record now** beside the day it is actually due: rent paid early is a
+  fact about the money, not a schedule violation. A tap prefills the ordinary entry form, so a
+  person confirms the figure and Save is the same optimistic write as any other. Nothing
+  auto-posts here. The page is scoped to the month the ledger is showing, so a month missed
+  while nobody was recording stays recordable.
 - **`postRecurring`** in the Apps Script project runs on a daily trigger, so rent lands even if
   nobody opens the app for a month. It is deliberately stricter: it only posts a template that
   spells out **both** its amount and its share, because anything left blank is a figure a
-  person should confirm. `SETUP.md` step 9 sets it up.
+  person should confirm — and it never runs early, since an unattended write nobody asked for
+  has to be one the declaration already promised. `SETUP.md` step 9 sets it up.
 
 Daily rather than on the 1st, because Google can delay or skip a scheduled run and every run
 after the first is a no-op. The recurring page is also what tells you the poster has died,
 since a row it should have written still shows a Record button there.
+
+That same id is how the **ledger** recognises a fixed cost: the month's instances are grouped
+into one **Recurring costs** section above the days, with its own total. No marker in the note
+and no extra column — the note is the bank's own text plus yours, editable, and a column would
+be a schema change three files have to agree on, while the id is written once and never edited.
+An instance whose declaration was later deleted still groups, and so does one recorded before
+the app has read the `recurring` tab, because nothing but the row itself is consulted. It is a
+grouping of rows that exist, not a reminder: nothing on the ledger nags about a cost that has
+not been recorded.
 
 There are **two ways to stop a cost**, and they differ in what the sheet remembers. Both live on
 the cost's own form: stopping in the footer, deleting last in the body behind a confirmation.
@@ -310,9 +322,9 @@ CLAUDE.md has the invocation.
 | `src/lib/sheets.js` | every Sheets API call |
 | `src/lib/sheetConfig.js` | the `config` tab: the key map, one parser per kind, what a fresh tab is seeded with |
 | `src/lib/money.js` | whole yen: parse, format, split, sum |
-| `src/lib/balance.js` | who-owes-whom and the month aggregates; pure |
+| `src/lib/balance.js` | who-owes-whom, the month aggregates and the list's two sections; pure |
 | `src/lib/ledgerState.js` | the optimistic list transitions, the status decisions, duplicate-id reconciliation; pure |
-| `src/lib/recurring.js` | the `recurring` tab: what a month owes, retire/restore, what a form refuses; pure |
+| `src/lib/recurring.js` | the `recurring` tab: what a month owes, retire/restore, what a form refuses, and what makes a ledger row one of these; pure |
 | `src/lib/split.js` | the payer's default share and the split control's transitions; pure |
 | `src/lib/connection.js` | the app key, the minted token, and the failure taxonomy |
 | `src/lib/snapshot.js` | the launch cache: last successful read, kept on the device |

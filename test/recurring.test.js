@@ -5,6 +5,7 @@ import {
   TEMPLATE_ERROR,
   templateFormProblem,
   entryFromTemplate,
+  isRecurringInstance,
   makeTemplate,
   recurringRows,
   restoredTemplate,
@@ -157,6 +158,52 @@ describe('entryFromTemplate', () => {
   })
 })
 
+/**
+ * The inverse of the instance id, and the whole of how the ledger tells a fixed cost from an
+ * ordinary one — no marker in the note, no column, and deliberately no look at the templates.
+ */
+describe('isRecurringInstance', () => {
+  const template = rowToTemplate(rent({ day_of_month: '27' }))
+
+  it('recognises what entryFromTemplate mints, in any month', () => {
+    for (const monthKey of ['2026-09', '2019-01', '2099-12']) {
+      expect(isRecurringInstance(entryFromTemplate(template, monthKey))).toBe(true)
+    }
+    // The literal too: this join is a contract with `apps-script/Code.gs`, which cannot
+    // import it, so a change here has to fail against the string and not only the pair.
+    expect(isRecurringInstance({ id: 'rent#2026-09' })).toBe(true)
+  })
+
+  it('refuses an id that is anything else', () => {
+    // A minted uuid, a bare template id, and every near miss of the month key — the last of
+    // which is what an entry dated by hand in the sheet would look like.
+    for (const id of [
+      'rent',
+      '9f1c2b7e-4a5d-4c3e-8f10-2b6d5e7a9c11',
+      'rent#',
+      '#2026-09',
+      'rent#2026',
+      'rent#2026-13',
+      'rent#2026-09-01',
+      '',
+    ]) {
+      expect(isRecurringInstance({ id }), id).toBe(false)
+    }
+  })
+
+  it('answers false for a row with no usable id rather than throwing', () => {
+    // It runs over the whole month on every render of the list, including a row a hand-edited
+    // sheet produced.
+    for (const entry of [undefined, null, {}, { id: null }, { id: 202609 }]) {
+      expect(isRecurringInstance(entry)).toBe(false)
+    }
+  })
+
+  it('takes the LAST join, so a hand-written id containing one still resolves', () => {
+    expect(isRecurringInstance({ id: 'gas#water#2026-09' })).toBe(true)
+  })
+})
+
 describe('recurringRows', () => {
   const templates = [
     rowToTemplate(rent({ day_of_month: '27', payer_share: '80' })),
@@ -166,7 +213,11 @@ describe('recurringRows', () => {
   const dueIds = (entries, monthKey, today) =>
     rowsFor(entries, monthKey, today)
       .filter((state) => state.due)
-      .map((state) => state.due.id)
+      .map((state) => state.draft.id)
+  const recordableIds = (entries, monthKey, today) =>
+    rowsFor(entries, monthKey, today)
+      .filter((state) => state.draft)
+      .map((state) => state.draft.id)
 
   it('answers for every template, in the tab’s order, whatever the month says', () => {
     // Every row, not only the due ones: a list that drops the rest cannot be edited.
@@ -184,11 +235,13 @@ describe('recurringRows', () => {
 
   it('still lists every template for a month key that is not one', () => {
     // The rows are what the sheet edits, so they must not vanish with a bad month —
-    // nothing is due or scheduled, which is the honest answer.
+    // nothing is due, scheduled or recordable, which is the honest answer.
     for (const monthKey of ['', '2026-13', '2026-09-01', undefined]) {
       const rows = rowsFor([], monthKey, '2026-09-30')
       expect(rows).toHaveLength(2)
-      expect(rows.every((state) => !state.due && !state.scheduled && !state.recorded)).toBe(true)
+      expect(
+        rows.every((state) => !state.due && !state.scheduled && !state.recorded && !state.draft),
+      ).toBe(true)
     }
   })
 
@@ -198,12 +251,12 @@ describe('recurringRows', () => {
 
   /**
    * The day gate and the month being looked at are ONE comparison against the instance's own
-   * date. Offering the 27th's rent on the 1st would have the balance claiming 44,000 owed for
-   * three weeks before the money moved.
+   * date. Offering the 27th's rent on the 1st as DUE would have the balance claiming 44,000
+   * owed for three weeks before the money moved.
    */
-  it('does not offer a cost before its day has come, but still calls it scheduled', () => {
+  it('does not call a cost due before its day has come, but still calls it scheduled', () => {
     const [rentRow] = rowsFor([], '2026-09', '2026-09-01')
-    expect(rentRow.due).toBeNull()
+    expect(rentRow.due).toBe(false)
     // The distinction two states could not draw: not-yet-due reads identically to already-paid
     // unless the row can tell them apart.
     expect(rentRow.scheduled).toBe(true)
@@ -213,7 +266,36 @@ describe('recurringRows', () => {
     expect(dueIds([], '2026-09', '2026-09-27')).toEqual(['rent#2026-09', 'gym#2026-09'])
   })
 
-  it('offers every day of a past month, and nothing at all in a future one', () => {
+  /**
+   * Not due is not the same as not recordable. Rent paid on the 3rd has to be recordable on
+   * the 3rd, or the only way to enter it is to retype the whole cost by hand — and `draft` is
+   * what the page's one Record gate reads.
+   */
+  it('is recordable before its day, with the draft the form would open on', () => {
+    const [rentRow] = rowsFor([], '2026-09', '2026-09-01')
+    expect(rentRow.due).toBe(false)
+    // The instance's own date, not the day it was recorded: an early tap must not file rent
+    // under the 1st, or two people recording the same rent produce two different dates.
+    expect(rentRow.draft).toEqual(entryFromTemplate(templates[0], '2026-09'))
+    expect(rentRow.draft.date).toBe('2026-09-27')
+  })
+
+  it('offers a future month for recording but never calls it due', () => {
+    // The month switcher reaches next month, and the poster must never run early — so the
+    // two answers deliberately differ here.
+    expect(recordableIds([], '2026-10', '2026-09-30')).toEqual(['rent#2026-10', 'gym#2026-10'])
+    expect(dueIds([], '2026-10', '2026-09-30')).toEqual([])
+  })
+
+  it('has nothing to record for a month it is not scheduled in, however it got that way', () => {
+    const stopped = [rowToTemplate(rent({ active_to: '2026-08' }))]
+    const quarterly = [rowToTemplate(rent({ months: '1,4,7,10' }))]
+    for (const only of [stopped, quarterly]) {
+      expect(recurringRows(only, [], '2026-09', '2026-09-30')[0].draft).toBeNull()
+    }
+  })
+
+  it('offers every day of a past month, and nothing due in a future one', () => {
     expect(dueIds([], '2026-08', '2026-09-02')).toEqual(['rent#2026-08', 'gym#2026-08'])
     expect(dueIds([], '2026-10', '2026-09-30')).toEqual([])
   })
@@ -230,7 +312,9 @@ describe('recurringRows', () => {
     ]) {
       const [rentRow] = rowsFor([recordedRow], '2026-09', '2026-09-30')
       expect(rentRow.recorded).toBe(true)
-      expect(rentRow.due).toBeNull()
+      expect(rentRow.due).toBe(false)
+      // And no draft, so the page cannot offer to record it a second time.
+      expect(rentRow.draft).toBeNull()
     }
   })
 
@@ -250,7 +334,7 @@ describe('recurringRows', () => {
     const retired = [rowToTemplate(rent({ active_to: '2026-08' }))]
     const [state] = recurringRows(retired, [], '2026-09', '2026-09-30')
     expect(state.scheduled).toBe(false)
-    expect(state.due).toBeNull()
+    expect(state.due).toBe(false)
     expect(state.template.id).toBe('rent')
   })
 

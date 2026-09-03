@@ -68,6 +68,7 @@ export default {
   // --- entry list -----------------------------------------------------------
   'list.emptyTitle': '今月の記録はまだありません',
   'list.emptyText': '買い物やふたりで食べた食事を追加しましょう。',
+  'list.recurring': '定期の支出',
 
   'entry.expense': '支出',
   'entry.settled': '精算',
@@ -90,7 +91,7 @@ export default {
   'recurring.title': '定期の支出',
   'recurring.hint': '{month}を表示しています。タップすると編集できます。',
   'recurring.empty': 'まだありません。家賃など、毎月かかるものを追加しましょう。',
-  'recurring.notLoaded': 'まだ読み込めていません。シー���を読み込んでからお試しください。',
+  'recurring.notLoaded': 'まだ読み込めていません。シートを読み込んでからお試しください。',
   'recurring.add': '追加',
   'recurring.amountVaries': '金額は変動',
   'recurring.schedule': '{day}日',
@@ -101,6 +102,8 @@ export default {
   'recurring.stopped': '停止中',
   'recurring.record': '記録',
   'recurring.recordName': '{name}を記録',
+  'recurring.recordNow': '今すぐ記録',
+  'recurring.recordNowName': '{name}を今すぐ記録',
 
   // --- recurring costs: the form --------------------------------------------
   'recurring.addTitle': '定期の支出を追加',
@@ -109,7 +112,8 @@ export default {
   'recurring.namePlaceholder': '家賃',
   'recurring.amountHint': '毎月変わる場合は空のままにしてください。',
   'recurring.day': '毎月の日付',
-  'recurring.dayHint': 'この日より前には記録されません。31日は短い月の末日になります。',
+  'recurring.dayHint':
+    'この日より前に自動で記録されることはありません。31日は短い月の末日になります。',
   'recurring.splitDefault': '既定',
   'recurring.splitDefaultHint': '{owner}既定の分担に従います。現在は{percent}%です。',
   'recurring.sheetOnlyHint':
