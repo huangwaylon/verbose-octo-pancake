@@ -107,8 +107,8 @@ export function sameSheetConfig(a, b) {
 }
 
 /**
- * What a freshly seeded `config` tab says the two people are called, and the only
- * place these strings exist. They are NOT in `DEFAULT_CONFIG`: a default there
+ * What a freshly seeded `config` tab says the two people are called — the only names
+ * ever written INTO a sheet. They are NOT in `DEFAULT_CONFIG`: a default there
  * would shadow the localized fallback `nameOf` applies when the sheet says
  * nothing, and everything written to the sheet stays unlocalized regardless of
  * whose device seeded it.

@@ -1,8 +1,8 @@
 import { useId, useRef, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
-import { parseAmountToYen, splitYen, yenToSheetString } from '../lib/money.js'
+import { parseAmountToYen, yenToSheetString } from '../lib/money.js'
 import { ENTRY_TYPE, PEOPLE, PERSON, otherPerson } from '../schema.js'
-import { errorMessage, usePeopleLabels, useMoney, useT } from '../i18n/index.js'
+import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
 import { Field, FieldError } from './Field.jsx'
 import { CategoryField } from './CategoryField.jsx'
 import { NoteField } from './NoteField.jsx'
@@ -28,8 +28,6 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
   const { t } = useT()
   const { mode, entry } = draft
   const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
-
-  const money = useMoney()
 
   const [amount, setAmount] = useState(entry.amountYen ? yenToSheetString(entry.amountYen) : '')
   const [payer, setPayer] = useState(entry.payer ?? me ?? PERSON.P1)
@@ -59,18 +57,6 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
   const { label, possessive } = usePeopleLabels(config, me)
   const payerLabel = label(payer)
   const otherLabel = label(otherPerson(payer))
-
-  // Two integer operations and a lookup, so it is recomputed rather than memoised;
-  // every value it reads changes while the sheet is open anyway.
-  const shares = yen == null || isSettlement ? null : splitYen(yen, payerShare)
-  const breakdown =
-    shares &&
-    t('form.breakdown', {
-      payer: payerLabel,
-      payerAmount: money(shares.payerYen),
-      other: otherLabel,
-      otherAmount: money(shares.otherYen),
-    })
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -228,7 +214,7 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
             payerLabel={payerLabel}
             payerPossessive={possessive(payer)}
             otherLabel={otherLabel}
-            breakdown={breakdown}
+            amountYen={yen}
           />
         )}
 

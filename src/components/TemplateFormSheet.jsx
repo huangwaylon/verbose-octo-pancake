@@ -1,10 +1,10 @@
 import { useId, useRef, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
-import { parseAmountToYen, splitYen, yenToSheetString } from '../lib/money.js'
+import { parseAmountToYen, yenToSheetString } from '../lib/money.js'
 import { defaultSplitFor } from '../lib/split.js'
 import { templateFormProblem } from '../lib/recurring.js'
 import { PEOPLE, PERSON, otherPerson } from '../schema.js'
-import { errorMessage, useMoney, usePeopleLabels, useT } from '../i18n/index.js'
+import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
 import { Field, FieldError } from './Field.jsx'
 import { CategoryField } from './CategoryField.jsx'
 import { Segmented } from './Segmented.jsx'
@@ -38,7 +38,6 @@ export function TemplateFormSheet({
   onClose,
 }) {
   const { t } = useT()
-  const money = useMoney()
   const { mode, template } = draft
   const editing = mode === 'edit'
 
@@ -124,16 +123,6 @@ export function TemplateFormSheet({
   // Blank parses to null, which is the value that means "variable"; `templateFormProblem` has
   // already refused every other unreadable amount by the time `collect` reads this.
   const yen = amount.trim() ? parseAmountToYen(amount) : null
-  const shares = yen == null || split.payerShare == null ? null : splitYen(yen, split.payerShare)
-  const breakdown =
-    shares &&
-    t('form.breakdown', {
-      payer: payerLabel,
-      payerAmount: money(shares.payerYen),
-      other: otherLabel,
-      otherAmount: money(shares.otherYen),
-    })
-
   return (
     <BottomSheet
       title={editing ? t('recurring.editTitle') : t('recurring.addTitle')}
@@ -267,7 +256,7 @@ export function TemplateFormSheet({
           payerLabel={payerLabel}
           payerPossessive={possessive(payer)}
           otherLabel={otherLabel}
-          breakdown={breakdown}
+          amountYen={yen}
           /* `possessive`, not `label` — English inflects, and `label` reads "You’s default". */
           defaultLabel={t('recurring.splitDefault')}
           defaultHint={t('recurring.splitDefaultHint', {

@@ -3,7 +3,8 @@ import { Field } from './Field.jsx'
 
 /**
  * The segmented radio group: two or three mutually exclusive options, styled as
- * one control. Four call sites — payer, split mode, identity and language.
+ * one control. Five call sites — the two payer controls, the split mode, identity and
+ * language.
  *
  * A `<div>` of radios has no accessible name of its own, so the visible `field__label`
  * beside it is not announced with the group; `role="radiogroup"` plus `aria-labelledby`

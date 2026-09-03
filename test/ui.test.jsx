@@ -283,6 +283,23 @@ describe('entry form', () => {
     expect(render({ defaultSplitP1: 0.8 }, { payerShare: 0.35 })).toContain('35%')
   })
 
+  /**
+   * The breakdown under the split control, which `SplitField` derives from the amount for both
+   * forms. Nothing asserted it before, so the two derivations it replaced could have disagreed
+   * about who owes what — the one thing in this form that is money rather than a label.
+   */
+  it('states who owes what, in whole yen that add back up to the amount', () => {
+    // 4211 is odd on purpose: the payer's half is rounded half-up and the other person takes
+    // what is left, so these must be 2106 and 2105 — never a rounded 2105.5 printed twice,
+    // which is the shape that invents or loses a yen on screen.
+    expect(render({}, { amountYen: 4211, payerShare: 0.5 })).toContain('You: ¥2,106 · Sam: ¥2,105')
+  })
+
+  it('states nothing until there is an amount to divide', () => {
+    // The state this form opens in. "¥0 · ¥0" would be a claim about money nobody has typed.
+    expect(render({}, { amountYen: 0 })).not.toContain('¥0')
+  })
+
   it('drops the note, the category AND the split from a settlement, and says why', () => {
     // The three controls a settlement sheds now sit either side of the payer and date
     // controls, so the form carries two `!isSettlement` blocks. Leaving a field in the
@@ -380,6 +397,25 @@ describe('recurring form', () => {
 
   it('is a modal dialog named by its own title', () => {
     expectNamedDialog(render())
+  })
+
+  it('states who owes what, from the template’s own amount and share', () => {
+    // The same control and the same derivation the entry form uses, which is the point: a
+    // second one is how a template's figures and an entry's come to disagree.
+    const template = { ...newTemplate(PERSON.P1), amountYen: 220000, payerShare: 0.8 }
+    expect(render({ draft: { mode: 'edit', template } })).toContain('You: ¥176,000 · Sam: ¥44,000')
+  })
+
+  /**
+   * Default mode saves a BLANK share, so there is no share to divide by. Printing the config
+   * tab's current split here would read as the figures this cost saves, which is exactly what
+   * that mode does not do.
+   */
+  it('states no figures in Default mode, where the share is deliberately blank', () => {
+    const template = { ...newTemplate(PERSON.P1), amountYen: 5000, payerShare: null }
+    const markup = render({ draft: { mode: 'edit', template } })
+    expect(markup).toContain('name="split" checked="" value="default"')
+    expect(markup).not.toContain('¥2,500')
   })
 
   it('always offers the stored category, even when the config tab dropped it', () => {

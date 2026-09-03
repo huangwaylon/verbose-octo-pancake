@@ -19,9 +19,9 @@ import { RepeatIcon, WalletIcon } from './icons.jsx'
  *
  * Memoised, and it is the memo that matters most in the app: `App` re-renders on
  * every toast, every refresh and every month change, and this subtree is the only
- * one whose size grows with the ledger. All seven props are stable unless the month's
- * data actually changed — `groups` and `recurring` come from `useLedgerView`'s memo chain,
- * `onEdit` from a `useCallback` in `App`, and `onDelete` is a setter.
+ * one whose size grows with the ledger. Every prop is stable unless the month's data
+ * actually changed — `groups` and `recurring` come from `useLedgerView`'s memo chain, and
+ * `onEdit` and `onDelete` are both `useCallback`s in `App`.
  */
 function EntryListInner({ groups, recurring = null, config, me, onEdit, onDelete }) {
   const { t, locale } = useT()

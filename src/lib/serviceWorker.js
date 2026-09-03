@@ -60,8 +60,8 @@ export function registerServiceWorker() {
   })
 
   navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`).then(
-    (active) => {
-      registration = active
+    (registered) => {
+      registration = registered
 
       const onForeground = () => {
         if (document.visibilityState !== 'visible') return
@@ -70,15 +70,15 @@ export function registerServiceWorker() {
         // helper: a resumed app fires both of these events constantly.
         if (!shouldRefresh(Date.now(), lastCheck, UPDATE_CHECK_FLOOR_MS)) return
         lastCheck = Date.now()
-        active.update().catch(() => {})
+        registered.update().catch(() => {})
       }
 
       lastCheck = Date.now()
       reconsiderUpdate()
 
-      active.addEventListener('updatefound', () => {
+      registered.addEventListener('updatefound', () => {
         // The new worker installs and then waits; take over when it is safe.
-        active.installing?.addEventListener('statechange', reconsiderUpdate)
+        registered.installing?.addEventListener('statechange', reconsiderUpdate)
       })
 
       document.addEventListener('visibilitychange', onForeground)

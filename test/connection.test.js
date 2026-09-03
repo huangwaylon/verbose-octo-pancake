@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * The token endpoint's failure modes, which are the whole reliability story.
@@ -25,11 +25,15 @@ const htmlReply = () => ({
 
 const ok = () => reply({ token: 'ya29.token', spreadsheetId: SHEET_ID })
 
+/**
+ * The module, fresh, plus the fake `localStorage` behind it — `store` because what several
+ * cases assert is what was PERSISTED, and a helper that hid it had them re-implementing it.
+ */
 async function load(seed) {
-  installStorage(seed)
+  const store = installStorage(seed)
   vi.resetModules()
   vi.stubEnv('VITE_SCRIPT_URL', URL_STUB)
-  return import('../src/lib/connection.js')
+  return { ...(await import('../src/lib/connection.js')), store }
 }
 
 afterEach(() => {
@@ -180,11 +184,8 @@ describe('telling a bad key from a bad connection', () => {
      * which is why the reachable half of the guard needs the other three.
      */
     for (const spreadsheetId of [null, undefined, 123, {}]) {
-      const store = installStorage({ 'sf.appKey': 'k' })
-      vi.resetModules()
-      vi.stubEnv('VITE_SCRIPT_URL', URL_STUB)
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply({ token: 'ya29.x', spreadsheetId })))
-      const c = await import('../src/lib/connection.js')
+      const { store, ...c } = await load({ 'sf.appKey': 'k' })
 
       const cause = await c.getAccessToken().then(
         () => null,
@@ -312,13 +313,44 @@ describe('the persisted token', () => {
   })
 })
 
+/**
+ * Which of the three states the UI is in. It lives here rather than in `useConnection` for
+ * exactly this reason: as a ternary inside the hook, no test in the suite could reach it, and
+ * the branch that matters is the quiet one — a key the endpoint REJECTED has to send the device
+ * back to the key screen even though the key is still on it.
+ */
+describe('connectionStatus', () => {
+  it('answers unconfigured when the build has no endpoint, whatever is stored', async () => {
+    installStorage({ 'sf.appKey': 'k' })
+    vi.resetModules()
+    vi.stubEnv('VITE_SCRIPT_URL', '')
+    const c = await import('../src/lib/connection.js')
+    expect(c.connectionStatus()).toBe('unconfigured')
+  })
+
+  it('answers no-key with nothing stored, and connected once a key is', async () => {
+    expect((await load()).connectionStatus()).toBe('no-key')
+    expect((await load({ 'sf.appKey': 'k' })).connectionStatus()).toBe('connected')
+  })
+
+  it('sends a rejected key back to the key screen while keeping it stored', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply({ error: 'unauthorized' })))
+    const { store, ...c } = await load({ 'sf.appKey': 'k' })
+    expect(c.connectionStatus()).toBe('connected')
+
+    await c.getAccessToken().catch(() => {})
+
+    expect(c.keyIsSuspect()).toBe(true)
+    expect(c.connectionStatus()).toBe('no-key')
+    // Flagged, not deleted — the gate shows why, and a typo'd key is still there to fix.
+    expect(store.has('sf.appKey')).toBe(true)
+  })
+})
+
 describe('connect and forget', () => {
   it('stores the key only after it has minted once', async () => {
-    const store = installStorage()
-    vi.resetModules()
-    vi.stubEnv('VITE_SCRIPT_URL', URL_STUB)
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply({ error: 'unauthorized' })))
-    const c = await import('../src/lib/connection.js')
+    const { store, ...c } = await load()
 
     await expect(c.connect('nope')).rejects.toMatchObject({ badKey: true })
     expect(store.has('sf.appKey')).toBe(false)
@@ -352,10 +384,7 @@ describe('connect and forget', () => {
   it('clears the key, the token, the sheet id and the snapshot', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(ok()))
 
-    const store = installStorage({ 'sf.appKey': 'k', 'sf.snapshot': '{"v":1}' })
-    vi.resetModules()
-    vi.stubEnv('VITE_SCRIPT_URL', URL_STUB)
-    const c = await import('../src/lib/connection.js')
+    const { store, ...c } = await load({ 'sf.appKey': 'k', 'sf.snapshot': '{"v":1}' })
 
     await c.getAccessToken()
     c.forgetKey()

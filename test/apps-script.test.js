@@ -161,6 +161,25 @@ describe('what it refuses to write', () => {
     expect(appendedAt(app.sheets.expenses_p1).id).toBe('rent#2026-09')
   })
 
+  /**
+   * A NON-INTEGER day is the cell that used to get through every gate: `Number` reads it, a
+   * `>= 1 && <= 31` bound accepts it, `clampDay` leaves it alone and `pad2` then writes the
+   * date `2026-09-27.5`. The client refuses that template row outright — `isDayOfMonth`
+   * requires an integer — so the two writers disagreed about whether the row was usable at
+   * all, and the one nobody watches was the one that wrote. What lands is an expense in the
+   * balance that belongs to no month, reported as `undatedRows` a screen away from the
+   * `undecodedTemplates` notice naming the row that caused it.
+   *
+   * Asserted on day 28, not 27: at 27 the row is skipped by `day > dayOfMonth` for the wrong
+   * reason, so a case there passes whether the bug is fixed or not.
+   */
+  it('refuses a non-integer day rather than writing a date with a fraction in it', () => {
+    const app = poster({ recurring: [template({ ...GYM, day_of_month: '27.5' })] })
+
+    expect(app.postRecurringFor('2026-09', 28)).toBe(0)
+    expect(app.sheets.expenses_p2.appended).toEqual([])
+  })
+
   it('does not post before the day has come', () => {
     const app = poster({ recurring: [template(RENT)] })
 

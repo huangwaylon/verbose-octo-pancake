@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { EVEN_SHARE } from '../schema.js'
+import { splitYen } from '../lib/money.js'
 import { defaultSplitFor, nextSplit, splitAtPercent, toSplit } from '../lib/split.js'
-import { useT } from '../i18n/index.js'
+import { useMoney, useT } from '../i18n/index.js'
 import { Segmented } from './Segmented.jsx'
 
 /**
@@ -49,17 +50,36 @@ export function useEntrySplit(entry, config, payer, { allowDefault = false } = {
  * `defaultLabel` opts in the third mode, and it is a LABEL rather than a boolean because
  * the option has to name the person and the percentage it would follow — "Default" alone
  * says nothing about what would be saved.
+ *
+ * The breakdown is derived HERE, from the amount, rather than passed in as a sentence: both
+ * forms wanted the same one, and two derivations of "who owes what" is the shape that lets a
+ * template's figures and an entry's drift apart. A null amount or a null share — an empty
+ * field, or the Default mode, which saves no share at all — means there is nothing to state.
  */
 export function SplitField({
   split,
   payerLabel,
   payerPossessive,
   otherLabel,
-  breakdown,
+  amountYen,
   defaultLabel,
   defaultHint,
 }) {
   const { t } = useT()
+  const money = useMoney()
+
+  // Two integer operations and a lookup, so it is recomputed rather than memoised; every
+  // value it reads changes while the sheet is open anyway.
+  const shares =
+    amountYen == null || split.payerShare == null ? null : splitYen(amountYen, split.payerShare)
+  const breakdown =
+    shares &&
+    t('form.breakdown', {
+      payer: payerLabel,
+      payerAmount: money(shares.payerYen),
+      other: otherLabel,
+      otherAmount: money(shares.otherYen),
+    })
 
   return (
     <Segmented

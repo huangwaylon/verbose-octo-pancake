@@ -693,8 +693,7 @@ describe('loadAll', () => {
         return { valueRanges: [{}, {}, {}, {}] }
       })
 
-      // Without this the app runs the whole sheet on JPY with nothing said, which on a
-      // every expense divides at an even split nobody chose.
+      // Without this, every expense divides at an even split nobody chose, with nothing said.
       expect(await sheets.loadAll(SHEET)).toMatchObject({ configMissing: true })
     })
 

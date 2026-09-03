@@ -11,8 +11,8 @@ import { SwapIcon, TrashIcon } from './icons.jsx'
  * Memoised because a row is the app's most repeated unit and none of its props changes
  * when the ledger does: adding one entry rebuilds the day's groups, and without this every
  * other row re-derives its title, its meta sentence and its `Intl` formatter for markup
- * that is byte-identical. Both handlers are stable by construction — `onEdit` is a
- * `useCallback` in `App` and `onDelete` is a setter.
+ * that is byte-identical. Both handlers are stable by construction: `onEdit` and `onDelete`
+ * are `useCallback`s in `App`.
  */
 function EntryRowInner({ entry, label, onEdit, onDelete }) {
   const { t } = useT()

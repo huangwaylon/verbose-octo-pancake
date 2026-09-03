@@ -111,11 +111,11 @@ Desktop is a convenience. Every layout decision is made at 320px first.
 beside its entry twin; every decision the page makes is in `src/lib/recurring.js`. `README.md`
 documents the columns.
 
-- **`${templateId}#${monthKey}` is the whole of "already recorded", and THREE readers derive or
-  parse it identically** — `RecurringSheet`'s Record control, `postRecurring` in
-  `apps-script/Code.gs`, and `isRecurringInstance`, which is the INVERSE and the only way the
-  ledger knows a row is a fixed cost; `instanceId` says why it is derived rather than matched on
-  category and description. Its corollary: **a template's id is minted once and NEVER changes**,
+- **`${templateId}#${monthKey}` is the whole of "already recorded", and TWO files that cannot
+  import each other derive it** — `recurring.js`, where `instanceId` mints one and
+  `isRecurringInstance` reads it back through the same `INSTANCE_JOIN` (the INVERSE, and the only
+  way the ledger knows a row is a fixed cost), and `postRecurring` in `apps-script/Code.gs`;
+  `instanceId` says why it is derived rather than matched on category and description. Its corollary: **a template's id is minted once and NEVER changes**,
   or the poster posts every month it has already handled again.
 - **`isRecurringInstance` reads the ENTRY ALONE — never the templates, never the note.** A `↻`
   in the description is lost the first time somebody fixes a typo, and it is the bank's own text
@@ -163,8 +163,9 @@ documents the columns.
   `EVEN_SHARE`, which is right for an already-written row, splits every rent 50/50 on a sheet
   running 80/20.
 - **`postRecurring` posts anything with an AMOUNT, and resolves a blank share itself** through
-  `defaultShares`/`readShare` — a fourth home for the above-1-is-a-percentage rule and for
-  first-usable-value-wins, pinned by `test/apps-script.test.js`. A blank AMOUNT is the one thing
+  `defaultShares`/`readShare` — the one place outside the client that has to implement the
+  above-1-is-a-percentage rule and first-usable-value-wins for itself, because it can import
+  neither, pinned by `test/apps-script.test.js`. A blank AMOUNT is the one thing
   that cannot post, and those stay tap-to-record.
 - **`templateFormProblem` owns which field a submit refuses, and it is in `lib/` because a
   static-markup render cannot submit a form.** A blank amount is VALID, so a fumbled `22o000`
@@ -289,8 +290,8 @@ documents the columns.
   is frozen in the language current when it was built, and both of these outlive a change.
 - **Every destructive confirmation goes through `ConfirmSheet`**, which is the one home of
   "Cancel first in the DOM" and of being content-sized rather than `full`. `ConfirmDeleteSheet`
-  is its entry-shaped wrapper — `App` owns `pendingDelete` and nothing else calls `removeEntry`,
-  and recovery is the collapsed `DeletedList`, never a toast action. The caller supplies the
+  is its entry-shaped wrapper — `App` owns the `confirmEntry` overlay and nothing else calls
+  `removeEntry`, and recovery is the collapsed `DeletedList`, never a toast action. The caller supplies the
   BODY, because only the caller knows whether the thing can be recovered.
 - **The ledger shows recurring costs it has RECORDED, and never one it has not.** `monthSections`
   lifts the month's instances into one section above the days; the `undecodedTemplates` notice is
@@ -402,9 +403,9 @@ documents the columns.
 - **`EntryList`, `EntryRow` and `SummaryCard` are `memo`, and every handler they take must stay
   stable.** `App` re-renders on each toast, refresh and month change, and those three are the
   only subtrees whose cost grows with the ledger — an inline arrow turns the memo into dead
-  weight that still pays for the comparison. `editDraft` is a `useCallback` for exactly that;
-  `setPendingDelete` and `setMonthKey` are setters and already stable. Nothing looks wrong when
-  this breaks and no test can see it.
+  weight that still pays for the comparison. `openEntry` and `confirmDeleteEntry` are
+  `useCallback`s for exactly that; `setMonthKey` is a setter and already stable. Nothing looks
+  wrong when this breaks and no test can see it.
 - **The entry form's field order is by how often each field is touched**, not by how the sheet
   reads: amount, note, category, who paid, date, split. `EntryFormSheet` says why. It is a
   decision, so `test/ui.test.jsx` asserts the order.
@@ -515,7 +516,7 @@ Every rule here is invisible in a desktop browser and wrong on the actual target
   not reduce min-content width). **Both `.layout` tracks carry `min-width: 0`** for the same
   reason one layer up: a grid item's automatic minimum is its min-content WIDTH, so one
   non-wrapping descendant sizes the whole column — `app.css` says why the aside keeps the guard
-  with nothing relying on it today. The four `preview-en-stress*` pages are the check; that
+  with nothing relying on it today. The five `preview-en-stress*` pages are the check; that
   `hidden` CLIPS rather than reports, so the harness measures `.sheet__body`'s own scroll width.
 - **The toast stack takes no pointer events**, or it would swallow a tap on a delete control for
   the toast's whole life. The layout deliberately reserves no band for it.
@@ -609,7 +610,7 @@ every request, because this layer's failures are writes: the assertions are abou
 *sent*, not what came back. `apps-script.test.js` does the same for `postRecurring` through
 `test/support/apps-script.js`, which `new Function`s `Code.gs` against a fake `SpreadsheetApp`
 — so it also proves the file PARSES, which nothing else does, since it is pasted into an editor
-rather than built. Each of the six traps in its header has a case that fails when the trap is
+rather than built. Every failure mode its header names has a case that fails when the trap is
 sprung; the two that read backwards from everything else in the codebase are the tombstoned-id
 scan and the day clamp happening BEFORE the due comparison.
 

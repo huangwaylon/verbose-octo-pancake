@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   connect,
+  connectionStatus,
   forgetKey,
   getAccessToken,
   getSpreadsheetId,
@@ -8,7 +9,14 @@ import {
   keyIsSuspect,
   onConnectionChange,
 } from '../lib/connection.js'
-import { isConfigured } from '../config.js'
+
+/**
+ * One primitive covering everything a render depends on, so the store snapshot is
+ * referentially stable and cannot loop.
+ */
+function snapshot() {
+  return `${hasKey() ? 1 : 0}${keyIsSuspect() ? 1 : 0}:${getSpreadsheetId() ?? ''}`
+}
 
 /**
  * Connection state for the UI.
@@ -20,15 +28,6 @@ import { isConfigured } from '../config.js'
  * A key the endpoint has rejected is reported as `suspect` and KEPT — see
  * `connection.js` for why that is the better failure mode.
  */
-
-/**
- * One primitive covering everything a render depends on, so the store snapshot is
- * referentially stable and cannot loop.
- */
-function snapshot() {
-  return `${hasKey() ? 1 : 0}${keyIsSuspect() ? 1 : 0}:${getSpreadsheetId() ?? ''}`
-}
-
 export function useConnection() {
   // The third argument is required, not optional: `renderToStaticMarkup` has no
   // client snapshot and omitting it throws, which is how every render test runs.
@@ -81,16 +80,8 @@ export function useConnection() {
     forgetKey()
   }, [])
 
-  // A stored key the endpoint rejected sends us back to the key screen, which
-  // shows why. The key itself stays on the device either way.
-  const status = !isConfigured()
-    ? 'unconfigured'
-    : !hasKey() || keyIsSuspect()
-      ? 'no-key'
-      : 'connected'
-
   return {
-    status,
+    status: connectionStatus(),
     connecting,
     error,
     suspect: keyIsSuspect(),

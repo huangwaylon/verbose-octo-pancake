@@ -45,8 +45,7 @@ import { Toasts } from '../src/components/Toasts.jsx'
  * `en` renders the halfwidth ¥; `ja` renders fullwidth ￥. These render at the default
  * locale, so halfwidth is what the markup carries.
  */
-const entry = (overrides) =>
-  expense({ date: '2026-08-04', now: '2026-08-04T10:00:00.000Z', ...overrides })
+const entry = (overrides) => expense({ date: '2026-08-04', ...overrides })
 
 const entries = [
   entry({ id: 'a', amountYen: 4210, category: 'Groceries', description: "Trader Joe's" }),
@@ -449,8 +448,9 @@ describe('the recurring page renders', () => {
    * words rather than by the absence of a control.
    */
   it('offers Record only for a month it is missing, and explains every other row', () => {
-    // August is over, so a 27th is due and Record is offered.
-    expect(render()).toContain('Record')
+    // August is over, so a 27th is due and Record is offered. The delimited form, because
+    // bare 'Record' is also satisfied by 'Record now' — the other half of this very test.
+    expect(render()).toContain('>Record<')
 
     // Already in the ledger — including as a tombstone, which is what a deliberately
     // removed double charge leaves.

@@ -71,7 +71,7 @@ export default function App() {
     reconsiderUpdate()
   }, [overlay, entries])
 
-  /** Stable, or `EntryList`'s memo dies on every toast. Its sibling is a setter already. */
+  /** Both stable, or `EntryList`'s memo dies on every toast. */
   const openEntry = useCallback((entry) => setOverlay({ kind: 'entry', mode: 'edit', entry }), [])
   const confirmDeleteEntry = useCallback((entry) => setOverlay({ kind: 'confirmEntry', entry }), [])
 

@@ -52,16 +52,19 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
     }
   })
 
-  /**
-   * The VALUE, not the property. `.chart__swatch` appears in TWO selector lists — the shared
-   * shape block and its own override — so a `declares(..., 'background-color')` check is
-   * satisfied by the shared one, which is exactly the half that must not be what paints it.
-   */
-  it.each([
-    ['.summary__person-swatch', 'var(--accent)'],
-    ['.chart__swatch', 'var(--series-1)'],
-  ])('%s paints its own colour, %s', (selector, value) => {
-    expect(blocksFor(FILES.app, selector).at(-1)).toContain(value)
+  // The VALUE, not the property: the meter's dot takes its colour from the shared block, so a
+  // merge that moved the colour onto the other selector would leave it painting nothing.
+  // The chart's dot is deliberately absent — its colour is set inline, per slice.
+  it('the meter dot still paints itself, var(--accent)', () => {
+    expect(blocksFor(FILES.app, '.summary__person-swatch').at(-1)).toContain('var(--accent)')
+  })
+
+  // The two ledger tracks share one block now, so they are mis-mergeable in the way this
+  // file exists to catch: land it on one and the other stops being a column at all.
+  it.each([['.layout__aside'], ['.layout__main']])('%s is still a flex column', (selector) => {
+    for (const property of ['display', 'flex-direction', 'gap']) {
+      expect(declares(FILES.app, selector, property)).toBe(true)
+    }
   })
 
   it.each(headings)('%s %s is still a heading', (file, selector) => {

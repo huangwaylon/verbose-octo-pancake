@@ -302,7 +302,9 @@ function toTemplate(row) {
   }
 
   var day = Number(cellAt(row, 'day_of_month') || '1')
-  if (!(day >= 1 && day <= 31)) return null
+  // Integer, matching `isDayOfMonth`: a fraction survives every bound below it and reaches
+  // `pad2`, which writes it into the date cell verbatim.
+  if (!isWholeInRange(day, 1, 31)) return null
 
   var months = null
   var monthsText = cellAt(row, 'months')
@@ -311,7 +313,9 @@ function toTemplate(row) {
     var parts = monthsText.split(',')
     for (var i = 0; i < parts.length; i += 1) {
       var month = Number(parts[i].trim())
-      if (!(month >= 1 && month <= 12)) return null
+      // Integer, matching `parseMonths`: a fractional month can equal no month number, so
+      // the row would simply never post — the same refusal, arrived at silently.
+      if (!isWholeInRange(month, 1, 12)) return null
       months[month] = true
     }
   }
@@ -390,6 +394,14 @@ function isMonthKey(value) {
   if (!/^\d{4}-\d{2}$/.test(value)) return false
   var month = Number(value.slice(5, 7))
   return month >= 1 && month <= 12
+}
+
+/**
+ * A whole number inside an inclusive range. Both of `toTemplate`'s schedule cells need it, and
+ * the app refuses exactly this much — `isDayOfMonth` and `parseMonths` in `schema.js`.
+ */
+function isWholeInRange(value, low, high) {
+  return Math.floor(value) === value && value >= low && value <= high
 }
 
 function clampDay(day, monthKey) {

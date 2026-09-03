@@ -255,13 +255,11 @@ export function templateFormProblem({ description, amount, day }) {
  *
  * `BAD_PAYER` and `BAD_SHARE` deliberately reuse the entry codes — the same cell means the
  * same thing and the sentence a person reads is identical, so a second spelling would be a
- * second translation of one rule.
+ * second translation of one rule, and a literal would match these codes only by coincidence.
  */
 export const TEMPLATE_ERROR = {
   MISSING_DESCRIPTION: 'missingDescription',
   BAD_TEMPLATE_AMOUNT: 'badTemplateAmount',
-  // The same cell means the same thing, so these are the entry's codes rather than a second
-  // spelling of them — which a literal would only be by coincidence.
   BAD_PAYER: ENTRY_ERROR.BAD_PAYER,
   BAD_SHARE: ENTRY_ERROR.BAD_SHARE,
   BAD_DAY: 'badDay',
@@ -281,8 +279,6 @@ export const TEMPLATE_ERROR = {
 export function validateTemplateCodes(template) {
   const errors = []
   if (!template.description?.trim()) errors.push(TEMPLATE_ERROR.MISSING_DESCRIPTION)
-  // A null amount and a null share are both VALID, and each carries a meaning no other value
-  // can: variable, and "follow the payer's default".
   if (template.amountYen != null && !isYenAmount(template.amountYen)) {
     errors.push(TEMPLATE_ERROR.BAD_TEMPLATE_AMOUNT)
   }

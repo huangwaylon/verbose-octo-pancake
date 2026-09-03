@@ -234,8 +234,8 @@
 .input:focus,
 .select:focus {
   border-color: var(--accent);
-  /* The one inset ring in the app, and the one place box-shadow is
-     transitioned — a focus ring has to appear instantly to be useful. */
+  /* The one place box-shadow is transitioned — a focus ring has to appear instantly to
+     be useful. */
   box-shadow: 0 0 0 3px var(--accent-ring);
   outline: none;
 }
@@ -361,8 +361,6 @@
   touch-action: manipulation;
 }
 
-/* The input itself is hidden by the shared rule above, alongside the segmented
-   control's — the two radio sets differ only in what is drawn on top of it. */
 .swatch__disc {
   width: 1.75rem;
   height: 1.75rem;

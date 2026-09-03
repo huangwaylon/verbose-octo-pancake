@@ -98,8 +98,9 @@ const store = storedPreference({
 export const getLocale = store.get
 
 /** Reflect the locale onto the document. No-op outside a browser. */
-export function syncDocumentLocale(tag = store.get()) {
+export function syncDocumentLocale() {
   if (typeof document === 'undefined') return
+  const tag = store.get()
   document.documentElement.lang = tag
   document.title = translate(tag, 'app.name')
 }
@@ -177,7 +178,7 @@ export function useDayLabels() {
 /**
  * The two people's names, and the same names labelled relative to the viewer so the UI
  * can say "You". Bound here rather than in `identity.js` so that module stays pure, and
- * memoised so seven components stop rebuilding the same three strings per render.
+ * memoised so every caller stops rebuilding the same three strings per render.
  */
 export function usePeopleLabels(config, me) {
   const { t, locale } = useT()

@@ -514,11 +514,6 @@ describe('the gids a hard delete needs', () => {
 })
 
 /**
- * What the screen says about itself. Every notice reports a state where the numbers
- * on screen are incomplete or suspect, and every one of them is otherwise silent —
- * which is the whole reason they exist rather than being left to a console.
- */
-/**
  * The template half of `entryFromInput`, and the one place a validation CODE becomes a
  * sentence. The blank cases are what matter: a blank amount and a blank share are both real
  * answers, and refusing either would make a variable utility bill unsavable.
@@ -656,17 +651,13 @@ describe('compactRefusal', () => {
     // Compact shifts every row below each deletion, and a pending write already
     // resolved its target row number — so it would land on whichever row moved into
     // that position, blanking a live expense or un-deleting an unrelated one.
+    //
+    // `busy`, never `{removed: 0}` alone: "Removed 0 deleted rows" over a sheet that HAS
+    // rows to remove reads as nothing to do, and gives no reason to try again.
     expect(compactRefusal([gone, { id: 'a', pending: true }], 0)).toEqual({
       removed: 0,
       busy: true,
     })
-  })
-
-  it('reports busy rather than "removed 0", which would be a lie', () => {
-    // "Removed 0 deleted rows" over a sheet that has rows to remove gives no reason
-    // to try again.
-    const refusal = compactRefusal([gone, { id: 'a', pending: true }], 0)
-    expect(refusal.busy).toBe(true)
   })
 
   it('refuses quietly when there is genuinely nothing to remove', () => {

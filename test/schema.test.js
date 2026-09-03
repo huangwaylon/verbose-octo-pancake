@@ -386,7 +386,7 @@ describe('entryToRow', () => {
    */
   it('writes each tab only the columns it has', () => {
     const expenseCells = entryToRow(fullEntry(), P1)
-    expect(expenseCells).toHaveLength(P1.columns.length)
+    expect(expenseCells).toHaveLength(7)
 
     const paid = settlement({ id: 's1', payer: PERSON.P2, amountYen: 500 })
     const settlementCells = entryToRow(paid, SETTLEMENTS)

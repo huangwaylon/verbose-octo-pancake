@@ -10,7 +10,6 @@ import {
   recurringRows,
   restoredTemplate,
   retiredTemplate,
-  reconcileTemplates,
   validateTemplateCodes,
 } from '../src/lib/recurring.js'
 import { expense, templateRow as row, tombstone } from './support/entries.js'

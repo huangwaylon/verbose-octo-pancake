@@ -89,10 +89,11 @@ only real failure mode is forgetting to type them. The tab is a **declaration** 
 recurs, not a log of what happened — it holds no date and no `deleted_at`.
 
 **Settings → Recurring costs** is the interface: add, edit, stop or restart, and — behind a
-confirmation — delete a cost. Rows can still be authored by hand, and columns F, H and I only
-can be: quarterly and annual schedules are rare enough that three more controls would earn
-their place on nobody's phone. The form **keeps** them, so editing a quarterly cost does not
-silently make it monthly.
+confirmation — delete a cost. Rows can still be authored by hand, and columns F, H and I have
+no field of their own: quarterly and annual schedules are rare enough that three more controls
+would earn their place on nobody's phone. Nothing in the app writes F or H, and stopping a cost
+is the only thing that writes I. The form **keeps** all three, so editing a quarterly cost does
+not silently make it monthly.
 
 | Col | Field | Example | Notes |
 | --- | --- | --- | --- |
@@ -133,9 +134,10 @@ Two writers use that id and neither can post a month twice:
   while nobody was recording stays recordable.
 - **`postRecurring`** in the Apps Script project runs on a daily trigger, so rent lands even if
   nobody opens the app for a month. It is deliberately stricter: it only posts a template that
-  spells out **both** its amount and its share, because anything left blank is a figure a
-  person should confirm — and it never runs early, since an unattended write nobody asked for
-  has to be one the declaration already promised. `SETUP.md` step 9 sets it up.
+  spells out its **amount**, because a figure that varies is one a person has to confirm; a
+  blank share follows that payer's `default_split`, resolved the same way the app resolves one.
+  Nor does it ever run early, since an unattended write nobody asked for has to be one the
+  declaration already promised. `SETUP.md` step 9 sets it up.
 
 Daily rather than on the 1st, because Google can delay or skip a scheduled run and every run
 after the first is a no-op. The recurring page is also what tells you the poster has died,
@@ -258,8 +260,7 @@ Standalone changes what can go wrong: the keyboard covers a fixed footer without
 the viewport `dvh` reads, `:hover` latches after a tap, a flick from the top reloads the app
 out from under a half-typed entry, and safe-area insets are the app's problem because there is
 no browser chrome to absorb them. Those rules are in CLAUDE.md's Platform section. Layout is
-decided at 320px; `npx vite-node scripts/preview.jsx` writes twenty-six pages for checking it,
-four of them deliberately pathological.
+decided at 320px, and `npx vite-node scripts/preview.jsx` writes the pages for checking it.
 
 ### Launch speed
 
@@ -330,7 +331,7 @@ CLAUDE.md has the invocation.
 | `src/lib/snapshot.js` | the launch cache: last successful read, kept on the device |
 | `src/lib/serviceWorker.js` | registration, and when it is safe to activate an update |
 | `src/lib/viewport.js` | how much of the layout viewport the software keyboard covers |
-| `src/lib/preference.js` | the per-device store the locale and the accent share |
+| `src/lib/preference.js` | the per-device store the locale, the accent and the summary view share |
 | `src/lib/{identity,dates,theme}.js` | which person this device is; ISO date helpers; accent presets |
 | `src/state/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts`, `useKeyboardInset` |
 | `src/components/LedgerScreen.jsx` | the whole signed-in surface; `App`, the visual harness and one render test are its three callers |

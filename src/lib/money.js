@@ -184,9 +184,9 @@ export function formatYenParts(yen, { locale } = {}) {
 /**
  * Whether a value is usable as an amount, and as a share.
  *
- * Both spellings existed twice, once per validator, in opposite forms — so the entry and the
- * template rules could drift without either looking wrong. `Number.isFinite` does not coerce,
- * so it already rejects every non-number and a `typeof` clause beside it is noise.
+ * The one reading of each, so the entry's validator and the template's cannot drift.
+ * `Number.isFinite` does not coerce, so it already rejects every non-number and a `typeof`
+ * clause beside it is noise.
  */
 export function isYenAmount(value) {
   return Number.isInteger(value) && value > 0

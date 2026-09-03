@@ -175,19 +175,14 @@
   padding: var(--space-5) var(--space-4) calc(var(--space-7) + var(--safe-bottom));
 }
 
-.layout__aside {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  /* Same guard as `.layout__main` below, and for the same reason: a grid item's
-     automatic minimum is its MIN-CONTENT width, so ONE non-wrapping descendant sizes the
-     whole column and the page scrolls sideways at 320px. Nothing in the aside relies on
-     it today — the hero figure and the chart legend truncate on their own — which is
-     exactly why it has to stay stated: the next thing added here would find out the hard
-     way, and only the `preview-en-stress*` SIDEWAYS readout would show it. */
-  min-width: 0;
-}
-
+/* Both tracks, identically: everything that differs between them is in the 62rem block
+   below. `min-width: 0` because a grid item's automatic minimum is its MIN-CONTENT width,
+   so ONE non-wrapping descendant sizes the whole column and the page scrolls sideways at
+   320px. Nothing in the aside relies on it today — the hero figure and the chart legend
+   truncate on their own — which is exactly why it has to stay stated: the next thing added
+   there would find out the hard way, and only the `preview-en-stress*` SIDEWAYS readout
+   would show it. */
+.layout__aside,
 .layout__main {
   display: flex;
   flex-direction: column;
@@ -472,11 +467,6 @@
   line-height: var(--lh-tight);
 }
 
-.chart__swatch {
-  /* Set inline from the validated --series-N tokens, in fixed order; the shape is
-     shared with the meter's dot above. */
-  background-color: var(--series-1);
-}
 
 .chart__name {
   /* Wraps rather than truncating. `title` is the only recourse an ellipsis leaves and

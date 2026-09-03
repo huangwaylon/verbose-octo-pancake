@@ -12,7 +12,7 @@
  * may depend on the endpoint being hard to guess.
  */
 
-import { SCRIPT_URL, STORAGE_KEYS, readStored, writeStored } from '../config.js'
+import { SCRIPT_URL, STORAGE_KEYS, isConfigured, readStored, writeStored } from '../config.js'
 import { clearSnapshot } from './snapshot.js'
 
 /**
@@ -280,6 +280,19 @@ export function keyIsSuspect() {
 
 export function getSpreadsheetId() {
   return spreadsheetId
+}
+
+/**
+ * Which of the three connection states the app is in.
+ *
+ * A stored key the endpoint rejected sends the device back to the key screen, which shows why;
+ * the key itself stays on the device either way, so `suspect` and "no key at all" are one
+ * state here and two sentences there.
+ */
+export function connectionStatus() {
+  if (!isConfigured()) return 'unconfigured'
+  if (!appKey || keySuspect) return 'no-key'
+  return 'connected'
 }
 
 /** @returns {() => void} unsubscribe */

@@ -1,11 +1,10 @@
 import { useMemo } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
-import { recurringRows } from '../lib/recurring.js'
+import { isRetired, recurringRows } from '../lib/recurring.js'
 import { monthLabel } from '../lib/dates.js'
 import { OpenSheetLink } from './OpenSheetLink.jsx'
 import { PlusIcon } from './icons.jsx'
 import { useMoney, usePeopleLabels, useT } from '../i18n/index.js'
-import { isRetired } from '../lib/recurring.js'
 
 /**
  * Every recurring cost, and what the month being looked at says about each.
@@ -68,7 +67,7 @@ export function RecurringSheet({
         <p className="field__hint">{t('recurring.hint', { month })}</p>
 
         {rows.length > 0 ? (
-          <ul className="recurring__list">
+          <ul>
             {rows.map((state) => (
               <RecurringRow
                 key={state.template.id}

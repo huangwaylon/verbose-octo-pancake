@@ -7,12 +7,12 @@
  * it changes how this phone labels things and must not follow the data to the other phone.
  */
 
-import { PERSON } from '../schema.js'
+import { PERSON, isPerson } from '../schema.js'
 import { STORAGE_KEYS, readStored, writeStored } from '../config.js'
 
 export function readStoredIdentity() {
   const value = readStored(STORAGE_KEYS.identity)
-  return value === PERSON.P1 || value === PERSON.P2 ? value : null
+  return isPerson(value) ? value : null
 }
 
 export function storeIdentity(person) {

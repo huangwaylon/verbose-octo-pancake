@@ -19,6 +19,7 @@ import {
   SHEET_TABS,
   cellText,
   entryToRow,
+  hasAnyCell,
   isPerson,
   rowToEntry,
   tabOf,
@@ -466,9 +467,9 @@ export async function deleteTemplate(spreadsheetId, sheetGid, id) {
 /**
  * Permanently remove every tombstoned row from every data tab.
  *
- * Reads each tab's own deleted_at column rather than trusting a caller-supplied id list,
- * because an id is not a unique lookup key: an edited entry can have left a tombstone in
- * one tab while the live row sits in the other.
+ * Reads each tab's own rows rather than trusting a caller-supplied id list, because an id is
+ * not a unique lookup key: an edited entry can have left a tombstone in one tab while the live
+ * row sits in the other.
  *
  * Iterates `DATA_TABS`, so the settlements tab is covered by construction. Left at the
  * two expenses tabs it would leave every tombstoned settlement behind while
@@ -606,9 +607,7 @@ export async function ensureStructure(spreadsheetId) {
   })
 
   const configRows = valueRanges[SHEET_TABS.length]?.values ?? []
-  const configIsEmpty = configRows.every((row) =>
-    (row ?? []).every((_, index) => !cellText(row, index)),
-  )
+  const configIsEmpty = !configRows.some(hasAnyCell)
   if (configIsEmpty) {
     // A header row for the human who edits this tab; parseConfigRows ignores it.
     data.push({ range: `${CONFIG_TAB}!A1`, values: [['key', 'value'], ...defaultConfigRows()] })

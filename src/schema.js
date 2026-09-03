@@ -325,14 +325,6 @@ export function rowToEntry(row, tab) {
 }
 
 /**
- * Map an entry object back to a raw sheet row — always one cell per column of the tab
- * it is being written to, so a field that tab does not carry is simply not written.
- *
- * @param {object} entry
- * @param {object} tab the tab descriptor being written to
- * @returns {string[]}
- */
-/**
  * A field map as the row a tab expects: one cell per column, in the tab's own order.
  *
  * Never a hole. A RAW write treats a missing cell as "leave it alone", so a hole is how a
@@ -346,6 +338,7 @@ function rowFromFields(tab, byField) {
   })
 }
 
+/** An entry as its tab's row: a field that tab does not carry is simply not written. */
 export function entryToRow(entry, tab) {
   // A tab with no `type` holds no entries, so writing one into it would fill six of the
   // `recurring` tab's ten columns with values that mean something else entirely.
