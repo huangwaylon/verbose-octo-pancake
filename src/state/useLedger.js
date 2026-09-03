@@ -33,49 +33,37 @@ import { sameSheetConfig } from '../lib/sheetConfig.js'
 const REFRESH_THROTTLE_MS = 30_000
 
 /**
- * Owns the entry list for one spreadsheet.
+ * Owns the entry list for one spreadsheet. The id is a parameter rather than state: it arrives
+ * from the token endpoint alongside the access token, and there is exactly one ledger.
  *
- * The id is a parameter rather than state: it arrives from the token endpoint
- * alongside the access token. There is exactly one ledger, named by the script's
- * SHEET_ID property, so nothing here chooses or stores a spreadsheet.
+ * Every mutation is applied to local state first and reconciled against the sheet afterwards,
+ * because each write is a ~400ms round trip on phone data. A failed write reverts and rethrows.
  *
- * Every mutation is applied to local state first and reconciled against the
- * sheet afterwards, because each write is a ~400ms round trip on phone data. A
- * failed write reverts the optimistic change and rethrows so the caller can
- * surface it.
+ * What is left here is what needs React and a network: state, effects, and the order of the calls.
+ * Every list transition and status decision is in `lib/ledgerState.js`.
  *
- * What is left here is the part that needs React and a network: state, effects,
- * and the order of the calls. Which list follows from which — and every status
- * decision — is in `lib/ledgerState.js`, where it can be tested without a DOM.
- *
- * Status is one of `idle | loading | stale | refreshing | ready | error`.
- * `stale` means "showing cached data": it is where a seeded launch starts, and
- * where a failed refresh lands. Only `idle`, `loading` and `error` gate the UI.
+ * Status is one of `idle | loading | stale | refreshing | ready | error`. `stale` means "showing
+ * cached data" — where a seeded launch starts and where a failed refresh lands. Only `idle`,
+ * `loading` and `error` gate the UI.
  */
 export function useLedger(spreadsheetId) {
-  // Read once per mount. Every launch after the first already has the id in
-  // localStorage, so it is available on the very first render and the cached
-  // ledger paints with no empty frame in front of it.
+  // Read once per mount. Every launch after the first has the id in localStorage already, so the
+  // cached ledger paints on the first render with no empty frame in front of it.
   const [seed] = useState(() => readSnapshot(spreadsheetId))
   const [entries, setEntries] = useState(() => seed?.entries ?? [])
   const [config, setConfig] = useState(() => mergeConfig(seed?.config))
   const [status, setStatus] = useState(() => (seed ? 'stale' : 'idle'))
   const [error, setError] = useState(null)
   /**
-   * The `recurring` tab as read, for the page that manages it.
-   *
-   * Deliberately NOT in the launch snapshot, unlike the entries and the config. It would
-   * need a validator of its own — the snapshot is the one input never decoded through a
-   * schema reader, and it is restored in a `useState` initializer, so one bad cached row
-   * white-screens the first render with no way in to clear it — and a reminder loses
-   * nothing by arriving one round trip late.
+   * The `recurring` tab as read. Deliberately NOT in the launch snapshot: that is the one input
+   * never decoded through a schema reader and it is restored in a `useState` initializer, so one
+   * bad cached row white-screens the first render — and a reminder loses nothing by arriving a
+   * round trip late.
    */
   const [templates, setTemplates] = useState([])
   /**
-   * What the last read found in the sheet and could not put in `entries`: tombstones
-   * `reconcileById` hid, rows whose amount is unreadable, rows with no real date, and
-   * settlements whose payer names neither person. None can be recovered from the entry
-   * list, because being absent from it is the point.
+   * What the last read found in the sheet and could not put in `entries`. None can be recovered
+   * from the entry list, because being absent from it is the point.
    */
   const [sheetExtras, setSheetExtras] = useState(NO_SHEET_EXTRAS)
 
@@ -84,14 +72,10 @@ export function useLedger(spreadsheetId) {
   const everLoaded = useRef(Boolean(seed))
 
   /**
-   * How many writes that carry no optimistic flag are in flight — `saveTemplate`,
-   * `deleteTemplate` and `compact`.
-   *
-   * A COUNT rather than a boolean, so two overlapping writes cannot have the first to
-   * finish declare the second one done. It exists for `blocksReload`: templates are
-   * deliberately absent from `mergeLoaded` and `hasPendingWrite`, so nothing in the entry
-   * list can see one, and the two hard deletes are exactly the writes a mid-flight reload
-   * must not interrupt.
+   * How many writes carrying no optimistic flag are in flight — `saveTemplate`, `deleteTemplate`
+   * and `compact`. A COUNT, so two overlapping writes cannot have the first to finish declare the
+   * second done. It exists for `blocksReload`, since nothing in the entry list can see one of
+   * these.
    */
   const [writesInFlight, setWritesInFlight] = useState(0)
   const tracked = useCallback(async (write) => {
@@ -104,22 +88,19 @@ export function useLedger(spreadsheetId) {
   }, [])
 
   /**
-   * `entries` as of the last render, so a write can read the entry it is about to replace
-   * WITHOUT side-effecting inside a `setEntries` updater. An updater only runs
-   * synchronously while React's eager-state bailout applies, which any other pending
-   * update on this component defeats — and `App` sets its own state in the same handler as
-   * a delete. Reading through the updater therefore leaves `previous` undefined exactly
-   * when a revert matters, and a failed delete stays tombstoned on screen while the row is
-   * still live in the sheet.
+   * `entries` as of the last render, so a write can read the entry it is about to replace WITHOUT
+   * side-effecting inside a `setEntries` updater. An updater runs synchronously only while React's
+   * eager-state bailout applies, which any other pending update defeats — and `App` sets its own
+   * state in the same handler as a delete, so `previous` would be undefined exactly when a revert
+   * matters.
    */
   const entriesRef = useRef(entries)
   entriesRef.current = entries
 
   /**
-   * Serialising the whole ledger is the expensive half of the cache, and `applyLoad` runs
-   * on every focus refresh — exactly as someone returns to the app and reaches for a
-   * button. Defer past the interaction. `requestIdleCallback` would fit better but Safari
-   * does not implement it.
+   * Serialising the whole ledger is the expensive half of the cache, and `applyLoad` runs on every
+   * focus refresh — exactly as someone returns and reaches for a button, so defer past the
+   * interaction. `requestIdleCallback` would fit better but Safari does not implement it.
    */
   const persistTimer = useRef(null)
   const persist = useCallback((id, nextEntries, sheetConfig) => {
@@ -141,10 +122,9 @@ export function useLedger(spreadsheetId) {
 
   const applyLoad = useCallback((data) => {
     setEntries((current) => mergeLoaded(current, data.entries ?? []))
-    // Kept as the SAME object when the tab said the same thing, because the config's
-    // identity is what every `memo` keyed on it compares — a fresh but equal one
-    // re-renders the whole ledger on a resume that changed nothing. `mergeConfig`
-    // clones, so this cannot alias the previous merge's arrays either.
+    // Kept as the SAME object when the tab said the same thing, because the config's identity is
+    // what every `memo` keyed on it compares. `mergeConfig` clones, so this cannot alias the
+    // previous merge's arrays either.
     const changed = !sameSheetConfig(sheetConfigRef.current, data.sheetConfig)
     sheetConfigRef.current = data.sheetConfig
     if (changed) setConfig(mergeConfig(data.sheetConfig))
@@ -158,20 +138,15 @@ export function useLedger(spreadsheetId) {
   /**
    * Persist whatever is on screen, once nothing is in flight.
    *
-   * Driven by the list rather than by each write, because the two can disagree: a refresh
-   * that started before a delete returns the row still live, and persisting that read
-   * would put a deleted expense back into the next cold launch's balance. Waiting for
-   * `pending` to clear is also what keeps the rule — an unacknowledged optimistic row
-   * must never reach the cache — true by construction.
+   * Driven by the list rather than by each write, because a refresh that started before a delete
+   * returns the row still live and persisting that read puts a deleted expense back into the next
+   * cold launch's balance. Waiting for `pending` to clear is what keeps an unacknowledged row out
+   * of the cache.
    *
-   * `config` is in the deps although the ref is what gets written, and it has to be: a read
-   * where only the CONFIG tab changed leaves `entries` at the same reference — `mergeLoaded`
-   * returns the array already on screen — so keyed on the list alone this effect never runs
-   * and the cache keeps the old config until some entry happens to change. That is a cold
-   * launch painting a stale name, a stale category list whose first entry the add form
-   * pre-selects, and a stale `default_split_p*`, which is the one config value that moves
-   * money. `applyLoad` gives `config` a new identity exactly when the sheet's own config
-   * changed, which is precisely the condition wanted here.
+   * `config` is in the deps although the ref is what gets written, and it has to be: a read where
+   * only the CONFIG tab changed leaves `entries` at the same reference, so keyed on the list alone
+   * this never runs and the cache keeps a stale name, category list and `default_split_p*` — the
+   * one config value that moves money.
    */
   useEffect(() => {
     if (!spreadsheetId || !everLoaded.current) return
@@ -180,13 +155,10 @@ export function useLedger(spreadsheetId) {
   }, [spreadsheetId, entries, config, persist])
 
   /**
-   * Counts every read started, so a reply that is not the newest can be dropped.
-   *
-   * Two taps of the refresh button on a flaky connection can resolve out of order,
-   * and the older reply would win both `setEntries` and the debounced `persist` —
-   * writing a stale ledger to the cache. A read still in flight when the key is
-   * forgotten would likewise repopulate state for a sheet the app has left, so the
-   * spreadsheet id is checked as well as the generation.
+   * Counts every read started, so a reply that is not the newest can be dropped: two taps on a
+   * flaky connection can resolve out of order and the older reply would win both `setEntries` and
+   * the debounced `persist`. A read in flight when the key is forgotten would likewise repopulate
+   * state for a sheet the app has left, so the spreadsheet id is checked as well.
    */
   const loadGeneration = useRef(0)
   /** When the sheet was last read, which is what the focus throttle is about. */
@@ -196,18 +168,15 @@ export function useLedger(spreadsheetId) {
     async (id) => {
       const generation = (loadGeneration.current += 1)
       const isCurrent = () => generation === loadGeneration.current
-      // Every read counts against the focus floor, this one included. Otherwise the
-      // launch read, or a tap on Refresh, is followed by a window switch that spends a
-      // second read for the same data seconds later.
+      // Every read counts against the focus floor, this one included, or the launch read is
+      // followed by a window switch spending a second read for the same data seconds later.
       lastRefresh.current = Date.now()
       setStatus(statusOnLoadStart)
 
       const fail = (cause) => {
         if (!isCurrent()) return
-        // The cause, never a sentence. Translating here freezes the message in
-        // whichever language was current when the read failed, and this one can sit
-        // on screen for as long as the sheet is unreachable — through a language
-        // change in settings. `errorMessage` at the render is what keeps it live.
+        // The cause, never a sentence: this can sit on screen as long as the sheet is unreachable,
+        // through a language change in settings. `errorMessage` at the render keeps it live.
         setError(cause)
         setStatus(statusOnLoadFailure(everLoaded.current))
       }
@@ -218,9 +187,8 @@ export function useLedger(spreadsheetId) {
       try {
         apply(await sheets.loadAll(id))
       } catch (cause) {
-        // A sheet that has never been used has no tabs yet; set it up and retry
-        // once. This is the only path that builds structure, and it refuses a
-        // spreadsheet that already looks like somebody else's work.
+        // A sheet never used has no tabs yet: set it up and retry once, the only path that builds
+        // structure.
         if (looksUninitialized(cause)) {
           try {
             await sheets.ensureStructure(id)
@@ -238,18 +206,15 @@ export function useLedger(spreadsheetId) {
   )
 
   useEffect(() => {
-    // Nothing to show for this id yet: a disconnect, or a switch to a DIFFERENT sheet.
-    // The second is reachable without a `forgetKey` — a rejected key leaves the old id in
-    // storage while the gate asks for a new one, and a key for another deployment mints
-    // another id — and it must reset as thoroughly as the first, or sheet B's screen paints
-    // sheet A's entries and balance. Worse if B's own read then fails: `everLoaded` is
-    // already true, so the status is `stale` and A's ledger sits there under a "showing
-    // saved data" notice indefinitely.
+    // Nothing to show for this id yet: a disconnect, or a switch to a DIFFERENT sheet — reachable
+    // without a `forgetKey`, since a rejected key leaves the old id in storage. It must reset as
+    // thoroughly as a disconnect, or sheet B's screen paints sheet A's entries and balance, and if
+    // B's own read then fails `everLoaded` is already true so A's ledger sits under a stale
+    // notice.
     if (!spreadsheetId || (loadedFor.current && loadedFor.current !== spreadsheetId)) {
-      // Clear `loadedFor` so reconnecting to the same sheet still triggers a read rather
-      // than short-circuiting. Bumping the generation is what stops a read already in
-      // flight from repopulating state — and rewriting the snapshot — for the sheet just
-      // left behind.
+      // `loadedFor` is cleared so reconnecting to the same sheet still triggers a read. Bumping
+      // the generation stops a read in flight repopulating state, and the snapshot, for the sheet
+      // just left.
       loadGeneration.current += 1
       loadedFor.current = null
       everLoaded.current = false
@@ -273,10 +238,9 @@ export function useLedger(spreadsheetId) {
   }, [spreadsheetId, load])
 
   /**
-   * Re-read the sheet when the tab regains attention. Two people share one
-   * spreadsheet with no push channel, so without this whoever leaves the app
-   * open sits on stale data. Throttled, because switching windows is constant
-   * and every refresh spends per-user quota.
+   * Re-read the sheet when the tab regains attention: two people share one spreadsheet with no
+   * push channel, so whoever leaves the app open would sit on stale data. Throttled, because every
+   * refresh spends per-user quota.
    */
   useEffect(() => {
     if (!spreadsheetId) return
@@ -317,16 +281,12 @@ export function useLedger(spreadsheetId) {
       const entry = entryFromInput(input)
 
       /**
-       * Refuse rather than guess which tab the row is in.
+       * `previous.payer` is the row's CURRENT tab, which `updateEntry` needs before it can move
+       * the row. Passing `undefined` takes the payer-changed branch: a second row appended and the
+       * original looked for in whichever tab it guessed — a duplicate expense, silently.
        *
-       * `previous.payer` is the row's CURRENT tab, which is what `updateEntry` needs
-       * before it can move the row. Passing `undefined` makes `previousPayer !==
-       * entry.payer` true, so the write takes the payer-changed branch: it appends a
-       * second row and then looks for the original in whichever tab it guessed. A
-       * duplicate expense, silently.
-       *
-       * The entry can genuinely be gone — the other person deleted it and a focus refresh
-       * dropped it while this form was open.
+       * The entry can genuinely be gone: the other person deleted it and a focus refresh dropped
+       * it while this form was open.
        */
       const previous = entryById(entriesRef.current, entry.id)
       if (!previous) throw i18nError('error.entryGone')
@@ -346,10 +306,8 @@ export function useLedger(spreadsheetId) {
 
   const setDeleted = useCallback(
     async (id, deletedAt) => {
-      // The row's CURRENT tab comes from local state, exactly as `editEntry` takes it,
-      // and being absent is refused rather than guessed. There is deliberately no payer
-      // parameter — a caller cannot pass one that would be ignored, or one this layer
-      // would have to choose between.
+      // The row's CURRENT tab comes from local state, as `editEntry` takes it, and absent is
+      // refused rather than guessed. There is deliberately no payer parameter.
       const previous = entryById(entriesRef.current, id)
       if (!previous) throw i18nError('error.entryGone')
 
@@ -369,17 +327,11 @@ export function useLedger(spreadsheetId) {
   const restoreEntry = useCallback((id) => setDeleted(id, null), [setDeleted])
 
   /**
-   * The `recurring` tab's ONE write, and deliberately NOT optimistic.
+   * The `recurring` tab's ONE write, and deliberately NOT optimistic: write, then re-read, as
+   * `compact` does. A template is written a handful of times a year, and the cost of a spinner on
+   * Save buys templates needing no place in the snapshot, no `pending` field and no revert path.
    *
-   * A template is written a handful of times a year, from a sheet the person is looking at, and
-   * the whole `mergeLoaded`/`pending`/`reverted` apparatus exists for a ~400ms round trip on a
-   * row someone is watching the balance for. So this does what `compact` does: write, then
-   * re-read, and let the sheet be the truth. The cost is a spinner on Save; what it buys is
-   * that templates need no place in the snapshot, no `pending` field and no revert path.
-   *
-   * Add, edit and retire are all this one call — `sheets.saveTemplate` appends or overwrites by
-   * id, which is what makes a retried add idempotent, and `retiredTemplate` is just an
-   * `active_to` on the way in.
+   * Add, edit and retire are all this one call, which is what makes a retried add idempotent.
    */
   const saveTemplate = useCallback(
     async (input) => {
@@ -392,12 +344,10 @@ export function useLedger(spreadsheetId) {
   )
 
   /**
-   * Remove a recurring cost's row for good.
-   *
-   * Reads the gids fresh through `readSheetGids`, never `ensureStructure`, for exactly the
-   * reason `compact` does: that path WRITES, and on a ledger whose config tab has been deleted
-   * it would re-seed this build's defaults. Loud rather than a silent no-op when the gid is
-   * missing — `deleteDimension` takes nothing but a gid, so there is no guess to make.
+   * Remove a recurring cost's row for good. Reads the gids fresh through `readSheetGids`, never
+   * `ensureStructure`, which WRITES and would re-seed a deleted config tab with this build's
+   * defaults. Loud rather than a silent no-op when the gid is missing, since there is no guess to
+   * make.
    */
   const deleteTemplate = useCallback(
     async (template) => {
@@ -413,18 +363,17 @@ export function useLedger(spreadsheetId) {
 
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
   const compact = useCallback(async () => {
-    // Both refusals — a write in flight, and nothing to remove — live in `lib` where a
-    // test can reach them; this only owns the call order below.
+    // Both refusals — a write in flight, and nothing to remove — live in `lib`; this owns the
+    // order.
     const refusal = compactRefusal(entriesRef.current, sheetExtras.supersededRows)
     if (refusal) return refusal
 
     return tracked(async () => {
-      // Read the gids, never `ensureStructure`: that path writes, and it would re-seed a
-      // deleted config tab with this build's defaults. `values.batchGet` cannot carry a
-      // gid, so this read is unavoidable and happens every time.
+      // Read the gids, never `ensureStructure`, which writes and would re-seed a deleted config
+      // tab. `values.batchGet` cannot carry a gid, so this read happens every time.
       const gids = await sheets.readSheetGids(spreadsheetId)
-      // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab it
-      // cannot name, which is right for it and wrong to leave unsaid here.
+      // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab it cannot
+      // name, which is right for it and wrong to leave unsaid here.
       if (missingGid(gids, DATA_TABS)) throw i18nError('error.missingTabs')
 
       const result = await sheets.compact(spreadsheetId, gids)
@@ -434,11 +383,8 @@ export function useLedger(spreadsheetId) {
   }, [sheetExtras.supersededRows, spreadsheetId, refresh, tracked])
 
   /**
-   * What `compact` would remove, which is every tombstone in the sheet — so the ones
-   * `reconcileById` hid behind a live row count too.
-   *
-   * Memoised because only the closed settings sheet reads it, and a full pass over the
-   * ledger on every render of `App` buys a number nobody is looking at.
+   * Every tombstone in the sheet, the ones `reconcileById` hid behind a live row included.
+   * Memoised because only the closed settings sheet reads it.
    */
   const tombstones = useMemo(
     () => tombstoneCount(entries) + sheetExtras.supersededRows,
@@ -456,8 +402,8 @@ export function useLedger(spreadsheetId) {
     /** What the last read could not show, whole: `noticeKeys` reads exactly this. */
     sheetExtras,
     /**
-     * Whether a write with no optimistic flag is in flight. The one consumer is
-     * `blocksReload`: nothing in `entries` can see a template write or a compact.
+     * Whether a write with no optimistic flag is in flight. The one consumer is `blocksReload`:
+     * nothing in `entries` can see a template write or a compact.
      */
     writing: writesInFlight > 0,
     refresh,

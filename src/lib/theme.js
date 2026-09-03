@@ -1,17 +1,15 @@
 /**
- * The accent color, as a per-device preference.
- *
- * The values themselves live in `tokens.css` under `[data-accent]`, where the measured
- * contrast sits next to them; this module only decides which name is on `<html>`. The
- * store itself is `lib/preference.js`, shared with the locale.
+ * The accent color, as a per-device preference. The values live in `tokens.css` under
+ * `[data-accent]`, where the measured contrast sits next to them; this module only decides which
+ * name is on `<html>`.
  */
 
 import { STORAGE_KEYS } from '../config.js'
 import { storedPreference } from './preference.js'
 
 /**
- * The presets, in swatch order. `indigo` is the default and is expressed by the
- * ABSENCE of the attribute, so the base tokens stay the single definition of it.
+ * The presets, in swatch order. `indigo` is the default and is expressed by the ABSENCE of the
+ * attribute, so the base tokens stay its single definition.
  */
 export const ACCENTS = ['indigo', 'pine', 'teal', 'plum', 'sepia']
 

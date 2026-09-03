@@ -4,17 +4,15 @@ const DEFAULT_DURATION = 4000
 const ERROR_DURATION = 6000
 
 /**
- * How many are on screen at once. The stack takes no pointer events and the layout
- * reserves no band for it, so it overlays the last rows of the ledger — six failed
- * writes in six seconds would cover them. The NEWEST are kept: an older toast has had
- * its moment, and its timer still fires, so nothing leaks.
+ * How many are on screen at once. The stack takes no pointer events and the layout reserves no band
+ * for it, so it overlays the last rows of the ledger. The NEWEST are kept; an older toast's timer
+ * still fires, so nothing leaks.
  */
 const MAX_VISIBLE = 3
 
 /**
- * A tiny toast stack. Two jobs: reporting a write failure, and confirming that a delete
- * or a restore actually reached the sheet. Nothing here is interactive — a deleted entry
- * is recovered from the deleted list, not from a toast that has probably timed out.
+ * A tiny toast stack: reporting a write failure, and confirming a delete or restore reached the
+ * sheet. Nothing here is interactive — a deleted entry is recovered from the deleted list.
  */
 export function useToasts() {
   const [toasts, setToasts] = useState([])
@@ -45,9 +43,8 @@ export function useToasts() {
   const push = useCallback((message) => show(message, 'info', DEFAULT_DURATION), [show])
   const error = useCallback((message) => show(message, 'error', ERROR_DURATION), [show])
 
-  // A toast outlives its ttl on sign-out: the timeout fires against an unmounted
-  // component and setState warns. Read the ref once, per the exhaustive-deps rule
-  // about touching `.current` in a cleanup.
+  // A toast outlives its ttl on sign-out: the timeout fires against an unmounted component and
+  // setState warns. Read the ref once, per exhaustive-deps on `.current` in a cleanup.
   useEffect(() => {
     const pending = timers.current
     return () => {

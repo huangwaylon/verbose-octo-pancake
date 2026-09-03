@@ -14,18 +14,15 @@ import {
 import { currentMonthKey } from '../lib/dates.js'
 
 /**
- * Everything the signed-in screen shows, derived from the raw ledger.
+ * Everything the signed-in screen shows: nine values, all of them a pure function of the entries
+ * and which month is on screen. `App` is then just gates, sheets and layout.
  *
- * Split out of `App` because it is the only part of it that is arithmetic: nine
- * values, all of them a pure function of the entries and which month is on screen.
- * `App` is then just gates, sheets and layout.
+ * Nothing about the recurring TAB is here: it is a settings surface, and `RecurringSheet` calls
+ * `recurringRows` itself so nothing walks the templates while that sheet is closed. `monthSections`
+ * needs none of them — a recurring row is recognised from its own id.
  *
- * Nothing about the recurring TAB is here: it is a settings surface, and `RecurringSheet`
- * calls `recurringRows` itself so nothing walks the templates while that sheet is closed.
- * `monthSections` needs none of them — a recurring row is recognised from its own id.
- *
- * Memoised in a chain — `active` feeds the balance, `monthEntries` feeds the four
- * month figures — so typing in a form re-runs none of it.
+ * Memoised in a chain — `active` feeds the balance, `monthEntries` the four month figures — so
+ * typing in a form re-runs none of it.
  */
 export function useLedgerView(entries, monthKey) {
   const active = useMemo(() => entries.filter(isActive), [entries])
@@ -36,8 +33,8 @@ export function useLedgerView(entries, monthKey) {
   return {
     active,
     balance: useMemo(() => computeBalance(active), [active]),
-    // Month-scoped, like the list it sits under. The sheet-wide count that
-    // `compact` acts on is `ledger.tombstoneCount`, which is a different number.
+    // Month-scoped, like the list it sits under. The sheet-wide count `compact` acts on is
+    // `ledger.tombstoneCount`, a different number.
     deleted: useMemo(() => deletedEntries(entries, monthKey), [entries, monthKey]),
     groups: sections.groups,
     recurring: sections.recurring,
@@ -49,13 +46,9 @@ export function useLedgerView(entries, monthKey) {
 }
 
 /**
- * Land on the newest month that actually has data, once per session. Which month that
- * is is `initialMonthKey`'s decision; this only owns the once-per-session latch and the
- * effect.
- *
- * Runs on the cached paint too (`stale`), which is the point: waiting for `ready`
- * would move the month out from under someone who had already started using the
- * month switcher.
+ * Land on the newest month that actually has data, once per session. Runs on the cached paint too
+ * (`stale`), which is the point: waiting for `ready` would move the month out from under someone
+ * who had already started using the month switcher.
  */
 export function useInitialMonth(status, active, setMonthKey) {
   const jumped = useRef(false)

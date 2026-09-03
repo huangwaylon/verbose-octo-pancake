@@ -1,13 +1,9 @@
 /**
- * Local-date helpers.
+ * Local-date helpers. Dates in the sheet are plain ISO calendar days ("2026-08-05"), no time, no
+ * zone, and every Date here is built from explicit y/m/d parts rather than parsed, because
+ * `new Date('2026-08-05')` is UTC midnight and shifts a day west of Greenwich.
  *
- * Dates in the sheet are plain ISO calendar days ("2026-08-05") with no time
- * or zone. Every function here builds Date objects with explicit y/m/d parts
- * rather than parsing the string, because `new Date('2026-08-05')` is treated
- * as UTC midnight and shifts to the previous day west of Greenwich.
- *
- * These helpers stay pure and know nothing about the i18n catalogs: the locale
- * and the three relative-day words arrive as arguments with English defaults.
+ * Pure: the locale and the three relative-day words arrive as arguments with English defaults.
  */
 
 import { cached } from './memo.js'
@@ -16,17 +12,14 @@ import { cached } from './memo.js'
 const EN_DAY_LABELS = { today: 'Today', yesterday: 'Yesterday', none: 'No date' }
 
 /**
- * Constructed date formatters, keyed by every option that decides one.
- *
- * `Date#toLocaleDateString` builds a formatter per call, which costs an order of magnitude
- * more than reusing one, and a month's list asks for one per day heading. The key space is
- * (locale × the two shapes below × with-year or not), so it stays a handful of entries.
+ * Formatters keyed by every option that decides one. `Date#toLocaleDateString` builds one per
+ * call, and a month's list asks for one per day heading.
  */
 const DATE_FORMATS = new Map()
 
 function dateFormatter(locale, options) {
-  // Every option, sorted, so a shape added later cannot collide with an existing key
-  // and silently render in the wrong one.
+  // Every option, sorted, so a shape added later cannot collide with an existing key and silently
+  // render in the wrong one.
   const shape = Object.keys(options)
     .sort()
     .map((name) => `${name}:${options[name]}`)
@@ -41,10 +34,9 @@ function dateFormatter(locale, options) {
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 /**
- * Shape *and* calendar validity — the only test of a 'YYYY-MM-DD' day, and the companion
- * to `isMonthKey` below. The regex alone accepts 2026-02-31 and 2026-13-45, which surface
- * as a bogus month in the month switcher; the UTC round-trip is what rejects them, since an
- * out-of-range month or day lands in a different one.
+ * Shape *and* calendar validity — the only test of a 'YYYY-MM-DD' day. The regex alone accepts
+ * 2026-02-31, which surfaces as a bogus month in the month switcher; the UTC round-trip rejects it,
+ * since an out-of-range month or day lands in a different one.
  */
 export function isIsoDate(value) {
   if (!ISO_DATE.test(value ?? '')) return false
@@ -63,9 +55,8 @@ function pad(value) {
 }
 
 /**
- * A local Date as 'YYYY-MM-DD' — the one place that string is assembled, and the reason it is
- * assembled from y/m/d parts rather than `toISOString`, which is UTC and shifts the day west of
- * Greenwich. Defaults to now, which is what every caller of it by this name wants.
+ * A local Date as 'YYYY-MM-DD' — the one place that string is assembled, from y/m/d parts rather
+ * than `toISOString`, which is UTC and shifts the day west of Greenwich.
  */
 export function todayIso(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
@@ -80,11 +71,7 @@ export function currentMonthKey(now = new Date()) {
   return monthKeyOf(now)
 }
 
-/**
- * The day-of-month an ISO date falls on. Here rather than a `slice` at the one call site,
- * because reading a date positionally is this module's job — and the caller wants the CLAMPED
- * day a recurring instance actually carries, not the day its template declares.
- */
+/** The CLAMPED day-of-month an ISO date carries, not the day a template declares. */
 export function dayOf(iso) {
   return isIsoDate(iso) ? Number(iso.slice(8, 10)) : null
 }
@@ -95,14 +82,11 @@ function partsOf(iso) {
 }
 
 /**
- * A 'YYYY-MM' key as numbers, or null for anything that is not one. The single parser for
- * the two functions below: without a guard, `shiftMonth` answers the string 'NaN-NaN' for
- * junk, which matches no entry in any month and reads on screen as an empty month rather
- * than as a bug.
- *
- * The SHAPE is checked before the numbers, because `split('-')` discards everything past the
- * second part — so a full ISO day ('2026-08-05') would parse as a perfectly valid August, and
- * then match no entry in any month.
+ * A 'YYYY-MM' key as numbers, or null. The single parser for the two functions below: unguarded,
+ * `shiftMonth` answers 'NaN-NaN' for junk, which matches no entry in any month and reads on screen
+ * as an empty month rather than as a bug. The SHAPE is checked before the numbers, because
+ * `split('-')` discards everything past the second part — so a full ISO day would parse as a valid
+ * August.
  */
 function monthParts(monthKey) {
   const text = String(monthKey ?? '')
@@ -118,26 +102,19 @@ export function isMonthKey(value) {
 }
 
 /**
- * The month of a 'YYYY-MM' key as 1-12, or null.
- *
- * The one caller compares a month against a LIST of them — the `recurring` tab's `months`
- * column, which is how quarterly and annual costs are spelled — rather than against
- * another key, so a string comparison cannot serve it.
+ * The month of a 'YYYY-MM' key as 1-12, or null. The one caller compares it against a LIST of
+ * months — the `recurring` tab's `months` column — so a string comparison cannot serve it.
  */
 export function monthNumber(monthKey) {
   return monthParts(monthKey)?.month ?? null
 }
 
 /**
- * A day of a 'YYYY-MM' as an ISO day, CLAMPED to that month's last day.
- *
- * The clamp is the point: a recurring cost dated the 31st has to land on the 28th in
- * February, where `new Date(year, 1, 31)` would silently roll forward into March and file
- * the row under the wrong month entirely. Day 0 of the NEXT month is the length of this
- * one, so there is no table of month lengths and no leap-year rule here to get wrong.
- *
- * A day that is not an integer falls back to the 1st rather than throwing: this reads a
- * hand-typed cell, and `rowToTemplate` has already refused anything outside 1-31.
+ * A day of a 'YYYY-MM' as an ISO day, CLAMPED to that month's last day: a cost dated the 31st has
+ * to land on the 28th in February, where `new Date(year, 1, 31)` rolls silently into March and
+ * files the row under the wrong month. Day 0 of the NEXT month is the length of this one, so there
+ * is no month-length table and no leap-year rule to get wrong. A non-integer day falls back to the
+ * 1st rather than throwing; `rowToTemplate` has already refused anything outside 1-31.
  *
  * @returns {string} '' for anything that is not a month key
  */
@@ -146,8 +123,8 @@ export function dayInMonth(monthKey, day) {
   if (!parts) return ''
   const last = new Date(parts.year, parts.month, 0).getDate()
   const clamped = Math.min(Math.max(Number.isInteger(day) ? day : 1, 1), last)
-  // Assembled here rather than through `todayIso`: `new Date(50, ...)` means 1950, so a
-  // two-digit year would come back as a different one entirely.
+  // Not through `todayIso`: `new Date(50, ...)` means 1950, so a two-digit year would come back as
+  // a different one entirely.
   return `${parts.year}-${pad(parts.month)}-${pad(clamped)}`
 }
 
@@ -158,15 +135,7 @@ export function shiftMonth(monthKey, delta) {
   return monthKeyOf(new Date(parts.year, parts.month - 1 + delta, 1))
 }
 
-/**
- * 'August' / '8月'. The year is only shown when it is not the current one.
- *
- * @param {string} monthKey 'YYYY-MM'
- * @param {object} [opts]
- * @param {string} [opts.locale] undefined means the runtime locale
- * @param {Date} [opts.now] injected by `test/dates.test.js` to pin the same-year
- *   branch; the app always takes the default
- */
+/** 'August' / '8月' from a 'YYYY-MM' key. The year shows only when it is not the current one. */
 export function monthLabel(monthKey, { locale, now = new Date() } = {}) {
   const parts = monthParts(monthKey)
   if (!parts) return ''
@@ -178,15 +147,7 @@ export function monthLabel(monthKey, { locale, now = new Date() } = {}) {
   }).format(date)
 }
 
-/**
- * 'Today' / 'Yesterday' / 'Mon, Aug 4' — short enough for a narrow phone.
- *
- * @param {string} iso
- * @param {object} [opts]
- * @param {Date} [opts.now]
- * @param {string} [opts.locale]
- * @param {{today: string, yesterday: string, none: string}} [opts.labels]
- */
+/** 'Today' / 'Yesterday' / 'Mon, Aug 4' — short enough for a narrow phone. */
 export function dayLabel(iso, { now = new Date(), locale, labels = EN_DAY_LABELS } = {}) {
   if (!iso) return labels.none
   const today = todayIso(now)
