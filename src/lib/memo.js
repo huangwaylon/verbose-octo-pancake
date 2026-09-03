@@ -10,8 +10,9 @@
  * options it passes hands back a formatter built for a different shape.
  */
 export function cached(store, key, make) {
-  const found = store.get(key)
-  if (found) return found
+  // `has`, not truthiness: a cached value that is falsy would be rebuilt on every call,
+  // which is exactly the cost this exists to avoid — silently, since the value is right.
+  if (store.has(key)) return store.get(key)
   const value = make()
   store.set(key, value)
   return value

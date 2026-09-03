@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { DATA_TABS, ENTRY_ERROR, ENTRY_TYPE, PERSON, RECURRING, isPerson } from '../src/schema.js'
-import { expense, tombstone } from './support/entries.js'
+import { expense, row as rawRow, tombstone } from './support/entries.js'
+import { SHEET, installSheets, removeSheets, values } from './support/sheets-api.js'
 import {
   gateFor,
   acknowledge,
@@ -14,10 +15,12 @@ import {
   mergeLoaded,
   missingGid,
   newDraftEntry,
+  NO_SHEET_EXTRAS,
   noticeKeys,
   reconcileById,
   reverted,
   settled,
+  sheetExtrasFrom,
   shouldRefresh,
   statusOnLoadFailure,
   statusOnLoadStart,
@@ -37,6 +40,19 @@ import {
  * it never reached the sheet, or a row that vanishes because a read that started
  * first finished last.
  */
+
+/**
+ * The token is stubbed for the one case here that reads a sheet — the shape of what `loadAll`
+ * answers with, not how the credential is obtained (`connection.test.js` owns that).
+ */
+vi.mock('../src/lib/connection.js', () => ({
+  getAccessToken: vi.fn(async () => 'ya29.stub-token'),
+  refreshToken: vi.fn(async () => {}),
+}))
+
+afterEach(() => {
+  removeSheets()
+})
 
 /** The shared expense, keyed by id: what an id lookup finds is the whole subject here. */
 const entry = (id, over = {}) => expense({ id, ...over })
@@ -561,6 +577,35 @@ describe('templateFromInput', () => {
     expect(() =>
       templateFromInput({ description: 'Rent', payer: 'p3', dayOfMonth: 0 }),
     ).toThrowError(expect.objectContaining({ i18nKey: 'error.badPayer' }))
+  })
+})
+
+describe('what a read carries beside the entries', () => {
+  /**
+   * The key list is written once, and it is compared against a REAL read rather than a
+   * literal: a count added to `loadAll` and forgotten here would report its starting value
+   * for the whole session, with nothing on screen looking wrong.
+   */
+  it('names every count loadAll returns, and nothing else it returns', async () => {
+    const { loadAll } = await import('../src/lib/sheets.js')
+    // One row with an amount nothing can read, so the reply carries a non-zero count and
+    // not just six defaults.
+    installSheets((call) =>
+      call.url.includes('values:batchGet')
+        ? { valueRanges: [values([rawRow({ id: 'a', amount: 'lots' })]), {}, {}, {}, {}] }
+        : {},
+    )
+
+    const data = await loadAll(SHEET)
+    // Everything a read answers with that is not itself sheet content.
+    const counted = Object.keys(data).filter(
+      (key) => !['entries', 'templates', 'config', 'sheetConfig'].includes(key),
+    )
+
+    expect([...counted].sort()).toEqual(Object.keys(NO_SHEET_EXTRAS).sort())
+    // And the picker takes exactly those, so the entries and the config cannot ride along
+    // into the state the notices are built from.
+    expect(sheetExtrasFrom(data)).toEqual({ ...NO_SHEET_EXTRAS, undecodedRows: 1 })
   })
 })
 

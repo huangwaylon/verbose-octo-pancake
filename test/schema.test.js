@@ -22,6 +22,8 @@ import {
   cellText,
   rowToEntry,
   entryToRow,
+  rowToTemplate,
+  templateToRow,
   makeEntry,
   validateEntryCodes,
   isActive,
@@ -436,6 +438,50 @@ describe('entryToRow', () => {
   it('writes an empty string for a null deletedAt', () => {
     const row = entryToRow(fullEntry({ deletedAt: null }), P1)
     expect(row[P1.index('deleted_at')]).toBe('')
+  })
+})
+
+describe('templateToRow', () => {
+  /**
+   * The recurring twin of `entryToRow`'s two cell guards. `test/recurring.test.js` owns the
+   * round trip; what is here is the pair of cells that can hold the text 'NaN', which
+   * `rowToTemplate` then refuses — so the template disappears from the page the app itself
+   * just wrote it to, which is the one failure that function's own header warns about.
+   */
+  const template = (over = {}) => ({
+    id: 'rent',
+    description: 'Rent',
+    amountYen: 220000,
+    category: 'Rent',
+    payer: PERSON.P1,
+    payerShare: null,
+    months: null,
+    dayOfMonth: 27,
+    activeFrom: null,
+    activeTo: null,
+    ...over,
+  })
+
+  it('leaves an unreadable share or day blank rather than writing the text "NaN"', () => {
+    const share = RECURRING.index('payer_share')
+    const day = RECURRING.index('day_of_month')
+    for (const bad of [undefined, NaN, Infinity, 'half']) {
+      expect(templateToRow(template({ payerShare: bad }))[share]).toBe('')
+      expect(templateToRow(template({ dayOfMonth: bad }))[day]).toBe('')
+    }
+  })
+
+  it('still writes a real share and day, blank meaning what it means', () => {
+    // Blank is a VALUE in both cells — follow the payer's default, and the 1st — so the
+    // guard above must not be the only branch anything ever takes.
+    const row = templateToRow(template({ payerShare: 0.8 }))
+    expect(row[RECURRING.index('payer_share')]).toBe('0.8')
+    expect(row[RECURRING.index('day_of_month')]).toBe('27')
+    expect(templateToRow(template())[RECURRING.index('payer_share')]).toBe('')
+    expect(rowToTemplate(templateToRow(template({ payerShare: NaN })))).toMatchObject({
+      payerShare: null,
+      dayOfMonth: 27,
+    })
   })
 })
 

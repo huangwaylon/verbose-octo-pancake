@@ -1095,7 +1095,7 @@ describe('compact', () => {
     // CRITICAL: deleteDimension shifts every row below it, so ascending order
     // would make each request after the first target the wrong row — and the rows
     // it would then delete are live expenses.
-    installSheets((call) => {
+    const calls = installSheets((call) => {
       if (call.url.includes('expenses_p1!A2:G')) {
         return values([
           row({ id: 'a' }),
@@ -1115,8 +1115,7 @@ describe('compact', () => {
 
     const { removed } = await sheets.compact(SHEET, GIDS)
 
-    const batch = globalThis.fetch.mock.calls.find(([url]) => String(url).includes(':batchUpdate'))
-    const requests = JSON.parse(batch[1].body).requests
+    const requests = writes(calls)[0].body.requests
     const perTab = new Map()
     for (const { deleteDimension } of requests) {
       const list = perTab.get(deleteDimension.range.sheetId) ?? []
@@ -1167,7 +1166,7 @@ describe('compact', () => {
    * asserts exactly one deletion, at the tombstone's position.
    */
   it('removes tombstoned settlements, and only those', async () => {
-    installSheets((call) => {
+    const calls = installSheets((call) => {
       if (call.url.includes(SETTLEMENTS.dataRange)) {
         return values([
           settlementRow({ id: 'live', amount: '100', payer: 'p1' }),
@@ -1181,8 +1180,7 @@ describe('compact', () => {
     const { removed } = await sheets.compact(SHEET, GIDS)
 
     expect(removed).toBe(1)
-    const batch = globalThis.fetch.mock.calls.find(([url]) => String(url).includes(':batchUpdate'))
-    const requests = JSON.parse(batch[1].body).requests
+    const requests = writes(calls)[0].body.requests
     expect(requests).toHaveLength(1)
     // Sheet row 3, which is 0-based index 2 — the second data row, not the first.
     expect(requests[0].deleteDimension.range).toMatchObject({
@@ -1193,14 +1191,13 @@ describe('compact', () => {
   })
 
   it('deletes exactly one row per request', async () => {
-    installSheets((call) =>
+    const calls = installSheets((call) =>
       call.url.includes(P1.dataRange) ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
     )
 
     await sheets.compact(SHEET, GIDS)
 
-    const batch = globalThis.fetch.mock.calls.find(([url]) => String(url).includes(':batchUpdate'))
-    for (const { deleteDimension } of JSON.parse(batch[1].body).requests) {
+    for (const { deleteDimension } of writes(calls)[0].body.requests) {
       expect(deleteDimension.range.endIndex - deleteDimension.range.startIndex).toBe(1)
       // The nested shape specifically. `dimension` at the top level is not what
       // the API reads, so accepting either would pass on a request it rejects.
@@ -1220,15 +1217,14 @@ describe('compact', () => {
   it('skips a tab whose gid it was not given, rather than guessing one', async () => {
     // `useLedger` throws before it gets here; this is the second line of defence,
     // and the reason that throw must not be removed as redundant.
-    installSheets((call) =>
+    const calls = installSheets((call) =>
       call.url.includes('!A2:') ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
     )
 
     const { removed } = await sheets.compact(SHEET, { expenses_p1: 111 })
 
     expect(removed).toBe(1)
-    const batch = globalThis.fetch.mock.calls.find(([url]) => String(url).includes(':batchUpdate'))
-    for (const { deleteDimension } of JSON.parse(batch[1].body).requests) {
+    for (const { deleteDimension } of writes(calls)[0].body.requests) {
       expect(deleteDimension.range.sheetId).toBe(111)
     }
   })
@@ -1420,10 +1416,10 @@ describe('ensureStructure', () => {
       return {}
     })
 
-    const { sheetIds } = await sheets.ensureStructure(SHEET)
+    const { sheetGids } = await sheets.ensureStructure(SHEET)
 
     // The settlements tab included: `compact` refuses without a gid for every one.
-    expect(sheetIds).toMatchObject({
+    expect(sheetGids).toMatchObject({
       expenses_p1: 100,
       expenses_p2: 101,
       settlements: 102,
@@ -1451,9 +1447,9 @@ describe('ensureStructure', () => {
       return {}
     })
 
-    const { sheetIds } = await sheets.ensureStructure(SHEET)
+    const { sheetGids } = await sheets.ensureStructure(SHEET)
 
-    expect(sheetIds).toMatchObject({ expenses_p1: 11, expenses_p2: 22, config: 33 })
+    expect(sheetGids).toMatchObject({ expenses_p1: 11, expenses_p2: 22, config: 33 })
     expect(calls.filter((call) => call.url.includes('fields=sheets'))).toHaveLength(1)
   })
 })

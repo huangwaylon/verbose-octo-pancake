@@ -392,6 +392,25 @@ describe('spendByCategory', () => {
     expect(spendByCategory(entries).map((row) => row.category)).toEqual(['Apples', 'Meals', 'Zoo'])
   })
 
+  it('breaks a tie by codepoint, not by whoever is holding the phone', () => {
+    // `localeCompare` with no locale reads the RUNTIME's, which is neither the app's
+    // per-device locale nor the same on both phones: in English it sorts 'Ärzte' with the
+    // A's, and by codepoint every non-ASCII name sorts after every ASCII one. Two people
+    // looking at one sheet must see one order, so this pins the codepoint answer.
+    const entries = [
+      expense('a', 500, { category: 'Zoo' }),
+      expense('b', 500, { category: 'Ärzte' }),
+      expense('c', 500, { category: '家賃' }),
+      expense('d', 500, { category: 'Apples' }),
+    ]
+    expect(spendByCategory(entries).map((row) => row.category)).toEqual([
+      'Apples',
+      'Zoo',
+      'Ärzte',
+      '家賃',
+    ])
+  })
+
   it('returns an empty array for no expenses', () => {
     expect(spendByCategory([])).toEqual([])
     expect(spendByCategory([settlement('s', 100)])).toEqual([])

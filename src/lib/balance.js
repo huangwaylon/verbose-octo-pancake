@@ -110,8 +110,11 @@ export function spendByCategory(entries) {
   return (
     [...totals.entries()]
       .map(([category, totalYen]) => ({ category, totalYen }))
-      // Ties broken by name so the order is stable across reloads.
-      .sort((a, b) => b.totalYen - a.totalYen || a.category.localeCompare(b.category))
+      // Ties broken by name so the order is stable across reloads — by CODEPOINT, through the
+      // one comparator with its arguments flipped for A-Z. `localeCompare` with no locale reads
+      // the RUNTIME's, which is neither the app's per-device locale nor the same on both phones,
+      // so two people sharing one sheet would see the same two categories in different orders.
+      .sort((a, b) => b.totalYen - a.totalYen || descending(b.category, a.category))
   )
 }
 

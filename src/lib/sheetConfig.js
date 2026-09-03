@@ -48,6 +48,19 @@ const PARSERS = {
 }
 
 /**
+ * The two lists above agree, asserted at import rather than at the read.
+ *
+ * A kind with no parser is a mistake in this file, not something a sheet can cause, and at the
+ * read it would throw a TypeError inside `loadAll`, which no caller can tell from a lost
+ * spreadsheet: the read simply fails and the app shows its error gate over one cosmetic config
+ * key. Here it cannot survive a single import, and the read keeps its one rule unchanged: a
+ * value it cannot use is omitted so the default wins.
+ */
+for (const [, , kind] of CONFIG_FIELDS) {
+  if (!PARSERS[kind]) throw new TypeError(`config: no parser for kind ${kind}`)
+}
+
+/**
  * Config tab rows -> a partial config object. Exported for testing: it is pure,
  * and the percentage-vs-fraction rule needs cases pinned to it.
  *

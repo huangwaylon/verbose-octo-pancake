@@ -144,6 +144,17 @@ describe('default split', () => {
     expect(DEFAULT_CONFIG.defaultSplitP1).toBe(0.5)
     expect(DEFAULT_CONFIG.defaultSplitP2).toBe(0.5)
   })
+
+  it('is frozen, arrays included, because every reader holds the shared object', () => {
+    // `mergeConfig`'s clone only covers a key the sheet left out; everything else reads
+    // these values directly, so one mutation would change what every later read defaults
+    // to — the categories a picker offers, and the split that moves money.
+    expect(() => {
+      DEFAULT_CONFIG.defaultSplitP1 = 0.9
+    }).toThrow(TypeError)
+    expect(() => DEFAULT_CONFIG.categories.push('Nope')).toThrow(TypeError)
+    expect(() => DEFAULT_CONFIG.notePresets.push('Nope')).toThrow(TypeError)
+  })
 })
 
 describe('the two people’s names', () => {
@@ -156,6 +167,12 @@ describe('the two people’s names', () => {
     expect('person2Name' in DEFAULT_CONFIG).toBe(false)
     expect(mergeConfig().person1Name).toBeUndefined()
     expect(nameOf(mergeConfig(), PERSON.P1, { p1: 'ひとり目', p2: 'ふたり目' })).toBe('ひとり目')
+  })
+
+  it('refuses to name anybody with no fallbacks, rather than defaulting to English', () => {
+    // The fallbacks are the localized ones, so a default pair here would be two English
+    // words shown on a Japanese phone reading a sheet that never named anyone.
+    expect(() => nameOf(mergeConfig(), PERSON.P1)).toThrow(TypeError)
   })
 
   it('wins over the fallback as soon as the sheet says one', () => {
@@ -171,8 +188,6 @@ describe('comparing two reads of the tab', () => {
    * fresh but equal one re-renders the whole ledger on a resume that changed nothing.
    * So a false positive is a config change the screen never shows.
    */
-  const parsed = (pairs) => parseConfigRows(pairs)
-
   it('answers true for two reads of an identical tab', () => {
     const pairs = [
       ['person1_name', 'Waylon'],
@@ -180,7 +195,7 @@ describe('comparing two reads of the tab', () => {
       ['default_split_p1', '80'],
       ['note_presets', 'Ozeki'],
     ]
-    expect(sameSheetConfig(parsed(pairs), parsed(pairs))).toBe(true)
+    expect(sameSheetConfig(parseConfigRows(pairs), parseConfigRows(pairs))).toBe(true)
   })
 
   it('answers true for two empty tabs, however they are spelled', () => {
@@ -192,16 +207,22 @@ describe('comparing two reads of the tab', () => {
 
   it('answers false when a value changed', () => {
     expect(
-      sameSheetConfig(parsed([['person1_name', 'Waylon']]), parsed([['person1_name', 'Yuki']])),
+      sameSheetConfig(
+        parseConfigRows([['person1_name', 'Waylon']]),
+        parseConfigRows([['person1_name', 'Yuki']]),
+      ),
     ).toBe(false)
     expect(
-      sameSheetConfig(parsed([['default_split_p1', '80']]), parsed([['default_split_p1', '20']])),
+      sameSheetConfig(
+        parseConfigRows([['default_split_p1', '80']]),
+        parseConfigRows([['default_split_p1', '20']]),
+      ),
     ).toBe(false)
   })
 
   it('answers false when a key was added or removed', () => {
-    const one = parsed([['person1_name', 'Waylon']])
-    const two = parsed([
+    const one = parseConfigRows([['person1_name', 'Waylon']])
+    const two = parseConfigRows([
       ['person1_name', 'Waylon'],
       ['person2_name', 'Yuki'],
     ])
@@ -212,12 +233,12 @@ describe('comparing two reads of the tab', () => {
   it('compares lists by contents, not by reference', () => {
     // Two parses of one tab are always different array objects, so a reference
     // comparison would report every refresh as a change and buy nothing.
-    const a = parsed([['categories', 'Groceries, Dining']])
-    const b = parsed([['categories', 'Groceries, Dining']])
+    const a = parseConfigRows([['categories', 'Groceries, Dining']])
+    const b = parseConfigRows([['categories', 'Groceries, Dining']])
     expect(a.categories).not.toBe(b.categories)
     expect(sameSheetConfig(a, b)).toBe(true)
 
-    expect(sameSheetConfig(a, parsed([['categories', 'Dining, Groceries']]))).toBe(false)
-    expect(sameSheetConfig(a, parsed([['categories', 'Groceries']]))).toBe(false)
+    expect(sameSheetConfig(a, parseConfigRows([['categories', 'Dining, Groceries']]))).toBe(false)
+    expect(sameSheetConfig(a, parseConfigRows([['categories', 'Groceries']]))).toBe(false)
   })
 })

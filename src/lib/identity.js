@@ -21,9 +21,11 @@ export function storeIdentity(person) {
 
 /**
  * The two people's display names. `fallbacks` arrives as a parameter rather than a catalog
- * lookup, so this module stays pure and independently testable.
+ * lookup, so this module stays pure and independently testable — and it has NO default: two
+ * English words defaulted here would be the localized fallback everywhere a caller forgot
+ * them, which is the one thing a sheet with no names must not say.
  */
-export function nameOf(config, person, fallbacks = { p1: 'Person 1', p2: 'Person 2' }) {
+export function nameOf(config, person, fallbacks) {
   if (person === PERSON.P2) return config?.person2Name || fallbacks.p2
   return config?.person1Name || fallbacks.p1
 }

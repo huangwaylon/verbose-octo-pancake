@@ -11,6 +11,7 @@ import {
   shiftMonth,
   todayIso,
 } from '../src/lib/dates.js'
+import { cached } from '../src/lib/memo.js'
 
 /**
  * These helpers exist because `new Date('2026-08-05')` parses as UTC midnight and
@@ -229,5 +230,34 @@ describe('dayLabel', () => {
     // 'Fri, Jul 31' would be the wrong day AND the wrong month.
     expect(dayLabel('2026-08-01', { locale: 'en', now, labels: LABELS })).toBe('Sat, Aug 1')
     expect(dayLabel('2025-08-01', { locale: 'en', now, labels: LABELS })).toBe('Fri, Aug 1, 2025')
+  })
+})
+
+/**
+ * The formatter cache both this module and `money.js` are built on. It has no test file of
+ * its own and both callers hide it behind an `Intl` object, so it is exercised here — where
+ * the day headings that pay for it are.
+ */
+describe('the memo behind the formatter caches', () => {
+  it('keeps a cached value that is falsy, rather than rebuilding it every call', () => {
+    // The whole point of the module is one call to `make`. Asking whether the stored value
+    // is TRUTHY instead of whether the key is present looks right on an `Intl` object and
+    // silently rebuilds anything falsy on every heading in the month.
+    const store = new Map()
+    let built = 0
+    const make = () => {
+      built += 1
+      return ''
+    }
+    expect(cached(store, 'k', make)).toBe('')
+    expect(cached(store, 'k', make)).toBe('')
+    expect(built).toBe(1)
+  })
+
+  it('builds once per key and hands back the same object', () => {
+    const store = new Map()
+    const first = cached(store, 'a', () => ({}))
+    expect(cached(store, 'a', () => ({}))).toBe(first)
+    expect(cached(store, 'b', () => ({}))).not.toBe(first)
   })
 })

@@ -57,13 +57,16 @@ function isUnreachable(status, payload) {
 }
 
 /**
- * The cells this layer reads positionally, per tab.
+ * Every cell this layer reads by name out of a data row — all four of them, so no reader
+ * below reaches for an index of its own.
  *
  * Per tab, never module-wide: the layouts put `deleted_at` at different indexes, and
  * `schema.js` says what a shared one would cost.
  */
 const idCell = (tab, row) => cellText(row, tab.index('id'))
 const deletedCell = (tab, row) => cellText(row, tab.index('deleted_at'))
+const amountCell = (tab, row) => cellText(row, tab.index('amount'))
+const dateCell = (tab, row) => cellText(row, tab.index('date'))
 
 function buildQuery(params) {
   const query = new URLSearchParams()
@@ -284,14 +287,14 @@ export async function loadAll(spreadsheetId) {
         // payer does not is a different problem from an unreadable amount, and the
         // notices name the cell rather than just the row.
         if (counts) {
-          const amountReads = parseAmountToYen(cellText(row, tab.index('amount'))) != null
+          const amountReads = parseAmountToYen(amountCell(tab, row)) != null
           if (tab.has('payer') && amountReads) unattributedRows += 1
           else undecodedRows += 1
         }
         return []
       }
       // The cell held something; `rowToEntry` could not make a real day of it.
-      if (counts && !entry.date && cellText(row, tab.index('date'))) undatedRows += 1
+      if (counts && !entry.date && dateCell(tab, row)) undatedRows += 1
       return [entry]
     }),
   )
@@ -545,12 +548,12 @@ export async function readSheetGids(spreadsheetId) {
   const data = await request(`/${encodeURIComponent(spreadsheetId)}`, {
     params: { fields: 'sheets(properties(sheetId,title))' },
   })
-  const sheetIds = {}
+  const sheetGids = {}
   for (const sheet of data.sheets ?? []) {
     const { title, sheetId } = sheet.properties ?? {}
-    if (title != null) sheetIds[title] = sheetId
+    if (title != null) sheetGids[title] = sheetId
   }
-  return sheetIds
+  return sheetGids
 }
 
 /**
@@ -563,14 +566,14 @@ export async function readSheetGids(spreadsheetId) {
  * — a config tab that already has values is never reseeded, and data rows are never
  * touched.
  *
- * @returns {Promise<{sheetIds: Record<string, number>}>} tab title -> numeric
+ * @returns {Promise<{sheetGids: Record<string, number>}>} tab title -> numeric
  *   sheetId, for a caller that has just built the tabs. `compact` reads its own
  *   through `readSheetGids`, because this path writes.
  */
 export async function ensureStructure(spreadsheetId) {
-  const sheetIds = await readSheetGids(spreadsheetId)
+  const sheetGids = await readSheetGids(spreadsheetId)
   const wantedTabs = [...SHEET_TABS.map((tab) => tab.title), CONFIG_TAB]
-  const missing = wantedTabs.filter((title) => !(title in sheetIds))
+  const missing = wantedTabs.filter((title) => !(title in sheetGids))
 
   // Refuse to build structure in a spreadsheet that is evidently somebody's existing
   // work. The id arrives from the script's SHEET_ID property rather than from a person
@@ -582,7 +585,7 @@ export async function ensureStructure(spreadsheetId) {
   // recurring tab is missing exactly one of the five and must have it BUILT. Translated,
   // because this is the one failure whose message a person has to act on — it names the
   // property to fix, and it reaches an error gate.
-  if (missing.length === wantedTabs.length && Object.keys(sheetIds).length > 1) {
+  if (missing.length === wantedTabs.length && Object.keys(sheetGids).length > 1) {
     throw i18nError('error.notOurSheet')
   }
 
@@ -597,7 +600,7 @@ export async function ensureStructure(spreadsheetId) {
     // deleting rows from a guess.
     for (const { addSheet } of reply.replies ?? []) {
       const { title, sheetId } = addSheet?.properties ?? {}
-      if (title != null && sheetId != null) sheetIds[title] = sheetId
+      if (title != null && sheetId != null) sheetGids[title] = sheetId
     }
   }
 
@@ -632,5 +635,5 @@ export async function ensureStructure(spreadsheetId) {
     })
   }
 
-  return { sheetIds }
+  return { sheetGids }
 }

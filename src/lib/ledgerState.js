@@ -52,7 +52,9 @@ export function reconcileById(entries) {
  * revives the entry under the wrong payer, flipping its contribution to the balance.
  *
  * Two LIVE rows for one id — an interrupted payer move — have no stamp to compare and
- * keep the incumbent; either is a correct copy, and `compact` clears the duplicate.
+ * keep the incumbent; either is a correct copy. `compact` will NOT clear the other one: it
+ * removes rows whose `deleted_at` is non-empty and nothing else, so the duplicate stays in the
+ * sheet, hidden here, until an edit or a delete tombstones one of the two.
  */
 function supersedes(entry, kept) {
   if (isActive(entry) !== isActive(kept)) return isActive(entry)
@@ -298,8 +300,8 @@ export function shouldRefresh(now, lastAt, floorMs) {
  * Takes the tabs, because there are two callers with different lists: `compact` over
  * `DATA_TABS`, `deleteTemplate` over the recurring one alone.
  */
-export function missingGid(sheetIds, tabs) {
-  return tabs.some((tab) => sheetIds?.[tab.title] == null)
+export function missingGid(sheetGids, tabs) {
+  return tabs.some((tab) => sheetGids?.[tab.title] == null)
 }
 
 /**

@@ -63,15 +63,28 @@ export function writeStored(key, value) {
  * `nameOf`'s localized fallback, so a Japanese device with no names in the config tab
  * would read "Person 1" instead of 「ひとり目」. What gets seeded INTO a fresh sheet is
  * `SEED_NAMES` in `lib/sheetConfig.js`, which must stay unlocalized.
+ *
+ * Frozen, arrays included: it is the one piece of module-level shared state here, and every
+ * other reader reaches it directly rather than through `mergeConfig`'s defensive clone — so a
+ * mutation anywhere would change what every later read of the sheet defaults to.
  */
-export const DEFAULT_CONFIG = {
+export const DEFAULT_CONFIG = Object.freeze({
   /**
    * The same list `CATEGORIES` in `scripts/bank_to_ledger.py` classifies into — one
    * vocabulary, or an imported row lands on a category the picker does not offer.
    * `test/schema.test.js` pins the two together. Groceries is first because
    * `config.categories[0]` is what a new entry starts on.
    */
-  categories: ['Groceries', 'Dining', 'Household', 'Travel', 'Rent', 'Gym', 'Wedding', 'Other'],
+  categories: Object.freeze([
+    'Groceries',
+    'Dining',
+    'Household',
+    'Travel',
+    'Rent',
+    'Gym',
+    'Wedding',
+    'Other',
+  ]),
   /**
    * The share each person covers on a new expense they paid for. Per-person rather than one
    * universal number: a couple splitting 80/20 wants p1 to bear 80% of an expense *either*
@@ -81,8 +94,8 @@ export const DEFAULT_CONFIG = {
   defaultSplitP1: 0.5,
   defaultSplitP2: 0.5,
   /** Quick-pick suggestions for the note field. Free text is always allowed. */
-  notePresets: [],
-}
+  notePresets: Object.freeze([]),
+})
 
 /**
  * The spreadsheet's own URL, for the two places that link out to it. One home because it is

@@ -152,6 +152,7 @@ function sheetTab({ title, columns, type, payer }) {
     if (found == null) throw new Error(`Unknown column for ${title}: ${field}`)
     return found
   }
+  const letter = (field) => letterAt(index(field))
 
   return Object.freeze({
     title,
@@ -160,7 +161,7 @@ function sheetTab({ title, columns, type, payer }) {
     payer,
     has: (field) => byName.has(field),
     index,
-    letter: (field) => letterAt(index(field)),
+    letter,
     headerRange: `${title}!A1:${last}1`,
     dataRange: `${title}!A${FIRST_DATA_ROW}:${last}`,
     /**
@@ -170,7 +171,7 @@ function sheetTab({ title, columns, type, payer }) {
      */
     rowRange: (rowNumber) => `${title}!A${rowNumber}:${last}${rowNumber}`,
     cellRange: (rowNumber, field) => {
-      const at = letterAt(index(field))
+      const at = letter(field)
       return `${title}!${at}${rowNumber}:${at}${rowNumber}`
     },
   })
@@ -449,6 +450,9 @@ function parseMonths(text) {
  * A null amount or share writes BLANK, and blank is a value in both — variable, and "follow the
  * payer's default". Writing '0' makes `rowToTemplate` refuse the row, so the template would
  * vanish from the page the app itself just wrote it to.
+ *
+ * A non-finite share or day writes blank for the same reason, exactly as `entryToRow` does: the
+ * literal text 'NaN' is a cell `rowToTemplate` refuses, which is that same disappearance.
  */
 export function templateToRow(template) {
   return rowFromFields(RECURRING, {
@@ -456,9 +460,9 @@ export function templateToRow(template) {
     amount: template.amountYen == null ? '' : yenToSheetString(template.amountYen),
     category: template.category,
     payer: template.payer,
-    payer_share: template.payerShare == null ? '' : template.payerShare,
+    payer_share: Number.isFinite(template.payerShare) ? template.payerShare : '',
     months: template.months?.length ? template.months.join(', ') : '',
-    day_of_month: template.dayOfMonth,
+    day_of_month: Number.isFinite(template.dayOfMonth) ? template.dayOfMonth : '',
     active_from: template.activeFrom ?? '',
     active_to: template.activeTo ?? '',
     id: template.id,
