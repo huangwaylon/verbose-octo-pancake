@@ -1,740 +1,200 @@
 # CLAUDE.md
 
-Guidance for Claude Code in this repository. The data model, security reasoning and cost are
-in `README.md`; the Google Cloud walkthrough is in `SETUP.md`.
+Rules not visible from the code; the reasoning is at the function each one names. Breaking one does
+not throw — it writes the wrong thing to someone's spreadsheet. `README.md` has the data and
+security models, `SETUP.md` the Google setup.
 
-This file states rules that are not visible from the code. It does not repeat the reasoning —
-each rule names the function that carries it, and that is where to read why. Breaking one of
-these does not throw; it quietly writes the wrong thing to someone's spreadsheet.
+**Target: Safari on iOS, added to the Home Screen, on a phone.** Layout is decided at 320px.
 
-**The target is one platform: Safari on iOS, installed to the Home Screen, on a phone.**
-Desktop is a convenience. Every layout decision is made at 320px first.
-
-## Commands
-
-| Command | Notes |
-| --- | --- |
-| `npm run dev` | Vite on 5173. |
-| `npm test` | vitest, single run. Must pass before any commit. |
-| `npm run build` | Bundle into `dist/`, then `scripts/build-sw.js` emits `dist/sw.js`. |
-| `npm run preview` | Serve the built bundle. Needed to exercise the service worker. |
-| `npm run test:watch` | vitest in watch mode. |
-| `npm run format` | Prettier, write. `format:check` is the CI gate. |
+`npm run dev` (5173) · `npm test` (must pass before any commit) · `npm run build` (bundle, then
+`build-sw.js` emits `dist/sw.js`) · `npm run preview` (the only way to run the worker) ·
+`npm run format` / `format:check` (the CI gate).
 
 ## The sheet contract
-
-- **`src/schema.js` is the only file in `src/` that knows the sheet layout.** Never hardcode a
-  range or a column index elsewhere — use a tab's own `letter`/`index`. The two exceptions are
-  `scripts/bank_to_ledger.py` and `apps-script/Code.gs`; see Testing for the pins that keep
-  all three in step.
-- **There are TWO entry layouts, and every positional lookup hangs off a TAB, never the
-  module.** `deleted_at` is index 5 in `EXPENSE_COLUMNS` and 4 in `SETTLEMENT_COLUMNS`. See
-  `sheetTab`, and `idCell`/`deletedCell` in `sheets.js`.
-- **`DATA_TABS` holds entries; `SHEET_TABS` is that list plus `RECURRING`, and the data tabs are
-  its PREFIX** — `schema.js` says what each list feeds and why the order binds. `RECURRING` in
-  `DATA_TABS` would have `compact` hard-deleting a template whose `active_to` cell is non-empty
-  at the index `deleted_at` sits at for an expense, which `RECURRING.type` being null is what
-  prevents: `rowToEntry`/`entryToRow` refuse a tab with no type.
-- **`rowToTemplate`/`templateToRow` are the recurring tab's pair, and they must stay exact
-  inverses.** A null amount and a null share write BLANK, and blank is a value in both — a
-  variable bill, and "follow the payer's default". Writing `'0'` makes `rowToTemplate` refuse
-  the row, so the template vanishes from the page the app itself just wrote it to.
-- **Every column list is append-only.** Letters and ranges come from array *position*, and
-  `ensureStructure` rewrites a mismatched header without touching data rows. The one reorder
-  that happened (to match the bank CSV's 取引日 / 摘要 / 引出額, `id` last) shipped with a
-  manual migration of the single live sheet. `letterAt` carries a 26-column cap that only
-  `test/schema.test.js` guards.
-- **The tab asserts what a row cannot: its type, and — for an expenses tab — its payer.**
-  `SETTLEMENTS.payer` is null, meaning "read the cell", and that cell is the only place a
-  column can disagree with reality. There is no `type` column.
-- **`rowToEntry` and `expenseTab` throw rather than guess a person.** `rowToEntry` also refuses
-  a settlement whose payer names neither person; `loadAll` counts those as `unattributedRows`,
-  separate from `undecodedRows` because the cell to fix differs.
-- **`tabOf` is the one home of "where does this entry live."** It also settles the settlement
-  case with no branch: changing a settlement's payer overwrites a cell — only an EXPENSE's
-  payer moves a row.
-- **An entry never carries its row position.** `updateEntry` and `setDeletedAt` re-resolve
-  id → row through `resolveRow` immediately before writing. There is deliberately no
-  `rowNumber` field.
-- **Never `USER_ENTERED`.** Every write passes `valueInputOption: RAW`.
-- **Every `:append` range is A-ANCHORED — `tab.dataRange`, never the bare tab title.**
-  `values.append` treats its range as a range to SEARCH for a logical table, so a bare sheet name
-  lets Google choose where that table starts, and a row written from column G puts every value
-  six fields to the right. `rowToEntry` then reports it as an unreadable AMOUNT, which names the
-  wrong cell entirely. `appendRow` carries the reasoning; `test/sheets.test.js` pins the literal
-  range per tab.
-- **A row carries no `created_at`/`updated_at`, and `makeEntry` reads no clock.** `deleted_at`
-  both soft-deletes and breaks a tombstone-vs-tombstone tie in `supersedes` — which must never
-  fall back to array order. That is why `updateEntry` stamps the payer-move tombstone from the
-  clock rather than writing a bare marker.
+- **`src/schema.js` is the only file in `src/` that knows the layout.** Use a tab's own `letter`/`index`; never hardcode a range. `bank_to_ledger.py` and `Code.gs` are the exceptions.
+- **TWO entry layouts, so every positional lookup hangs off a TAB, never the module** — `deleted_at` is index 5 for an expense, 4 for a settlement.
+- **`DATA_TABS` holds entries; `SHEET_TABS` is that plus `RECURRING`, and the data tabs are its PREFIX.** `RECURRING` in `DATA_TABS` lets `compact` hard-delete a template.
+- **Every column list is append-only**, since letters come from array position and `ensureStructure` rewrites a mismatched header without touching data rows. 26 columns max.
+- **The tab asserts what a row cannot: its type, and an expenses tab's payer.** `SETTLEMENTS.payer` is null — read the cell, the one place a column can disagree with reality.
+- **`rowToEntry` and `expenseTab` throw rather than guess a person**; `loadAll` counts the drops as `unattributedRows`, separate from `undecodedRows` because the cell to fix differs.
+- **`tabOf` is the one home of "where does this entry live"**, and only an EXPENSE's payer moves a row.
+- **An entry never carries its row position**: `updateEntry`/`setDeletedAt` re-resolve id → row through `resolveRow` immediately before writing. There is no `rowNumber` field.
+- **Never `USER_ENTERED`; every `:append` range is A-ANCHORED, `tab.dataRange`.** `append` searches for a table, so a bare tab name lets Google choose the starting column.
+- **A row carries no `created_at`/`updated_at`, and `makeEntry` reads no clock.** `deleted_at` also breaks a tombstone-vs-tombstone tie in `supersedes`, which must never fall back to array order.
+- **`rowToTemplate`/`templateToRow` are exact inverses**, and blank is a value in both: a variable bill, and "follow the payer's default".
 
 ## Reads and writes
-
-- **`loadAll`'s ranges are positionally coupled to `SHEET_TABS`**, so the range list, the
-  `valueRanges[index]` mapping through `DATA_TABS` and the templates' own index all come from
-  that one list. It also derives the config's index from `ranges.length`, and its no-config
-  retry slices from the END of that list — none may become a literal. The recurring range sits
-  BEFORE the config range for that reason: dropped by the retry instead, a missing `recurring`
-  tab would read as a missing `config` tab and never get built.
-- **An id is not unique across the two tabs, and not within one either.** Every *read* goes
-  through `reconcileById`; the tombstones it hides are real rows, so `supersededRows` is added
-  back to the count the compact button acts on. Every *write to an existing row* goes through
-  `resolveRow`, which reads the full row range and prefers the LAST match. Both failures are
-  silent. (`appendEntry` has no existing row to resolve.)
-- **`updateEntry` and `setDeletedAt` must be told the row's CURRENT payer.** `useLedger` reads
-  it as `previous.payer`, never `entry.payer`; both throw `error.entryGone` when the entry has
-  left state, and `updateEntry` throws on a `previousPayer` that is not a person. That is why
-  `removeEntry`/`restoreEntry` take an id alone.
-- **Only `ensureStructure` builds structure**, and it refuses a spreadsheet holding several
-  tabs and none of ours. `looksUninitialized` answers true for 400 and 404 alone — a 403 or a
-  500 must never lead to writing tabs into somebody's spreadsheet. Nothing else may call it;
-  see Gotchas for why `compact` does not.
-- **`compact()` is one of only two hard deletes** — `deleteTemplate` is the other, see
-  Recurring costs. It reads the full row range rather than the
-  `deleted_at` column, serializes its tab reads rather than batching them, and deletes in
-  **descending** row order within each tab. All three protect row numbers derived from
-  position.
-- **A delete request without a gid is a delete against the WRONG TAB, so `deleteRowRequest`
-  asserts one.** `JSON.stringify` drops an undefined `sheetId` and a `GridRange` without one
-  reads as gid 0 — the first tab in the spreadsheet — so the request does not fail, it removes
-  whatever row sits at that index in `expenses_p1`. Both hard deletes also guard upstream
-  through `missingGid`; the assert is the line a third one cannot forget.
-- **`compact` covers `DATA_TABS`, not just the expenses tabs** — and never the recurring tab,
-  which holds no tombstones and no row it could recognise. `missingGid` is the shared gid check
-  both hard deletes make, over whichever tabs each is about.
-- **`compact` never runs while a write is in flight, and reports `busy` rather than
-  `{removed: 0}`.** `compactRefusal` holds both refusals.
-- **Do not add conflict detection, and do not describe the app as if it had any.**
-  Last-write-wins is the accepted design (README).
-- **There is no migration code, and no users to need it.** Do not add a back-compatibility
-  branch to "keep an existing sheet working".
+- **`loadAll`'s ranges are positionally coupled to `SHEET_TABS`** — the list, the `valueRanges[index]` mapping, the config's index from `ranges.length`, the no-config retry slicing from the END. None may become a literal; recurring sits BEFORE config so the retry drops the right one.
+- **An id is unique in neither tab.** Every read goes through `reconcileById` (its hidden tombstones are added back to `compact`'s count); every write to an existing row through `resolveRow`, which prefers the LAST match. Both failures are silent.
+- **`updateEntry`/`setDeletedAt` must be told the row's CURRENT payer** — `previous.payer`, never `entry.payer`. That is why `removeEntry`/`restoreEntry` take an id alone.
+- **Only `ensureStructure` builds structure**, it refuses a spreadsheet holding other tabs and none of ours, `looksUninitialized` is 400 and 404 alone, and nothing else may call it.
+- **`compact()` and `deleteTemplate` are the only hard deletes.** `compact` reads full rows rather than the `deleted_at` column, serializes its tab reads, and deletes in **descending** row order — all three protect row numbers derived from position. It covers `DATA_TABS`, never `RECURRING`.
+- **`deleteRowRequest` asserts its gid**: `JSON.stringify` drops an undefined `sheetId` and a `GridRange` without one means gid 0, so a lost gid silently deletes from the first tab. **`compact` never runs while a write is in flight, and reports `busy` rather than `{removed: 0}`.**
+- **No conflict detection (last-write-wins), no migration code, no back-compatibility branches**, and do not describe the app as if it had any of them.
 
 ## Recurring costs
 
-`recurring` is a tab of DECLARATIONS, editable from the app through `RecurringSheet` and
-`TemplateFormSheet` and still hand-authorable in the Sheet. The row mapping is in `schema.js`
-beside its entry twin; every decision the page makes is in `src/lib/recurring.js`. `README.md`
-documents the columns.
+A tab of DECLARATIONS, editable through `RecurringSheet`/`TemplateFormSheet` and still
+hand-authorable. Every decision the page makes is in `src/lib/recurring.js`.
 
-- **`${templateId}#${monthKey}` is the whole of "already recorded", and TWO files that cannot
-  import each other derive it** — `recurring.js`, where `instanceId` mints one and
-  `isRecurringInstance` reads it back through the same `INSTANCE_JOIN` (the INVERSE, and the only
-  way the ledger knows a row is a fixed cost), and `postRecurring` in `apps-script/Code.gs`;
-  `instanceId` says why it is derived rather than matched on category and description. Its corollary: **a template's id is minted once and NEVER changes**,
-  or the poster posts every month it has already handled again.
-- **`isRecurringInstance` reads the ENTRY ALONE — never the templates, never the note.** A `↻`
-  in the description is lost the first time somebody fixes a typo, and it is the bank's own text
-  besides; a `template_id` column is a schema change in three files that cannot import each
-  other, with two writers to fill it in. Matching against the loaded templates would be worse
-  than either: they are deliberately absent from the snapshot, so the section would vanish on
-  the cached paint and appear a round trip later, and `deleteTemplate` orphans instances that
-  are still fixed costs.
-- **There are TWO ways to stop a cost, and retiring is the one to reach for.** `active_to` keeps
-  the row, therefore the id, therefore the record of which months are handled — and it is
-  reversible, so it needs no confirmation and is not `btn--danger`. `deleteTemplate` removes the
-  row because it was asked for, and ORPHANS every instance the template posted: the ledger rows
-  stay, the sheet's memory of them does not, so adding the cost back under a new id can post a
-  month already paid. That cost is stated in the confirmation and in `recurring.deleteHint` — do
-  not shorten either to "this cannot be undone", which is the part anyone can already guess.
-- **`recurringRows` is the ONE derivation of "due", and its four fields say four things.** Not
-  scheduled, scheduled but not yet due, due, recorded — rendered as two, rent-on-the-27th viewed
-  on the 3rd is indistinguishable from rent already paid, so every row says which it is in words.
-  "Stopped" and "not this month" are also different facts. Do not add a second predicate beside
-  it.
-- **`draft`, not `due`, is what gates the Record control, and they are deliberately wider and
-  narrower.** `draft` is non-null for any month a cost may be recorded into — rent paid on the
-  3rd has to be enterable on the 3rd — while `due` only decides whether the control says Record
-  or Record now. Gate the button on `due` again and the sole way to enter an early payment is to
-  retype the whole cost by hand. The day still binds the one writer that must never run early,
-  `postRecurring`, which is a different file.
-- **`recurringRows` takes the RAW entry list, tombstones included.** A tombstone means the month
-  is recorded — otherwise deleting a double-charged rent nags for the rest of the month.
-- **Due is ONE comparison, `date <= today`, against the instance's own date.** Calling the 27th's
-  rent due on the 1st has the balance claiming half of it owed three weeks before the money moves.
-  Recording it early is somebody's own decision, and the row says the day either way.
-- **The recurring page is scoped to the month on SCREEN; retiring is dated from TODAY.** A month
-  missed while nobody was recording has to stay recordable, and `postRecurring` only ever posts
-  the current one — but "stop this cost" is a decision about now, and dated from a month someone
-  navigated back to it would retire every month since.
-- **`reconcileTemplates` keeps the FIRST template per id and counts the rest**, like
-  `parseConfigRows` does for a config key, and `saveTemplate` refuses to write to a duplicate at
-  all.
-- **`sheets.saveTemplate` is the whole non-destructive write surface: it appends OR overwrites by
-  id, and retiring is that same call.** One function rather than two is what makes a retried add
-  idempotent.
-- **A blank cell takes its documented default; a cell that was FILLED IN and cannot be read
-  refuses the whole row**, and `loadAll` counts it — the deliberate opposite of `config`. **A
-  blank `payer_share` must stay null so `defaultSplitFor(payer)` applies**: reading it as
-  `EVEN_SHARE`, which is right for an already-written row, splits every rent 50/50 on a sheet
-  running 80/20.
-- **`postRecurring` posts anything with an AMOUNT, and resolves a blank share itself** through
-  `defaultShares`/`readShare` — the one place outside the client that has to implement the
-  above-1-is-a-percentage rule and first-usable-value-wins for itself, because it can import
-  neither. `readYen` is the same problem for the amount, and both are ported in FULL rather
-  than approximated: `Number(text.replace(/,/g, ''))` is a 100x write, since `'42,10'` is ¥42
-  to `decimalSeparatorIndex` and ¥4210 to a comma strip. `test/apps-script.test.js` runs each
-  poster reading and its `money.js` twin over ONE table of inputs — the only thing that can
-  see them drift, since a divergence here is invisible on screen: the client reads the row
-  fine, so no notice fires, and the cost simply never posts. A blank AMOUNT is the one thing
-  that cannot post, and those stay tap-to-record.
-- **The poster's handled set grows as rows land, not just before the loop.** Two recurring rows
-  under one id — copy the rent row to add parking, forget to change `id` — otherwise both post
-  under `<id>#<month>`, and the client keeps the FIRST of two live rows, so the second one's
-  money is invisible in the balance while sitting in the sheet. First-wins in both files, and
-  `appendInstance` returns whether the row landed so a missing tab is not counted as posted.
-- **`templateFormProblem` owns which field a submit refuses, and it is in `lib/` because a
-  static-markup render cannot submit a form.** A blank amount is VALID, so a fumbled `22o000`
-  falling through to blank is a silent money change.
-- **The template form shows six of ten columns and writes all ten.** `months`, `active_from` and
-  `active_to` ride the draft untouched, or editing a quarterly cost silently makes it monthly.
-  Say so on screen, because nothing else would.
-- **Nothing on the recurring page auto-posts.** Record prefills `EntryFormSheet` as an ADD, so
-  validation, `splitYen`, `tabOf` and the toasts all apply unchanged.
+- **`${templateId}#${monthKey}` is the whole of "already recorded", derived in two files that cannot import each other**, so a template's id is minted once and NEVER changes. **`isRecurringInstance` reads the ENTRY ALONE**: never the templates, never the note.
+- **Two ways to stop a cost, and retiring is the one to reach for.** `active_to` keeps the row, so the id, so which months are handled, and it is reversible — no confirmation, not `btn--danger`. `deleteTemplate` ORPHANS every instance it posted: say that, not "cannot be undone".
+- **`recurringRows` is the ONE derivation of "due" and its four fields say four things**: not scheduled, not yet due, due, recorded. Never add a second predicate beside it.
+- **Due is ONE comparison, `date <= today`, against the instance's own date**, and it takes the RAW entry list — a tombstone means recorded.
+- **`draft` gates the Record control, not `due`**, which only chooses Record or Record now. The day binds one writer, `postRecurring`.
+- **"Stopped" is a refinement of "not scheduled"**: `active_to` is inclusive, so asked first it contradicts its own Record button.
+- **A status naming a day takes it from the INSTANCE, which is clamped** — day 31 is the 28th in February.
+- **The page is scoped to the month on SCREEN; retiring is dated from TODAY.**
+- **`sheets.saveTemplate` is the whole non-destructive write surface — append OR overwrite by id, retiring included.** One function is what makes a retried add idempotent.
+- **A blank cell takes its default; a cell FILLED IN and unreadable refuses the whole row**, counted by `loadAll` — the opposite of `config`. A blank `payer_share` stays null so `defaultSplitFor` applies.
+- **`reconcileTemplates` keeps the FIRST template per id and counts the rest**, and `saveTemplate` refuses to write to a duplicate at all.
+- **`postRecurring` posts anything with an AMOUNT and resolves a blank share itself.** It imports nothing, so `readYen`/`readShare` are FULL ports: approximating is a 100x write, `'42,10'` being ¥42 to one reading and ¥4210 to a comma strip.
+- **The poster's handled set grows as rows land**, or two rows under one id both post.
+- **`templateFormProblem` owns which field a submit refuses, in `lib/`** because a static-markup render cannot submit a form. A blank amount is VALID.
+- **The template form shows six of ten columns and writes all ten**: the three scheduling ones ride the draft untouched. Say so on screen.
+- **Nothing on the recurring page auto-posts**: Record prefills `EntryFormSheet` as an ADD, so validation, `splitYen`, `tabOf` and the toasts all apply unchanged.
 
 ## Optimistic state
-
-- **A pending row always beats the server's copy of it**, whether or not the sheet lists its id
-  (`mergeLoaded`). Its corollary: `pending` must never be left set with no write in flight, so
-  `reverted` strips it — a stuck flag is permanent and blocks `compact` for the install's life.
-- **A read that changed nothing returns the array already on screen**, so `setEntries` bails
-  out. That rests on `sameEntry` being EXACT: it compares by key rather than a field list.
-  `applyLoad` holds the merged config's identity across such a read through `sameSheetConfig`,
-  because identity is what every `memo` keyed on the config compares.
-- **Only the newest read may apply.** `loadGeneration` drops any stale reply, and a read in
-  flight when the key is forgotten must not repopulate state for the sheet just left.
-- **Template writes are NOT optimistic.** `saveTemplate` writes and then `refresh()`, exactly
-  as `compact` does. That is what keeps templates out of the snapshot, out of `mergeLoaded` and
-  out of `hasPendingWrite` — and why `App`'s `setSafeToReload` predicate keys on an open FORM,
-  since nothing else can see a template write in flight.
-- **Read state through `entriesRef`, never from inside a `setEntries` updater.** Take
-  `previous` from the ref *before* calling `setEntries`.
-- **Focus refreshes are throttled to a 30s floor, and EVERY read counts against it** — `load`
-  stamps the clock, not the focus handler. Two people share one sheet with no push channel and
-  every refresh spends per-user quota. Do not remove it.
-- **An entry's id is minted when the draft opens, not per submit**, so a retry after a lost
-  response is at worst a duplicate row the client reconciles.
-- **A hook holds effects; the decisions live in `lib/`.** There is no DOM in the test
-  environment and no renderer for hooks, so nothing a `use*.js` file decides for itself is
-  reachable from a test. Every list transition, status decision and refusal lives in
-  `ledgerState.js` (`reconcileById`, `looksUninitialized`, `entryFromInput`, `hasPendingWrite`,
-  `compactRefusal`, `newDraftEntry`, `shouldRefresh`, `noticeKeys`, `gateFor`,
-  `templateFromInput`), `balance.js` (`initialMonthKey`, `monthSections` and the aggregates),
-  `split.js` (`toSplit`, `nextSplit`) or `recurring.js` (`recurringRows`, `isRecurringInstance`,
-  `reconcileTemplates`, `templateFormProblem`, `retiredTemplate`). Put new logic there, or it
-  cannot be tested at all. Hooks are not confined to `src/state/`: `useEntrySplit` sits beside
-  the one control that holds its state.
+- **A pending row always beats the server's copy** (`mergeLoaded`), so `pending` must never be left set with no write in flight — `reverted` strips it.
+- **A read that changed nothing returns the array already on screen**, so `setEntries` bails; that rests on `sameEntry` comparing by key. `applyLoad` holds the merged config's identity across such a read, because identity is what every `memo` compares.
+- **The persist effect watches the CONFIG as well as the list**, or a read where only the config changed never reaches the cache and a stale `default_split_p*` moves money on the next launch.
+- **`writeSnapshot`'s reference guard names the SHEET too, and `useLedger` resets on an id CHANGE**, not just on losing one: a rejected key leaves the old id in storage.
+- **Only the newest read may apply** (`loadGeneration`), including one in flight when the key is forgotten.
+- **Template writes are NOT optimistic**: write, then `refresh()`, as `compact` does. That is what keeps templates out of the snapshot, `mergeLoaded` and `hasPendingWrite`.
+- **`blocksReload` decides whether an update may reload, and it is in `lib/`.** Three inputs because `pending` covers none of the last: an open form, an unacknowledged write, and `useLedger`'s `writing` count. Never add overlay kinds or a second "which sheet is open" value.
+- **Read state through `entriesRef`, never inside a `setEntries` updater**, and mint an entry's id when the draft OPENS, not per submit.
+- **Focus refreshes are throttled to a 30s floor and EVERY read counts** — `load` stamps the clock, not the focus handler.
+- **A hook holds effects; the decisions live in `lib/`.** With no DOM and no hook renderer in the tests, nothing a `use*.js` decides for itself is reachable — see `ledgerState.js`, `balance.js`, `split.js`, `recurring.js`. `useEntrySplit` sits beside the one control holding its state.
 
 ## Money, dates and the split
-
-- **The ledger is yen only, and no function takes a currency.** An amount IS an integer number
-  of yen. **Do not reintroduce a currency parameter** to make the app "ready" for another one:
-  a second currency is a schema change, and adding the argument back without the column is the
-  one shape that IS a silent 100x error. `JPY` is spelled once, in `money.js`'s `Intl` call.
-- **`splitYen` must conserve every yen:** `payerYen + otherYen === yen`.
-- **A comma is read in exactly one place**, `decimalSeparatorIndex`: comma-only with exactly
-  three trailing digits is grouping, anything else is a decimal — `"1,234"` is 1234 and
-  `"42,10"` is 42. `test/money.test.js` pins both, and the bank export's `"1400.000000"`.
-- **`parseShare` is the one reading of a share a human typed**; anything above 1 is a
-  percentage, a trailing `%` is accepted, and the WHOLE string has to be a number. Not
-  `parseFloat`, which reads `'0,5'` as 0 — the payer covering nothing — and `'0.5x'` as 0.5.
-  Both `payer_share` and the `default_split_p*` rows go through it.
-- **`useEntrySplit`'s `allowDefault` exists so a blank `payer_share` stays blank.** An entry's
-  null share is an unfilled draft the payer's default resolves; a template's is a durable
-  declaration, and resolving it on save would pin the cost to today's `default_split_p*` instead
-  of following it.
-- **A displayed share is not the saved share.** `toSplit` carries the exact `share` beside the
-  whole-percent `percent`, and `share` is what gets written; `splitAtPercent` is the only place
-  a slider position becomes one. Saving `percent / 100` moves money on an edit that never
-  touched the split.
-- **The default split is per person, keyed on the payer** (`defaultSplitFor`). The two values
-  are independent and need not sum to 1 — only the payer's is read, so never mirror one from
-  the other. A new entry carries `payerShare: null` meaning "follow the payer's default"; an
-  entry being edited carries its stored share and must keep it. `useEntrySplit` holds that.
-- **Never add an `if (type === 'settlement')` branch to arithmetic** — `payer_share: 0` already
-  says it — and never count one toward a spend total or a category breakdown.
-- **Within a day, `groupByDate` orders by id**: arbitrary, stable, and independent of which tab
-  a row came from. `descending` in `balance.js` is the one comparator for every newest-first
-  sort there.
-- **Dates are ISO strings, compared as strings.** Never `new Date('2026-08-05')` — it parses as
-  UTC midnight and shifts a day west of UTC. `src/lib/dates.js` owns every date helper and both
-  shape checks: `isIsoDate` (shape, then a UTC round-trip, since the regex alone accepts
-  `2026-02-31`) and `isMonthKey`. `monthParts` checks the SHAPE before the numbers, because
-  `split('-')` alone reads a full ISO day as a valid month. **`dayInMonth` CLAMPS**, because
-  `new Date(2026, 1, 31)` rolls silently into March and files a row under the wrong month.
-- **Display formatters are cached, keyed on everything that decides one.** `money.js` keys on
-  the locale ALONE, because the currency and its zero fraction digits are fixed; no cache may
-  key on less than the full set of options it passes.
+- **Yen only, and no function takes a currency** — an amount IS an integer number of yen, and re-adding the argument without the column is the one shape that IS a silent 100x error.
+- **A comma is read in one place**, `decimalSeparatorIndex`: comma-only with exactly three trailing digits is grouping, anything else a decimal. **`splitYen` must conserve every yen:** `payerYen + otherYen === yen`.
+- **`parseShare` is the one reading of a typed share** — above 1 is a percentage, `%` is fine, and the WHOLE string must parse; not `parseFloat`, which reads `'0,5'` as 0.
+- **`useEntrySplit`'s `allowDefault` exists so a blank `payer_share` stays blank**: an entry's null share is unfilled, a template's is a durable declaration.
+- **A displayed share is not the saved share** — `toSplit` carries the exact `share` beside the whole-percent `percent`, and `splitAtPercent` is the only place a slider position becomes one.
+- **The default split is per person, keyed on the payer.** The two values are independent and need not sum to 1; never mirror one from the other.
+- **Never add an `if (type === 'settlement')` branch to arithmetic** — `payer_share: 0` says it — and never count one toward a spend total or a category breakdown.
+- **Within a day, `groupByDate` orders by id**: arbitrary, stable, tab-independent. `descending` is `balance.js`'s one comparator.
+- **Dates are ISO strings, compared as strings** — never `new Date('2026-08-05')`, which is UTC midnight. `lib/dates.js` owns every helper; `monthParts` checks SHAPE before numbers and **`dayInMonth` CLAMPS**.
+- **The pure layers stay pure**: `money`, `dates`, `balance`, `schema`, `split`, `identity` never read the i18n singleton and never call argless `localeCompare`. Display formatters are cached, keyed on everything that decides one.
 
 ## The config tab, and what is per-device
-
-- **Config values are not all strings.** `CONFIG_FIELDS` carries a kind per key, and each
-  parser in `PARSERS` answers null for a value it cannot use so the caller's defaults win: an
-  empty list must never stand in for a default, and a share must never yield NaN, because that
-  reaches `splitYen`. `test/config.test.js` pins these. `mergeConfig` clones the arrays it
-  spreads — the defaults are module-level.
-- **A settlement's payer is case-folded on read, and the FIRST usable value for a config key
-  wins.** A stale duplicate `default_split_p1` lower down the tab would move money.
-- **The category `<select>` always offers the entry's stored category**, even when the config
-  tab no longer lists it: a `<select>` whose value matches no option renders blank and then
-  silently saves the invisible old value.
-- **Nothing written to the sheet is ever localized.** The names cut both ways: `SEED_NAMES`
-  writes English into a fresh sheet, while `DEFAULT_CONFIG` deliberately carries no names, so a
-  sheet that says nothing falls through to `nameOf`'s localized fallback.
-- **`bank_to_ledger.py` never translates a merchant name, and never rewrites one.** A
-  description is the bank's own text plus, when it adds anything, your own note — so every row
-  can be found in the statement by searching for what it says. A rule picks a category, a share
-  and whether the row is a purchase; nothing else. Romaji and kana patterns both appear in
-  RULES because the bank prints a shop both ways, which is matching, not translating.
-- **The locale, the accent, which person this device is and which summary figure is on screen
-  are the four per-device values, and none may reach the sheet.** Three share
-  `lib/preference.js` — the summary's sits beside `SummaryCard`, the one control that owns it,
-  as `useEntrySplit` does; identity is `lib/identity.js`, and nothing detects it (see Gotchas).
+- **Config values are not all strings.** `CONFIG_FIELDS` carries a kind and each parser answers null for a value it cannot use, so the caller's defaults win: an empty list must never stand in for a default, and a share must never yield NaN. `mergeConfig` clones the arrays it spreads.
+- **A settlement's payer is case-folded on read, and the FIRST usable value per key wins.**
+- **The category `<select>` always offers the entry's stored category**, or it renders blank and saves the invisible old value.
+- **Nothing written to the sheet is localized.** `SEED_NAMES` writes English into a fresh sheet; `DEFAULT_CONFIG` carries no names, so silence falls through to `nameOf`'s fallback.
+- **`bank_to_ledger.py` never translates or rewrites a merchant name**, so every row is findable in the statement. Kana and romaji both appear in RULES because the bank prints a shop both ways.
+- **The locale, the accent, which person this device is, and which summary figure is on screen are the four per-device values, and none may reach the sheet.**
 
 ## Telling the truth on screen
-
-- **Anything the sheet holds and the app cannot show is counted and said out loud.** `loadAll`
-  returns five such counts; `noticeKeys` turns them into notices and owns their precedence,
-  worst first — `undecodedTemplates` is last because it is the only one where no figure on
-  screen is wrong. Never repair the `configMissing` case: re-seeding writes this build's
-  defaults — an even split included — into a sheet whose real values are unknown, and takes the
-  notice with them.
-- **No raw error text ever reaches the screen.** `i18nError` is the only way to throw something
-  a person will read. `sheets.js` and `connection.js` keep the API's own English on `.message`
-  for consoles and attach an `i18nKey` instead; `errorMessage(cause, fallbackKey)` is the only
-  way a caught error becomes a sentence, and it never falls back to `.message`.
-- **Store the cause, never the sentence.** `useLedger` keeps the thrown error and `App` calls
-  `errorMessage` at the render; `SettingsSheet` keeps the compact *outcome*. A translated string
-  is frozen in the language current when it was built, and both of these outlive a change.
-- **Every destructive confirmation goes through `ConfirmSheet`**, which is the one home of
-  "Cancel first in the DOM" and of being content-sized rather than `full`. `ConfirmDeleteSheet`
-  is its entry-shaped wrapper — `App` owns the `confirmEntry` overlay and nothing else calls
-  `removeEntry`, and recovery is the collapsed `DeletedList`, never a toast action. The caller supplies the
-  BODY, because only the caller knows whether the thing can be recovered.
-- **The ledger shows recurring costs it has RECORDED, and never one it has not.** `monthSections`
-  lifts the month's instances into one section above the days; the `undecodedTemplates` notice is
-  the only other mention, and it is about rows the sheet holds and the app cannot use. There is
-  no "rent is not in yet" anywhere on this screen — reminders live on the page, and that is a
-  product decision rather than an oversight.
-- **A recurring instance appears in the SECTION or in its day, never both.** `monthSections`
-  partitions: rendered twice it reads as a double charge of money that moved once, and dropped
-  from both it vanishes off a list whose own totals still count it. Which is also why a day's
-  total is that day's remaining rows and the month's figures come from the month, not from these
-  sections.
-- **The deleted list is scoped to the month on screen**; settings' count stays sheet-wide,
-  because that is what `compact` acts on.
-- **Nothing in the UI creates a settlement**, so the balance in `Header` carries no action and
-  must stay that way unless asked. Everything below the UI still handles the type.
+- **Anything the sheet holds and the app cannot show is counted and said out loud** — `loadAll` returns five counts and `noticeKeys` owns their precedence, worst first. Never repair `configMissing`: re-seeding writes this build's defaults into an unknown sheet.
+- **No raw error text reaches the screen.** `i18nError` is the only way to throw something a person reads; the API's English stays on `.message` behind an `i18nKey`, and `errorMessage` never falls back to it.
+- **Store the cause, never the sentence** — a translated string is frozen in the language that built it, and both `useLedger`'s error and the compact outcome outlive a change.
+- **Every destructive confirmation goes through `ConfirmSheet`**, the one home of "Cancel first in the DOM" and of being content-sized. The caller supplies the BODY, because only the caller knows whether the thing can be recovered. Recovery is `DeletedList`, never a toast action.
+- **The ledger shows recurring costs it has RECORDED, never one it has not.** No "rent is not in yet" on that screen; reminders live on the recurring page.
+- **A recurring instance appears in the SECTION or in its day, never both** (`monthSections` partitions). A day's total is that day's remaining rows; the month's figures come from the month.
+- **The deleted list is scoped to the month on screen**, while settings' count stays sheet-wide because that is what `compact` acts on.
+- **A tombstoned row says everything its live twin says** — a settlement without its direction reads as an expense.
+- **Nothing in the UI creates a settlement**, so `Header`'s balance carries no action. Everything below the UI still handles the type.
 
 ## The token, the cache and the worker
-
-- **The app key is never a build-time value.** `VITE_SCRIPT_URL` ships in the public bundle, so
-  nothing may depend on the endpoint being hard to guess.
-- **The token endpoint always answers HTTP 200.** `ContentService` cannot set a status, so
-  branch on the body, never on `response.ok`. `connection.js` holds the taxonomy —
-  `unauthorized` terminal, everything else transient — and it **flags a rejected key rather
-  than deleting it**.
-- **The mint request is `Content-Type: text/plain`, and the method is never forced through the
-  redirect.** `text/plain` keeps it a CORS simple request, which is also why the script has no
-  `doOptions`; `fetch` must be allowed to downgrade POST to GET across `/exec`'s 302.
-- **`doPost` must be incapable of throwing; `postRecurring` must be allowed to.** A throw in the
-  web app returns Google's HTML error page, which `connection.js` classifies as transient; an
-  uncaught throw in a TRIGGER mails the owner, and that mail is the only channel reporting the
-  poster stopping. `Code.gs` states each half at the function it governs.
-- **`setValues` coerces like `USER_ENTERED`.** `Code.gs` sets the range's number format to `@`
-  BEFORE writing, or `2026-09-01` becomes a date serial that reads back in the spreadsheet's
-  locale and `loadAll` reports as `undatedRows`. Every date there goes through
-  `Utilities.formatDate` in the script's own zone, and the manifest pins that zone.
-- **The refresh margin is performance; the 401 retry is correctness.** `refreshToken`'s
-  generation counter is why: a mint that began *before* the 401 may carry the token Google just
-  rejected, and the retry runs with `allowRetry: false`.
-- **A failure that retrying cannot fix must not be reported as transient**, or it hides behind
-  the 30-second focus floor forever. Two of them: a lost share, and `{"error":"unavailable"}`
-  (the 7-day consent-screen expiry). A 403 is *both*, so `isUnreachable` reads the reason
-  rather than the status.
-- **The token mint starts before the first React render**, because everything after it is
-  serialized. `src/main.jsx` carries the measurements and why it is prod-only.
-- **The snapshot is validated per entry, and dropped whole if any row fails.** It is the one
-  input never decoded through `rowToEntry`. **Bump `VERSION` whenever the persisted shape
-  changes**; `v` is a drop marker, never a migration. Five more easily-broken things in
-  `snapshot.js` each say so where they live: what a bad row costs during the first render, the
-  silent stop past `MAX_CHARS`, storing the pre-merge config, `clearSnapshot` resetting the
-  remembered payload, and a successful *read* seeding that payload.
-- **Templates are deliberately NOT in the snapshot.** It is the one input never decoded through
-  a schema reader and it is restored in a `useState` initializer, so a bad cached row
-  white-screens the first render; a reminder loses nothing by arriving one round trip late.
-- **The cache is written from the screen, only once nothing is pending — and the persist effect
-  watches the CONFIG as well as the list.** `mergeLoaded` returns the array already on screen
-  for a read that changed nothing, so a read where only the config tab changed leaves `entries`
-  at the same reference: keyed on the list alone the effect never runs and the cache keeps the
-  old config until some entry happens to change. That is a cold launch painting a stale name, a
-  stale `categories[0]` the add form pre-selects, and a stale `default_split_p*`, which moves
-  money. An effect in `useLedger` owns that.
-- **`writeSnapshot`'s reference guard names the SHEET, not just the two references.** A switch
-  from one spreadsheet to another is reachable without a `forgetKey` — a rejected key leaves the
-  old id in storage while the gate asks for a new one — and `useLedger` resets on an id CHANGE
-  for the same reason, or sheet B's screen paints sheet A's ledger under a "showing saved data"
-  notice indefinitely.
-- **`setSafeToReload` must stay wired, and `reconsiderUpdate` with it.** Without the predicate
-  an update reloads mid-entry; without the nudge a worker refused while the form was open is
-  never asked again, because nobody who stays in the app produces a `focus` event. Its one-hour
-  floor comes from the same `shouldRefresh` the sheet read uses.
-- **`blocksReload` is that predicate, and it lives in `lib/` because it is a decision.** Three
-  inputs, because `pending` cannot cover them all: an open form, an unacknowledged optimistic
-  write, and `useLedger`'s `writing` count — `saveTemplate`, `deleteTemplate` and `compact` carry
-  no optimistic flag, and the overlay cannot stand in for them since `deleteTemplate` switches to
-  the recurring page and `compact` runs from settings, both before awaiting. Those two are the
-  app's only irreversible writes: a reload mid-`batchUpdate` kills the follow-up read and the
-  toast. Never solve it by adding overlay kinds or a second "which sheet is open" value.
-- **Precache from a `dist/` walk, derive the cache name from file CONTENTS, match with
-  `ignoreVary: true`, never intercept a cross-origin request, and sweep only this app's own
-  caches.** All five fail silently; `scripts/build-sw.js` says why at each and
-  `test/sw-build.test.js` pins them — the sweep by RUNNING the generated `activate` handler,
-  since which keys survive is the whole point and no substring can see it. `caches.keys()` is
-  scoped to the ORIGIN and every project Pages site on an account shares one, so an unfiltered
-  sweep deletes another app's precache with nothing here looking wrong; `CACHE_PREFIX` is what
-  makes the two tellable apart. The cross-origin `return` is the first statement of the `fetch`
-  handler, because scope decides which *clients* are controlled and not which *requests* are
-  seen. **The base path lives in `base.js` and both builds read it from there** — two copies that
-  disagree means no worker ever activates, with nothing on screen looking wrong.
+- **The app key is never a build-time value**: `VITE_SCRIPT_URL` ships in the public bundle.
+- **The token endpoint always answers HTTP 200**, so branch on the body, never `response.ok`. `connection.js` holds the taxonomy — `unauthorized` terminal, the rest transient — and it flags a rejected key rather than deleting it.
+- **The mint is `Content-Type: text/plain` and the method is never forced through the redirect**, which keeps it a CORS simple request — hence no `doOptions` in the script.
+- **`doPost` must be incapable of throwing; `postRecurring` must be allowed to.** A throw in the web app returns HTML, read as transient; an uncaught throw in a TRIGGER mails the owner, and that mail is the only channel reporting the poster stopping.
+- **`setValues` coerces like `USER_ENTERED`**, so `Code.gs` sets the number format to `@` BEFORE writing and every date goes through `Utilities.formatDate` in the pinned zone.
+- **The refresh margin is performance; the 401 retry is correctness.** A mint begun before the 401 may carry the rejected token, so `refreshToken` counts generations and the retry cannot retry.
+- **A failure retrying cannot fix must not be reported as transient**, or it hides behind the 30s floor forever: a lost share, and `unavailable`. A 403 is both, so `isUnreachable` reads the reason, not the status.
+- **The token mint starts before the first React render**, because everything after it is serialized.
+- **The snapshot is validated per entry and dropped whole if any row fails.** It is the one input never decoded through `rowToEntry` and it is restored in a `useState` initializer, so a bad row white-screens the first render. **Bump `VERSION` whenever the shape changes**; `v` is a drop marker, never a migration. Templates are deliberately not in it.
+- **The cache is written from the screen, only once nothing is pending**, and **`setSafeToReload` must stay wired with `reconsiderUpdate`** — without the nudge a worker refused while a form was open is never asked again.
+- **Precache from a `dist/` walk, name the cache from file CONTENTS, match with `ignoreVary: true`, never intercept a cross-origin request, and sweep only `CACHE_PREFIX` keys.** All five fail silently; `caches.keys()` is origin-wide and Pages sites share an origin. The cross-origin `return` is the fetch handler's first statement, because scope decides which *clients* are controlled, not which *requests* are seen. **The base path lives in `base.js`.**
 
 ## Conventions
-
-- **Plain modern JavaScript, ESM.** No TypeScript. `.jsx` only for files containing JSX.
-- **Prettier owns formatting, for `.js`/`.jsx` only.** The stylesheets and docs are outside the
-  glob: their layout is hand-tuned and a reflow would rewrite every paragraph. Where a literal
-  is a table rather than a list, use `// prettier-ignore` rather than widening
-  `.prettierignore`, which only needs `dist/`. The directive's text must be *exactly*
-  `prettier-ignore` — append a reason to that line and it is silently inert.
-- **No new npm dependencies** without a clear reason. The bundle is React plus application
-  code; icons are inline SVG in `src/components/icons.jsx`. A new dependency is also a CSP
-  decision.
-- **`SettingsIcon`'s path is generated, not drawn** — every point is
-  `(12 + r·cos θ, 12 + r·sin θ)` at `θ = 45k° ± 13°` on r 9.2 (tooth tip) or 6.5 (root). A
-  hand-transcribed gear lands one tooth off and reads as an unfinished glyph at 20px.
-  Regenerate rather than retouch.
-- **If you add a Google host, update the CSP** in `index.html`. It is a deliberate allowlist.
-- **Never put a real secret in a `VITE_` variable.** Vite inlines every `VITE_`-prefixed
-  variable into the bundle. `VITE_SCRIPT_URL` is public by design; `VITE_BASE` is read from
-  `process.env` by `base.js` at build time and never inlined.
-- **Comments explain *why*, not *what*, and say it once.** The non-obvious constraint gets a
-  comment; the obvious line does not. State the standing rule, not the incident that produced
-  it. A rule in a module header does not need restating at each function, and a `@param` that
-  only retypes the signature is noise.
-- **One helper, one home.** `readStored`/`writeStored` (`src/config.js`) are the only
-  `localStorage` touches; `storedPreference` (`lib/preference.js`) the only per-device store;
-  `cellText` lives in `schema.js`; every date helper in `lib/dates.js`; `PEOPLE` is the only
-  `[p1, p2]` literal; `UNCATEGORIZED` the only spelling of that bucket; `useEntryTitle` the
-  only place an entry becomes a one-line title. `usePeopleLabels` is the only place a component
-  turns a person into a name, in three forms — `name`, the viewer-relative `label`, and
-  `possessive`, which exists because English inflects: `label` in `'{name}’s share'` reads
-  "You’s share" for whoever is holding the phone.
-- **A control that appears twice is a component**: `Field` (the one home of the
-  `<label htmlFor>` vs `<span>` decision), `Segmented`, `EntryLine`, `NoteField`, `SplitField`,
-  `CategoryField` — the one home of the `<select>`-whose-value-matches-no-option trap — and
-  `OpenSheetLink`.
-  The two radio groups — `Segmented` and the accent swatches — each carry their own
-  `role="radiogroup"`. A wrapper with no job of its own is not on the list; inline it.
-- **`LedgerScreen` is the signed-in surface, and THREE things render it**: `App`,
-  `scripts/preview.jsx`, and one static render in `test/render.test.jsx`. Written more than
-  once, a layout change silently leaves the only visual check screenshotting a tree the app no
-  longer has. `App` keeps the gates, sheets and state; `useLedgerView` every derived figure.
-- **`EntryList`, `EntryRow` and `SummaryCard` are `memo`, and every handler they take must stay
-  stable.** `App` re-renders on each toast, refresh and month change, and those three are the
-  only subtrees whose cost grows with the ledger — an inline arrow turns the memo into dead
-  weight that still pays for the comparison. `openEntry` and `confirmDeleteEntry` are
-  `useCallback`s for exactly that; `setMonthKey` is a setter and already stable. Nothing looks
-  wrong when this breaks and no test can see it.
-- **The entry form's field order is by how often each field is touched**, not by how the sheet
-  reads: amount, note, category, who paid, date, split. `EntryFormSheet` says why. It is a
-  decision, so `test/ui.test.jsx` asserts the order.
+- **Plain modern JavaScript, ESM.** No TypeScript; `.jsx` only for files containing JSX.
+- **Prettier owns formatting, `.js`/`.jsx` only** — stylesheets and docs are hand-tuned and outside the glob. For a literal that is a table use `// prettier-ignore`, whose text must be exactly that or it is silently inert.
+- **No new npm dependencies** without a clear reason; icons are inline SVG. One is also a CSP decision, and **adding a Google host means updating the CSP** in `index.html`.
+- **Never put a real secret in a `VITE_` variable**: Vite inlines every one into the bundle.
+- **`SettingsIcon`'s path is generated, not drawn** — `(12 + r·cos θ, 12 + r·sin θ)` at `θ = 45k° ± 13°`, r 9.2 or 6.5. Regenerate rather than retouch.
+- **Comments explain *why*, not *what*, and say it once.** State the standing rule, not the incident behind it. A module header does not need restating per function, and a `@param` that retypes the signature is noise.
+- **One helper, one home.** `readStored`/`writeStored` are the only `localStorage` touches; `storedPreference` the only per-device store; `cellText` in `schema.js`; every date helper in `lib/dates.js`; `PEOPLE` the only `[p1, p2]` literal; `UNCATEGORIZED` the only spelling of it; `useEntryTitle` the only place an entry becomes a title; `usePeopleLabels` the only place a component names a person, in three forms — `possessive` exists because English inflects.
+- **A control that appears twice is a component**: `Field`, `Segmented`, `EntryLine`, `NoteField`, `SplitField`, `CategoryField`, `AmountField`, `SheetFormFooter`, `OpenSheetLink`. A wrapper with no job of its own is not on the list; inline it.
+- **`LedgerScreen` is the signed-in surface and THREE things render it**: `App`, `preview.jsx`, one static render in `render.test.jsx`. `App` keeps gates, sheets and state; `useLedgerView` every derived figure.
+- **`EntryList`, `EntryRow` and `SummaryCard` are `memo` and every handler they take must stay stable** — they are the only subtrees whose cost grows with the ledger, nothing looks wrong when it breaks, and no test can see it.
+- **The entry form's field order is by how often a field is touched**: amount, note, category, who paid, date, split. A decision, so `test/ui.test.jsx` pins it.
 
 ## i18n
-
-English and Japanese, no dependency. `src/i18n/` holds the engine (`index.js`), the two
-catalogs (`en.js`, `ja.js`), the registry (`catalogs.js`), and the node-returning variant for
-strings with inline markup (`nodes.jsx`).
-
-- **Never hardcode a user-facing string in a component**, including every `aria-label`,
-  `aria-valuetext`, `alt`, `title` and `placeholder`. `test/i18n.test.js` scans `src/` for a
-  dead catalog key (the `error.` and `accent.` prefixes excepted), a referenced key no catalog
-  has, and a bare literal in one of those attributes. Its blind spots are documented there: a
-  key held in a variable is invisible to it, so build arrays out of `t()` calls rather than
-  keys, and it cannot see a template literal at all.
-- **A key built at runtime needs its own coverage test.** `ENTRY_ERROR`, `CONNECTION_ERROR` and
-  `ACCENTS` are each asserted against their source list.
-- **It is a module singleton, not a context.** `render.test.jsx` renders components bare, and
-  non-React modules need the same `t`. A provider would break the first and be unreachable
-  from the second.
-- **Every `useSyncExternalStore` needs the third argument and a stable snapshot.** Omitting
-  `getServerSnapshot` throws under `renderToStaticMarkup`, which is how every render test runs.
-  `storedPreference.use` passes it for both the locale and the accent; `useConnection` folds
-  everything a render depends on into ONE primitive string, because a fresh object per call is
-  a new snapshot every time and loops.
-- **Plurals go through `Intl.PluralRules`, never a `count === 1` ternary.** A pluralised value
-  is an object keyed by CLDR category — the only case where a catalog value is not a string.
-  `en` supplies `one`/`other`; `ja` supplies `other` alone.
-- **The pure layers stay pure.** `money.js`, `dates.js`, `balance.js`, `schema.js`, `split.js`
-  and `identity.js` never read the singleton; locale and localized strings arrive as arguments
-  with English defaults.
-- **A test that calls `setLocale` must restore it** in `afterEach`.
+- **Never hardcode a user-facing string in a component**, `aria-label`, `aria-valuetext`, `alt`, `title` and `placeholder` included. `test/i18n.test.js` scans for dead keys, missing keys and bare literals in those attributes; it cannot see a key held in a variable or a template literal, so build arrays out of `t()` calls, not keys.
+- **A key built at runtime needs its own coverage test**: `ENTRY_ERROR`, `CONNECTION_ERROR` and `ACCENTS` are each asserted against their source list.
+- **It is a module singleton, not a context** — render tests render components bare, and non-React modules need the same `t`.
+- **Every `useSyncExternalStore` needs the third argument and a stable snapshot.** Omitting `getServerSnapshot` throws under `renderToStaticMarkup`; a fresh object per call loops.
+- **Plurals go through `Intl.PluralRules`**, never a `count === 1` ternary. A pluralised value is an object keyed by CLDR category — the only catalog value that is not a string.
+- **Two keys with identical text are one key**, and a Japanese label collapsing to a bare verb its English twin qualifies is a bug parity tests cannot see. **A test that calls `setLocale` must restore it.**
 
 ## Accessibility
-
-- **A message a control produced must be reachable from that control — and *on screen*.** The
-  amount error lives inside its own `Field`, not at the foot of the form: `aria-describedby`
-  reaches it either way, but from down there it renders a screen's worth below the input with
-  nothing scrolling it into view. A save failure is the deliberate opposite — at the foot,
-  directly above the footer, with the **submit button** carrying the `aria-describedby`, since
-  that is the control that produced it. Ids are document-global, so the button sitting outside
-  the `<form>` is no obstacle. Anything whose value changes without a page change carries
-  `role="status"`: both errors, the split breakdown, the notices, the compact result.
-- **A toast carries its own region, one tone per urgency.** A write failure is `role="alert"`
-  and `assertive` because it must interrupt; a confirmation is `role="status"` and `polite`
-  because it must not. `Toasts.jsx` holds what that costs and why the ordering matters.
-- **A validation error is derived from the value that was rejected**, never stored as a message
-  and never keyed on a bare "has submitted" flag (`amountError`). `saveError` *is* stored,
-  because nothing about the form's own values can tell you the network failed, and it is
-  cleared **before** the amount is judged.
-- **The balance is the deliberate exception, and must not become a live region.** Every write
-  that moves it already speaks through a toast, and a second region would queue behind it.
-  `Header` says the rest; `test/render.test.jsx` pins it.
-- **The hero figure is named by a sentence, not by its digits.** The `<h1>` carries an
-  `aria-label` of the whole fact, which is why no part span is `aria-hidden` and the visible
-  direction line below it is. Never move the name onto the `<p>` — `role="paragraph"` prohibits
-  naming, so it would announce nothing at all.
-- **`BottomSheet` reads `onClose` through a ref**, so no effect depends on its identity.
-- **Exactly ONE `BottomSheet` is mounted at a time, and `App`'s single `overlay` value is what
-  makes that structural rather than arbitrated.** Two at once means two document keydown handlers
-  (Escape closes both), two focus traps fighting over Tab, and the inner one's cleanup clearing
-  `--keyboard-inset` while the outer still has the keyboard up — Save behind a keypad with no
-  Done key. Never add a second piece of "which sheet is open" state.
-- **Identity is never communicated by colour alone.** The chart legend always carries name,
-  value and share; the who-paid meter's second segment carries a hairline.
+- **A message a control produced must be reachable from that control — and on screen.** A field error lives inside its own `Field`; a save failure is the opposite, last in the form directly above the footer, with every control that can produce it carrying `aria-describedby`. Ids are document-global. Anything whose value changes without a page change carries `role="status"`.
+- **A toast carries its own region, one tone per urgency**: a write failure is `alert`/`assertive`, a confirmation `status`/`polite`. **The balance is the deliberate exception and must not become a live region** — every write that moves it already speaks through a toast.
+- **A validation error is derived from the value that was rejected**, never stored as a message, never keyed on a bare "has submitted" flag. `saveError` *is* stored, and is cleared first.
+- **The hero figure is named by a sentence, not its digits.** The `<h1>` carries an `aria-label` of the whole fact, so no part span is `aria-hidden` and the direction line is. Never move the name onto the `<p>`: `role="paragraph"` prohibits naming.
+- **`BottomSheet` reads `onClose` through a ref**, so no effect depends on its identity, and **exactly ONE is mounted at a time** — `App`'s single `overlay` makes that structural. Two means two keydown handlers, two focus traps, and one cleanup clearing `--keyboard-inset` with the keyboard still up.
+- **Identity is never communicated by colour alone**: the legend carries name, value and share, and the meter's second segment a hairline.
 
 ## Platform: iOS, standalone, small
 
-Every rule here is invisible in a desktop browser and wrong on the actual target.
-`test/styles.test.js` pins them, because nothing else can.
+Invisible in a desktop browser and wrong on the target. `test/styles.test.js` pins these.
 
-- **The sheet and the key screen both lift clear of the software keyboard.** iOS does not shrink
-  the layout viewport for it, and `position: fixed` and `dvh` both track that viewport.
-  `useKeyboardInset` is the only publisher of `--keyboard-inset`, `lib/viewport.js` the only
-  home of its arithmetic. Exactly three selectors read it — `.sheet`, `.sheet__footer`,
-  `.gate` — and neither panel does: both cap against **`100%`** of `.sheet`'s already-padded
-  box. The `48rem` block's restated `padding-bottom` is part of this.
-- **A page's worth of form takes the whole phone screen; a question does not.** Full screen is
-  `.sheet__panel--full`, opt-in through `BottomSheet`'s `full` prop, because it is a claim about
-  the CONTENT. Three declarations there are load-bearing and fail quietly; `primitives.css` says
-  what each costs.
-- **Hover is a mouse state, `:active` is the touch one.** iOS applies `:hover` on tap and holds
-  it, so every hover rule sits behind `@media (hover: hover)` (or `(pointer: fine)` for
-  `::-webkit-scrollbar-thumb:hover`), and every hover-styled control has an `:active` too. The
-  two exempted carve-outs are `a` and the scrollbar thumb.
-- **`overscroll-behavior-y: none` on `html`.** An installed iOS web app reloads on a downward
-  flick from the top, and that reload never consults `setSafeToReload`.
-- **`base.css`'s `html` rule declares no `overflow` of its own.** `BottomSheet` sets
-  `overflow: hidden` on `html` as well as `body` and restores whatever it found, so a
-  declaration there becomes the value it restores to. Both elements, not just `body`.
-- **`touch-action: manipulation` on anything tappable.** `base.css` sets it on `button` only, so
-  `.btn` (also worn by an `<a>`), the label-based controls, the `<summary>` and the backdrop
-  each need their own or they wait 300ms for a double-tap. `button.entry__main`'s copy is inert
-  but stands so that variant's touch and selection rules read as one block; its `user-select`
-  and `-webkit-touch-callout` are NOT inert and belong to the button alone, because the deleted
-  list renders the same class as inert text.
-- **A full-screen panel covers the backdrop, so a phone has two ways out, not four.** The X and
-  the footer's Cancel are those two; the backdrop tap and Escape belong to wider screens and to
-  a keyboard. Neither of the two may be removed as a duplicate of the other.
-- **No control may set the size of the sheet it sits in.** `min-width: 0` on the panel and
-  `min-height: 0` on the body are the two guards against a flex item's automatic minimum, one
-  axis each. The child that provokes the first is `input[type="date"]`, which iOS sizes from the
-  locale's date format, so it needs its own `min-width: 0` and `appearance: none`.
-- **Nothing may scroll sideways at 320px.** `.sheet__body` sets `overflow-x: hidden` explicitly,
-  because with `overflow-y` set the spec computes a `visible` overflow-x to `auto`. Anything
-  holding config-tab text needs `min-width: 0` and `overflow-wrap: anywhere` (`break-word` does
-  not reduce min-content width). **Both `.layout` tracks carry `min-width: 0`** for the same
-  reason one layer up: a grid item's automatic minimum is its min-content WIDTH, so one
-  non-wrapping descendant sizes the whole column — `app.css` says why the aside keeps the guard
-  with nothing relying on it today. The five `preview-en-stress*` pages are the check; that
-  `hidden` CLIPS rather than reports, so the harness measures `.sheet__body`'s own scroll width.
-- **The toast stack takes no pointer events**, or it would swallow a tap on a delete control for
-  the toast's whole life. The layout deliberately reserves no band for it.
-- **A row is a row, not text.** `button.entry__main` suppresses selection and the callout: a
-  long press should not raise the selection magnifier on the edit affordance.
-- **Safe areas are composed where they are needed, not globally.** `base.css` applies only the
-  HORIZONTAL insets, and only to `body`. Six elements compose what they need: the sticky header
-  (`--safe-top`), `.layout`, the sheet footer and toast stack (`--safe-bottom`), `.gate` (both),
-  and the full-screen sheet panel — which adds the horizontal pair too, because `.sheet` is
-  `position: fixed` and its descendants sit outside `body`'s padding. That panel is the one
-  place the horizontal insets have to be restated.
+- **The sheet and the key screen lift clear of the software keyboard** — iOS does not shrink the layout viewport, which `fixed` and `dvh` both track. `useKeyboardInset` is the only publisher of `--keyboard-inset`, `lib/viewport.js` the only home of its arithmetic, and exactly three selectors read it: `.sheet`, `.sheet__footer`, `.gate`.
+- **A page's worth of form takes the whole screen; a question does not.** Full screen is opt-in through `BottomSheet`'s `full`, because it is a claim about the CONTENT.
+- **Hover is a mouse state, `:active` is the touch one.** iOS applies `:hover` on tap and holds it, so every hover rule sits behind `@media (hover: hover)` and has an `:active` twin declared after it. The carve-outs are `a` and the scrollbar thumb.
+- **`overscroll-behavior-y: none` on `html`**, or a flick from the top reloads without consulting `setSafeToReload`. **That rule declares no `overflow`**: `BottomSheet` sets and restores it on both `html` and `body`, so a declaration there becomes the value it restores to.
+- **`touch-action: manipulation` on anything tappable.** `base.css` covers `button` only, so `.btn`, the label-based controls, the `<summary>` and the backdrop each need their own or they wait 300ms for a double-tap.
+- **A full-screen panel covers the backdrop, so a phone has two ways out**: the X and the footer's Cancel. The backdrop tap and Escape belong to wider screens and to a keyboard; neither pair may be removed as a duplicate of the other.
+- **No control may set the size of the sheet it sits in** — `min-width: 0` on the panel, `min-height: 0` on the body, one axis each; `input[type="date"]` needs its own `min-width: 0` and `appearance: none`, since iOS sizes it from the locale's date format.
+- **Nothing may scroll sideways at 320px.** `.sheet__body` sets `overflow-x: hidden` explicitly; anything holding config-tab text needs `min-width: 0` and `overflow-wrap: anywhere`, including outside a sheet, where nothing clips it and the whole PAGE scrolls. Both `.layout` tracks carry the guard. The `preview-en-stress*` pages are the check.
+- **The toast stack takes no pointer events**, or it swallows a tap on a delete control, and **a row is a row, not text**: `button.entry__main` suppresses selection and the callout.
+- **Safe areas are composed where needed, not globally** — `base.css` applies the horizontal insets to `body` alone, six elements compose what they need, and the full-screen panel restates the horizontal pair because `.sheet` is fixed.
 
-## Charts
+## Charts and CSS
 
-`DonutChart` is hand-rolled inline SVG — no charting library, and a `stroke-dasharray` trick
-rather than arc-path math (r is chosen so the circumference is exactly 100, making a dash
-length a percentage).
+Four stylesheets, in order: `tokens.css`, `base.css`, `primitives.css`, `app.css`. `DonutChart` is
+hand-rolled inline SVG — a `stroke-dasharray` trick, r chosen so the circumference is exactly 100.
 
-- **The `--series-N` order is the colorblindness-safety mechanism, not cosmetic.** Validated
-  against the white card surface as a 6-slot categorical set, including the ring's wrap-around
-  pair. Never reorder, never cycle past slot 6 — a 7th category folds into "Other" via
-  `foldTail`. Accent presets deliberately do not touch these.
-- **Set the slice stroke inline, never in CSS.** A CSS rule on `.chart__slice` overrides the
-  attribute and paints every slice one colour — an invisible chart that passes every test.
-  `test/ui.test.jsx` pins it.
-- **Two values is not a pie.** The who-paid split is a meter bar, and its second segment carries
-  a hairline because the accent wash alone is invisible against the track.
-
-## CSS
-
-Four files, loaded in order by `src/main.jsx`: `tokens.css` (custom properties), `base.css`
-(reset, typography), `primitives.css` (generic `.card`, `.btn`, `.input`, `.sheet`, …),
-`app.css` (app-specific layout).
-
-- **Light theme only.** No dark block and no `--success`/`--warning`: state is stated in words,
-  and money direction is never encoded in hue.
-- **An accent preset is three custom properties** under `[data-accent]` in `tokens.css` —
-  attribute-scoped rather than `:root`-scoped so a settings swatch can paint its own colour,
-  with `--accent-ring` and `--danger-ring` derived by `color-mix` rather than restated.
-- **Use the tokens.** In particular `var(--transition-fast|base)` rather than a hardcoded
-  duration — the tokens collapse to ~0ms under `prefers-reduced-motion`.
-- **`letter-spacing: 0` and no `text-transform`, anywhere text can be Japanese.** Tracking
-  inserts a gap between every kana (「このつき」 becomes 「こ の つ き」) and `uppercase` is a
-  no-op on kana. The lone carve-out is `.balance__amount`, which renders digits exclusively.
-- **No line-height below 1.5** on anything that can hold Japanese; CJK glyphs fill the em box.
-  `--lh-flat: 1` is the single carve-out, same element, same reason. There is no `--lh-heading`:
-  headings use `--lh-tight`, which *is* 1.5.
-- **Nothing below 13px**, `<code>` included. Weights are `400|500|600` only.
-- **Elevations appear in exactly three places, and the budget is stated at `--shadow-*`.**
-  `box-shadow` also does three things that are not elevations and do not count: the focus ring,
-  the swatch's selection ring, the meter's segment hairline. It is transitioned in exactly one
-  place, the text control's focus ring; `test/styles.test.js` pins that.
-- **Contrast budgets live in `tokens.css`, next to the values, with their measured ratios.** Do
-  not restate them here; do not "tidy" two tokens together because they look similar. The two
-  that catch people are `--line-input` and `--ink-3`, and both say why at the value.
-- **`--shell-max` has to leave room for `--main-max`.** `.layout` is border-box, so a narrower
-  shell makes the `1fr` main track resolve below `--main-max` and that cap never binds. The
-  arithmetic is written out at the tokens.
-- **Match the layout's centring with a percentage, never a viewport unit.** `.app__header` pads
-  by `50% - …` because `.layout` centres inside BODY's content box, which `base.css` has already
-  shrunk by the horizontal safe insets, while a viewport unit measures past them. A rotated
-  iPhone 15 clears `48rem` with insets, so the two disagree by exactly those — the hero figure
-  visibly out of line with the ledger below it.
-- **`.btn--icon` is not combined with `.btn--ghost`.** They disagree about the border, and the
-  icon glyph at `--ink-2` is itself the 3:1 graphic.
-- **Never drop a form control below 16px.** Mobile Safari zooms on focus below that and will not
-  zoom back out. The amount input is the same 16px as every other one: it is made primary by
-  being first, focused and given a numeric keypad, not by type size — `.tnum` is all it adds.
-- **Mobile-first.** One column, capped at `--column-max` from `48rem`, two columns at `62rem`;
-  **`48rem` is also where a sheet stops being a phone treatment** — full screen or bottom sheet
-  below it, centred dialog above — and there is no third breakpoint. Tap targets are
-  `var(--tap-target)` (44px) or `var(--tap-target-sm)` (36px) for chips and the segmented thumb.
-- **A modifier that only holds below `48rem` must be undone inside that media query.**
-  `.sheet__panel--full` and `.sheet__panel` are both single-class, so source order alone decides
-  between them. Keep the reset next to the rule it undoes.
-- **An animation's distance is a length, not a percentage,** where the element it moves can be
-  the whole screen: `sheet-slide-up`'s offset is read against the panel's own height, so a
-  percentage tuned on a floating panel becomes a ~50px lurch on an 852px one.
-- **`--header-height` must never understate the header's real height.** `.layout__aside`'s
-  sticky offset reads the token from outside the header, so a short token slides the aside under
-  the band with nothing on screen looking wrong. `min-height` has to be the binding constraint;
-  `tokens.css` writes out the arithmetic and `scripts/frames.html` measures it.
+- **The `--series-N` order is the colorblindness-safety mechanism, not cosmetic** — a validated 6-slot categorical set including the ring's wrap-around pair. Never reorder, never cycle past slot 6; a 7th category folds into "Other". **Two values is not a pie**: the who-paid split is a meter bar with a hairline.
+- **Set the slice stroke inline, never in CSS.** A rule on `.chart__slice` overrides the attribute and paints every slice one colour — an invisible chart that passes every test.
+- **Light theme only** — no dark block, no `--success`/`--warning`: state is stated in words, and money direction is never encoded in hue.
+- **An accent preset is three custom properties** under `[data-accent]`, attribute-scoped so a swatch can paint its own colour, rings derived by `color-mix`.
+- **Use the tokens** — `var(--transition-*)` rather than a duration, which is what collapses under `prefers-reduced-motion`. A token copied into `index.html` or the manifest is pinned by a test.
+- **`letter-spacing: 0` and no `text-transform` anywhere text can be Japanese**, since tracking inserts a gap between every kana. The carve-out is `.balance__amount`, digits only.
+- **No line-height below 1.5** on anything that can hold Japanese; `--lh-flat: 1` is the single carve-out, same element. Headings use `--lh-tight`, which IS 1.5.
+- **Nothing below 13px**, `<code>` included; weights are `400|500|600` only.
+- **Elevations appear in exactly three places, budgeted at `--shadow-*`** — the focus ring, the selection ring and the meter's hairline are not elevations. **Contrast budgets live in `tokens.css`** next to the values with measured ratios; do not restate them here, do not tidy two together.
+- **`--shell-max` has to leave room for `--main-max`**: `.layout` is border-box, so a narrower shell makes the `1fr` track resolve below the cap and it never binds.
+- **Match the layout's centring with a percentage, never a viewport unit** — `.layout` centres inside BODY's content box, already shrunk by the horizontal insets.
+- **`.btn--icon` is not combined with `.btn--ghost`**: they disagree about the border.
+- **Never drop a form control below 16px** — Mobile Safari zooms on focus and will not zoom back out. The amount input is primary by being first, focused and given a numeric keypad.
+- **Mobile-first**: one column, capped at `--column-max` from `48rem`, two at `62rem`. `48rem` is also where a sheet stops being a phone treatment, and there is no third breakpoint. Tap targets are `--tap-target` (44px), or `--tap-target-sm` (36px) for chips and the segmented thumb.
+- **A modifier that only holds below `48rem` must be undone inside that query**, next to the rule it undoes: both `.sheet__panel` rules are single-class, so source order alone decides.
+- **An animation's distance is a length, not a percentage**, where the element can be the screen.
+- **`--header-height` must never understate the header's height** — `.layout__aside` reads it from outside, so a short token slides the aside under the band.
 - **Keep specificity flat**: single class selectors, no IDs, no `!important`.
 
 ## Testing
-
-Specs live in `test/**/*.test.{js,jsx}`, with shared harnesses under `test/support/`.
-
-`sheets.test.js` runs against a fake Sheets API in `test/support/sheets-api.js` that records
-every request, because this layer's failures are writes: the assertions are about what was
-*sent*, not what came back. `apps-script.test.js` does the same for `postRecurring` through
-`test/support/apps-script.js`, which `new Function`s `Code.gs` against a fake `SpreadsheetApp`
-— so it also proves the file PARSES, which nothing else does, since it is pasted into an editor
-rather than built. Every failure mode its header names has a case that fails when the trap is
-sprung; the two that read backwards from everything else in the codebase are the tombstoned-id
-scan and the day clamp happening BEFORE the due comparison.
-
-`connection`, `snapshot`, `sw-build`, `styles`, `preferences` and `viewport` exist because their
-failures are invisible in a build and on screen — a misclassified endpoint reply, a cached row
-the balance cannot survive, a precache list that stops any worker activating, a merged CSS rule
-on the wrong block, an accent that writes an attribute CSS has no rule for, a keyboard inset
-that leaves Save covered.
-
-**`scripts/bank_to_ledger.py` and `apps-script/Code.gs` are the two places outside `schema.js`
-that know a column list**, because neither can import it. `test/schema.test.js` parses the
-literals out of both sources and compares them — change them together, and never add a third home. It also pins the
-`.gs` copy of the instance-id join and the number-format-before-write ordering, because
-**`Code.gs` is pasted into the Apps Script editor rather than deployed from the repo**, so
-drift there is invisible in a build *and* in the running script. `bank_to_ledger.py`'s
-`CATEGORIES` is pinned to `DEFAULT_CONFIG.categories` the same way, order included, because the
-app pre-selects `categories[0]`; the script's own module-level `assert` holds each RULE to that
-list.
-
-**A test that cannot fail is worse than no test**, because it reads as coverage. Do not assert a
-function against itself, do not assert a property of the platform, and do not name a test after
-an invariant it does not exercise. Four traps seen here: deriving an expected value from the
-module under test (write the literal `'F'`, not `tab.letter('deleted_at')`); asserting
-`not.toContain` against a string that appears in neither the right nor the wrong output;
-accepting either of two shapes with `??` when only one is correct; and asserting an attribute a
-DIFFERENT element in the same markup already supplies — check the element, not the document.
-**Mutate the code and watch the test fail** before believing it.
-
-`render.test.jsx` and `ui.test.jsx` render to static markup with `renderToStaticMarkup` — no
-DOM, no browser. They catch components that throw on a real prop shape or silently drop data.
-A focus trap, an effect or a `scrollIntoView` call cannot be tested this way; do not fake a DOM
-to try. That is the reason logic belongs in `lib/`.
-
-`sw-build.test.js` asserts the generated worker compiles (`new Function(source)`), not only that
-it contains the right substrings — a typo inside the template literal satisfies every substring
-check while producing a worker that never installs.
-
-When fixing a bug, add the regression test. When changing balance or money arithmetic, the test
-that matters most is end-to-end: a settlement of exactly the outstanding balance must drive the
-net to zero, with odd-unit amounts so rounding is genuinely exercised.
-
-**A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the real
-`LedgerScreen` to static HTML with the real stylesheets, twenty-six pages: every accent, both
-languages, the six overlays, the settled balance, the empty add form, both per-person summary
-views, and four stress pages holding everything a 320px phone has no room for. The ledger
-fixture carries two recurring instances so the section renders on every one of them, and keeps
-them SMALL on purpose: rent's ¥220,000 would take 84% of the category ring and leave the palette
-five slivers. `preview-en-stress-recurring` is set to a month nobody has reached, which is what
-puts the wider of the two record labels beside the widest name the tab can hold. The settlement
-form earns its own page because it is the sparsest thing the entry form renders and the only
-place its two `!isSettlement` blocks are visible. The
-stress pages' `SIDEWAYS` readout is what caught the recurring list squeezing its name column to
-60px behind an eight-figure amount, and before that the aside being sized by its longest name —
-no assertion in the suite could see either.
+- **`sheets.test.js` and `apps-script.test.js` assert what was SENT, not what came back.** The Apps Script harness `new Function`s `Code.gs`, so it also proves the file PARSES — which nothing else does, since it is pasted into an editor rather than built.
+- **`connection`, `snapshot`, `sw-build`, `styles`, `preferences` and `viewport` exist because their failures are invisible in a build and on screen.** Where the interesting half is an outcome rather than a string — which cache keys survive an `activate` — RUN the code.
+- **`bank_to_ledger.py` and `Code.gs` are the two places outside `schema.js` that know a column list.** `test/schema.test.js` parses both out of source and compares them, with the tab titles, the defaults, the instance-id join and the format-before-write ordering. Never add a third home.
+- **A test that cannot fail is worse than no test.** Do not assert a function against itself, a property of the platform, or an attribute a different element in the same markup supplies — write the literal `'F'`, not `tab.letter('deleted_at')`. **Mutate the code and watch the test fail** before believing it, undoing the mutation by editing the file back, never `git checkout`.
+- **When two files must agree, pin them over one shared table of inputs**, not over the cases where they happen to agree.
+- **When fixing a bug, add the regression test.** For money arithmetic the one that matters is end-to-end: a settlement of exactly the outstanding balance drives the net to zero, with odd-unit amounts.
+- **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the real `LedgerScreen` to static HTML with the real stylesheets, twenty-six pages, four of them 320px stress pages whose `SIDEWAYS` readout catches an overflow no assertion can see.
 
 ```sh
-npx vite-node scripts/preview.jsx     # writes scripts/preview-*.html (gitignored)
-python3 -m http.server 8899           # iframes need an origin
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless \
-  --virtual-time-budget=3000 --screenshot=/tmp/shot.png --window-size=1400,1000 \
-  'http://127.0.0.1:8899/scripts/frames.html?page=preview-en-form&w=320,393&h=852'
+npx vite-node scripts/preview.jsx   # writes scripts/preview-*.html (gitignored)
+python3 -m http.server 8899         # frames.html iframes need an origin
+# then screenshot frames.html?page=<name>&w=320,393&h=852 headless; `w` walks 320/393/430/768/1440
 ```
 
-`page` is any generated file's name without `.html`. The widths worth walking are 320 (the
-floor), 393 (iPhone 15), 430, 768 and 1440; `frames.html` documents `w`, `h` and `keyboard`.
-
 ## Gotchas
-
-- **Never run a bare `npm install` on a machine with a private registry.** It bakes that host
-  into every `resolved` URL in `package-lock.json`, which works locally and fails elsewhere with
-  `getaddrinfo ENOTFOUND`. A repo `.npmrc` cannot prevent it — npm ranks env vars higher — so
-  regenerate with an explicit override, which `test/lockfile.test.js` then verifies:
-
-  ```sh
-  rm -rf node_modules package-lock.json
-  npm install --registry=https://registry.npmjs.org
-  ```
-- **`compact` asks for the sheet gids every time, and never through `ensureStructure`.**
-  `values.batchGet` cannot reveal a gid, so `readSheetGids` is a round trip `compact` always
-  pays. `ensureStructure` would answer the same question and WRITES: on a ledger whose config
-  tab has been deleted it re-creates the tab and seeds it with this build's defaults — an even
-  split included — taking away the `configMissing` notice and moving money on every later
-  expense whose payer had a different default. There is deliberately no cached `sheetIds` state
-  to make that shortcut look free. `compact` skips a tab whose gid is missing, and the throw in
-  `useLedger` is what stops that being silent.
+- **Never run a bare `npm install` on a machine with a private registry.** It bakes that host into every `resolved` URL in `package-lock.json`, works locally and fails elsewhere; a repo `.npmrc` cannot prevent it, because npm ranks env vars higher. `test/lockfile.test.js` verifies the fix: `rm -rf node_modules package-lock.json && npm install --registry=https://registry.npmjs.org`.
+- **`compact` asks for the sheet gids every time, and never through `ensureStructure`.** `values.batchGet` cannot reveal a gid, and `ensureStructure` WRITES: on a ledger whose config tab was deleted it re-seeds this build's defaults and takes the `configMissing` notice with them. There is deliberately no cached gid state to make that shortcut look free.
 - **An endpoint that dies about a week after setup is the consent screen**, not a quota problem.
-  `SETUP.md` step 5.
-- **Nothing detects which person this is.** `IdentityGate` and the `localStorage` choice behind
-  it are the only path — not a fallback.
+- **Nothing detects which person this is**: `IdentityGate` and the `localStorage` choice behind it are the only path, not a fallback.
