@@ -4,27 +4,24 @@
   color-scheme: light;
 
   /* ---- Color: warm neutrals -------------------------------------------
-     Warm rather than cool on purpose. This is a domestic ledger — groceries
-     and meals — and an unbleached off-white (生成り) reads as paper.
-
-     The temperature step from --bg to --surface IS the elevation, which is what
-     lets almost every shadow in this app be deleted. */
+     Warm on purpose: a domestic ledger, and an unbleached off-white (生成り)
+     reads as paper. The temperature step from --bg to --surface IS the
+     elevation, which is what lets almost every shadow here be deleted. */
   --bg: #f7f5f2;
   --surface: #ffffff;
   --sunken: #efeae3;
 
   --line: #e4ded6;
-  /* Deliberately darker than --line, and only for form controls and secondary
-     button borders. WCAG 1.4.11 wants 3:1 for the boundary that identifies a
-     control; a --line border on white measures 1.34:1 and fails. 3.10:1 here.
-     Do not "tidy" this to --line. */
+  /* Form controls and secondary button borders only. WCAG 1.4.11 wants 3:1 for
+     the boundary identifying a control: --line on white is 1.34:1 and fails,
+     this is 3.10:1. Do not "tidy" it to --line. */
   --line-input: #9a9186;
 
   --ink: #1c1a17;
   --ink-2: #57514a;
-  /* The lightest muted ink that still passes AA at 13px (4.73:1 on --bg).
-     Kanji at low contrast is unreadable in a way Latin is not. Do not lighten,
-     and do not use it on an accent wash — that lands at 4.46:1. */
+  /* The lightest ink passing AA at 13px (4.73:1 on --bg); kanji at low contrast
+     is unreadable in a way Latin is not. Do not lighten, and never on an accent
+     wash — that lands at 4.46:1. */
   --ink-3: #756c62;
   /* Placeholder and disabled text only. Never carries information. */
   --ink-4: #8e8478;
@@ -32,40 +29,30 @@
   --scrim: rgba(28, 26, 23, 0.32);
 
   /* ---- Accent ----------------------------------------------------------
-     One hue, swappable: `[data-accent]` at the bottom of this file redefines
-     three properties and nothing else, so a preset cannot reach into the
-     neutrals or the chart series. Every accent in the set keeps white text at or
-     above 7.5:1 and sits at or above 6.8:1 against --bg, so the add button, the
-     focus ring and the swatches stay compliant whichever one is chosen.
-
-     --accent-text is fixed for every preset, and --accent-ring is derived with
-     color-mix rather than restating the accent's channels — which is what keeps
-     adding a preset a three-value change. */
+     One hue, swappable: `[data-accent]` at the foot of this file redefines three
+     properties and nothing else, so a preset cannot reach the neutrals or the
+     chart series. Every preset keeps white text at 7.5:1 or better and sits at
+     6.8:1 or better on --bg. The rings are derived by color-mix rather than
+     restated, which is what keeps a new preset a three-value change. */
   --accent: #3d4e8b;
   --accent-hover: #313f73;
   --accent-text: #ffffff;
   --accent-wash: #edeef7;
   --accent-ring: color-mix(in srgb, var(--accent) 22%, transparent);
 
-  /* The only semantic color. There is deliberately no --success and no
-     --warning: "settled" is stated in words, and money direction is never
-     encoded in hue. */
+  /* The only semantic color. No --success and no --warning: "settled" is stated
+     in words, and money direction is never encoded in hue. */
   --danger: #a33a2e;
   --danger-hover: #8d3025;
   --danger-text: #ffffff;
   --danger-ring: color-mix(in srgb, var(--danger) 22%, transparent);
 
   /* ---- Chart series ----------------------------------------------------
-     Validated with the dataviz palette validator against the white card
-     surface as a 6-slot categorical set, including the ring's wrap-around pair
-     (slot 6 touches slot 1).
-
-     THE ORDER IS THE COLORBLINDNESS-SAFETY MECHANISM, not cosmetic. Do not
-     reorder, and do not cycle past slot 6 — a 7th category folds into "Other".
-
-     Slots 3, 4 and 5 sit below 3:1 against white, so the relief rule applies:
-     the legend always carries name + value + share, and identity is never
-     communicated by color alone. */
+     Validated against the white card surface as a 6-slot categorical set,
+     wrap-around pair included (slot 6 touches slot 1). THE ORDER IS THE
+     COLORBLINDNESS-SAFETY MECHANISM, not cosmetic: do not reorder, do not cycle
+     past slot 6 — a 7th category folds into "Other". Slots 3-5 are below 3:1 on
+     white, so the legend always carries name + value + share. */
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -73,10 +60,8 @@
   --series-5: #e87ba4;
   --series-6: #008300;
 
-  /* ---- Radii -----------------------------------------------------------
-     Inner radius <= outer radius minus container padding. Never nest equal
-     radii. --radius-xl is the ceiling on rectangles; fully pill-shaped
-     rectangular buttons read consumer-app rather than refined. */
+  /* Inner radius <= outer minus container padding; never nest equal radii.
+     --radius-xl is the ceiling on rectangles. */
   --radius-xs: 0.25rem;
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
@@ -95,17 +80,11 @@
   --space-8: 3rem;
 
   /* ---- Fonts -----------------------------------------------------------
-     No web fonts: zero network cost, and font-src is 'self' in the CSP.
-
-     Latin faces come first so digits resolve from SF Pro / Segoe UI / Roboto,
-     which all ship tabular figures; Japanese then falls through to Hiragino on
-     Apple, Yu Gothic on Windows, Noto Sans JP where installed. "Yu Gothic
-     Medium" precedes "Yu Gothic" deliberately — Yu Gothic Regular renders
-     anaemically thin on Windows and Medium is the usable weight.
-
-     --font-mono survives for <code> only. Money is set in the sans with
-     tabular-nums: monospace currency is the loudest tell of a developer-built
-     finance app. */
+     No web fonts: zero network cost, and font-src is 'self'. Latin first so
+     digits resolve from SF Pro / Segoe UI / Roboto, which ship tabular figures;
+     Japanese then falls to Hiragino, Yu Gothic, Noto Sans JP. "Yu Gothic Medium"
+     precedes "Yu Gothic" because Regular renders anaemically thin on Windows.
+     --font-mono is for <code> only — money is the sans with tabular-nums. */
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, "Hiragino Sans", "Hiragino Kaku Gothic ProN",
     "Noto Sans JP", "Yu Gothic Medium", "Yu Gothic", YuGothic, "Yu Gothic UI",
@@ -114,27 +93,24 @@
     "Roboto Mono", "Liberation Mono", monospace;
 
   /* ---- Type ------------------------------------------------------------
-     Nothing below 13px anywhere: 12px kanji is mush — which is why --fs-caption
-     is also the floor for anything nested inside it, <code> included. Weights
-     are 400/500/600 only; 550 and 650 are unreliable outside SF Pro, and
+     Nothing below 13px anywhere, <code> included: 12px kanji is mush. Weights
+     are 400/500/600 only — 550 and 650 are unreliable outside SF Pro, and
      Hiragino ships W3/W6 with nothing between. */
   --fs-caption: 0.8125rem; /* 13 */
   --fs-label: 0.875rem; /* 14 */
   --fs-body: 1rem; /* 16 — also the iOS no-zoom floor for inputs */
   --fs-lg: 1.125rem; /* 18 */
   --fs-xl: 1.5rem; /* 24 — the settled line, and the month total */
-  /* The hero balance, in the sticky header. A fixed step, NOT a container-relative
-     clamp: the header's inline size tracks the shell rather than the figure's own
-     box, so `cqi` there would measure the wrong thing — and with no query container
-     at all a `cqi` term silently falls back to the small viewport, where the clamp
-     floor wins on every phone. Sized to outrank --fs-xl by a third, which is the
-     whole hierarchy now that there is no card frame to help.
-     2rem is also the ceiling: past it the eighth digit ellipsises at 320px. */
+  /* The hero balance. A fixed step, NOT a container-relative clamp: the header's
+     inline size tracks the shell rather than the figure's box, and with no query
+     container a `cqi` term falls back to the small viewport, where the clamp
+     floor wins on every phone. Outranks --fs-xl by a third, which is the whole
+     hierarchy without a card frame. 2rem is the ceiling: past it the eighth
+     digit ellipsises at 320px. */
   --fs-hero: 2rem;
 
-  /* Nothing below 1.5 can hold Japanese: CJK glyphs fill the em box, and a
-     tighter line turns a wrapped sentence into a solid block. --lh-flat is the
-     single carve-out, for the hero figure, which renders digits exclusively. */
+  /* Nothing below 1.5 can hold Japanese: CJK glyphs fill the em box. --lh-flat
+     is the single carve-out, for the digits-only hero figure. */
   --lh-flat: 1;
   --lh-tight: 1.5;
   --lh-body: 1.65;

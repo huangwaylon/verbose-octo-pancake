@@ -3,12 +3,10 @@
 /* =========================================================================
    Surfaces
    =========================================================================
-   One recipe, written once: a white plane on the warm ground plus one hairline.
-   No shadow — the temperature difference between --surface and --bg is the
-   elevation. See the exhaustive shadow list in tokens.css before adding one.
-
-   `.surface` is the bare plane (the entry list and the empty state, which
-   supply their own padding); `.card` is the same plane with card padding. */
+   One recipe: a white plane on the warm ground plus one hairline. No shadow — the
+   temperature step from --bg to --surface is the elevation, and tokens.css carries
+   the exhaustive list of the three that exist. `.surface` is the bare plane, `.card`
+   the same plane with card padding. */
 
 .surface,
 .card {

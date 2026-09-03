@@ -42,18 +42,13 @@
   }
 }
 
-/* Full-bleed for the blur, but the content inside lines up with the ledger's
-   column: the figure is the page's most-read number and must not sit half a
-   screen from the settings button at 1440px. The same max() as .layout's own
-   centring, arrived at by padding rather than a wrapper — a wrapper would have to
-   sit inside the blurred box, which is the element that must stay edge to edge.
+/* Full-bleed for the blur, with the content inside lined up on the ledger's column:
+   padding rather than a wrapper, which would have to sit inside the blurred box.
 
-   50%, not 50vw: `.layout` centres with `margin-inline: auto` inside BODY's content
-   box, which base.css has already shrunk by the horizontal safe insets, while a
-   viewport unit measures past them. A rotated iPhone 15 is 852px wide, so it clears
-   this breakpoint with 59px insets, and the two would disagree by exactly that —
-   the figure and the ledger below it visibly out of line. A padding percentage
-   resolves against the containing block, which is the box that actually matters. */
+   50%, not 50vw. `.layout` centres inside BODY's content box, already shrunk by the
+   horizontal safe insets, while a viewport unit measures past them — a rotated
+   iPhone 15 clears this breakpoint with 59px insets, so the two disagree by exactly
+   those and the figure sits visibly out of line with the ledger. */
 @media (min-width: 48rem) {
   .app__header {
     padding-inline: max(var(--space-6), calc(50% - var(--column-max) / 2 + var(--space-6)));
@@ -156,13 +151,9 @@
 /* =========================================================================
    Layout
    =========================================================================
-   Phone: one column. 48rem: still one column but capped and centred, because a
-   768px-wide column of 44px rows is the ugliest state a mobile-first app passes
-   through. 62rem: two columns.
-
-   The DOM order is aside-then-main, which is already the right reading order on
-   a phone (add, notices, summary, then the list), so no `order` is needed
-   anywhere. */
+   Phone: one column. 48rem: one column, capped and centred. 62rem: two columns.
+   DOM order is aside-then-main, which is already the phone's reading order, so no
+   `order` is needed anywhere. */
 
 .layout {
   display: grid;
@@ -221,12 +212,10 @@
 /* =========================================================================
    Add action
    =========================================================================
-   The app's one primary action and the only way into the entry form, in flow
-   rather than floating. In flow it can be the full width of the column, which is a
-   far larger target than a 56px disc and covers no part of the ledger. The cost is
-   that it scrolls out of view on a long month; a flick back to the top is the
-   recovery, which is safe only because `overscroll-behavior-y: none` in base.css
-   stops that flick reloading an installed app. */
+   The one primary action and the only way into the entry form, in flow rather than
+   floating: full column width, and covering no part of the ledger. It scrolls out of
+   view on a long month, and the flick back to the top is safe only because
+   `overscroll-behavior-y: none` stops that flick reloading an installed app. */
 
 .add-action {
   min-height: 3.5rem;
@@ -240,11 +229,9 @@
 /* =========================================================================
    Recurring costs
    =========================================================================
-   The rows on the recurring page. Inside a SHEET, not a card on the ledger, and
-   that changes one rule: the name WRAPS rather than truncating. This is where a
-   household's fixed costs are managed, so a name has to be readable in full, and
-   `.sheet__body`'s `overflow-x: hidden` would clip a truncation rather than
-   report it. */
+   Inside a SHEET rather than a card, which changes one rule: the name WRAPS rather
+   than truncating, since `.sheet__body`'s `overflow-x: hidden` would clip a
+   truncation rather than report it. */
 
 .recurring__row {
   display: grid;
@@ -513,13 +500,9 @@
 /* =========================================================================
    Entry list
    =========================================================================
-   One continuous white card per section, with rows divided by hairlines INSET
-   to align with the text. Edge-to-edge dividers are the Bootstrap list-group;
-   inset dividers are the editorial detail, and the difference is immediately
-   legible.
-
-   A section is a day, or the month's recurring costs above them all — one
-   treatment, because they are one kind of thing and only the title differs. */
+   One continuous white card per section, rows divided by hairlines INSET to align
+   with the text. A section is a day, or the month's recurring costs above them all —
+   one treatment, because only the title differs. */
 
 .entry-section {
   display: flex;
