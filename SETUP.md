@@ -1,63 +1,39 @@
 # Setup
 
-Everything below happens once. The result is an app that never asks anyone to sign
-in to Google: a small Apps Script web app, owned by a dedicated account that owns
-the ledger, mints short-lived Google tokens for whoever presents a shared key.
-
-You need a **dedicated Google account** for this. Not your own — the token the
-script mints carries the `spreadsheets` scope, which reaches every spreadsheet the
-owning account can see. An account that owns exactly one file is what keeps that
-scope harmless, and that is a permanent condition rather than a setup detail.
-
-Neither person ever sees an OAuth client, an API key, a consent screen or a file
-picker — the script's own consent screen, in step 5, is authorized once by the
-dedicated account and never again. The Security model in [README.md](README.md) says
-what that buys and what it costs.
-
-| Value used throughout | |
-| --- | --- |
-| GitHub username `huangwaylon` | the Pages origin, `https://huangwaylon.github.io` |
-| Repo name `verbose-octo-pancake` | the Pages path; `base.js` sets the bundle's base to `/verbose-octo-pancake/` to match |
+All of this happens once, and the result is an app nobody signs in to: an Apps Script web app, owned by a
+dedicated account that owns the ledger, mints short-lived Google tokens for whoever presents a shared key.
+Use a **dedicated Google account**, not your own — the token carries the `spreadsheets` scope, reaching
+every spreadsheet that account can see, so an account owning exactly one file is what keeps the scope
+harmless, permanently rather than just at setup; [README.md](README.md)'s Security model has the
+trade-offs. Throughout: username `huangwaylon`, repo `verbose-octo-pancake`, so the site is
+`https://huangwaylon.github.io/verbose-octo-pancake/` and `base.js` matches that path.
 
 ## 1. The dedicated account and the sheet
 
-1. Create a new Google account. Unique strong password, 2FA on, used for nothing
-   else.
-2. Signed in as that account, create one spreadsheet. Do not add tabs — the app
-   builds `expenses_p1`, `expenses_p2`, `settlements`, `recurring` and `config` on its
-   first run.
-3. Copy the id out of the URL:
-   `https://docs.google.com/spreadsheets/d/`**`<this part>`**`/edit`
-4. **Share** it with both people's own Google addresses as **Editor**, and leave
-   general access **Restricted**. That share is the only thing that lets either of
-   you open the sheet by hand; *Anyone with the link* would make the whole ledger
-   readable to anybody who saw the URL.
+1. Create a new Google account. Unique strong password, 2FA on, used for nothing else.
+2. Signed in as that account, create one spreadsheet, and do not add tabs — the app builds
+   `expenses_p1`, `expenses_p2`, `settlements`, `recurring` and `config` on its first run.
+3. Copy the id out of the URL: `https://docs.google.com/spreadsheets/d/`**`<this part>`**`/edit`
+4. **Share** it with both people's Google addresses as **Editor**, general access **Restricted**: that
+   share is the only way either of you opens the sheet by hand, and *Anyone with the link* would make the
+   whole ledger readable to anybody who saw the URL.
 
 ## 2. Generate the app key
 
-```sh
-openssl rand -hex 32
-```
-
-Keep it where both people can reach it, like a shared password manager. It is the
-only credential the app has and the only thing standing in front of a public
-endpoint. It is never a build-time value and never goes in the repository.
+`openssl rand -hex 32`, kept in a shared password manager. It is the only credential the app has and
+the only thing in front of a public endpoint; never a build-time value, and never in the repository.
 
 ## 3. Create the script
 
-Signed in as the dedicated account, ideally in a separate browser profile: the
-Cloud console silently acts as the wrong account when several are signed in.
-
-1. Go to **script.new**. Rename the project **Shared Finances token minter**.
+1. Signed in as the dedicated account, ideally in its own browser profile (the Cloud console silently
+   acts as the wrong account when several are signed in), go to **script.new** and rename the project
+   **Shared Finances token minter**.
 2. Replace the contents of `Code.gs` with [`apps-script/Code.gs`](apps-script/Code.gs).
-3. **Project Settings** (gear) → tick **Show `appsscript.json` manifest file in
-   editor**.
+3. **Project Settings** (gear) → tick **Show `appsscript.json` manifest file in editor**.
 4. Back in **Editor**, replace `appsscript.json` with
-   [`apps-script/appsscript.json`](apps-script/appsscript.json). It pins the scope
-   to `spreadsheets` alone, sets the web app to run as the owner with anonymous
-   access, and pins the script's timezone to `Asia/Tokyo` — which step 9 depends on:
-    `new Date()` is UTC underneath and a 03:00 JST run on the 1st would
-   otherwise compute the previous month.
+   [`apps-script/appsscript.json`](apps-script/appsscript.json): scope pinned to `spreadsheets` alone,
+   web app run as owner with anonymous access, timezone pinned to `Asia/Tokyo` — which step 9 needs,
+   since `new Date()` is UTC and a 03:00 JST run on the 1st would compute last month.
 5. **Project Settings** → **Script Properties** → **Add script property**, twice:
 
    | Property | Value |
@@ -67,153 +43,97 @@ Cloud console silently acts as the wrong account when several are signed in.
 
 ## 4. Attach a Cloud project
 
-Apps Script's own hidden Cloud project cannot have APIs enabled, so a token it
-mints is rejected by the Sheets API with `SERVICE_DISABLED`. A standard project
-fixes it. No billing account and no card.
+Apps Script's own hidden Cloud project cannot have APIs enabled, so a token it mints is rejected by
+the Sheets API with `SERVICE_DISABLED`. A standard project fixes it — no billing account, no card.
 
-1. **console.cloud.google.com/projectcreate** → name it `shared-finances` →
-   **Create**.
-2. On the console home page, copy the **Project number** from the *Project info*
-   card. Apps Script wants the number, not the id.
-3. **console.cloud.google.com/apis/library/sheets.googleapis.com** → confirm the
-   project selector says `shared-finances` → **Enable**.
-4. Apps Script → **Project Settings** → **Google Cloud Platform (GCP) Project** →
-   **Change project** → paste the project number → **Set project**.
+1. **console.cloud.google.com/projectcreate** → name it `shared-finances` → **Create**.
+2. Copy the **Project number** from the console home page's *Project info* card — number, not id.
+3. **console.cloud.google.com/apis/library/sheets.googleapis.com** → check the selector says
+   `shared-finances` → **Enable**.
+4. Apps Script → **Project Settings** → **Google Cloud Platform (GCP) Project** → **Change project**
+   → paste the number → **Set project**.
 
 ## 5. Publish the consent screen
 
-**Do not leave this in Testing.** A script attached to a Cloud project whose
-consent screen is in Testing has its authorization expire after **7 days**, so the
-token endpoint stops working about a week after setup — and the symptom is
-indistinguishable from a quota problem. Publishing removes the expiry.
+**Do not leave this in Testing**: a script whose Cloud project's consent screen is in Testing has its
+authorization expire after **7 days**, so the token endpoint stops working about a week after setup,
+with a symptom indistinguishable from a quota problem. Publishing removes the expiry.
 
-1. **console.cloud.google.com/auth/overview** (older consoles: **APIs & Services →
-   OAuth consent screen**). If offered **Get started**, fill in app name
-   `Shared Finances`, the dedicated address for both support and contact, audience
-   **External**, then **Create**.
+1. **console.cloud.google.com/auth/overview** (older consoles: **APIs & Services → OAuth consent
+   screen**). If offered **Get started**: app name `Shared Finances`, the dedicated address for both
+   support and contact, audience **External**, **Create**.
 2. **Audience** → **Publishing status** → **Publish app**.
 
-Publishing submits nothing for review; you will still click through **Advanced → Go
-to Shared Finances token minter (unsafe)** when authorizing.
-
-Add no scopes here. `ScriptApp.getOAuthToken()` does not route through this screen;
-it only has to exist.
+Publishing submits nothing for review; you still click through **Advanced → Go to … (unsafe)** when
+authorizing. Add no scopes — `ScriptApp.getOAuthToken()` does not route through this screen.
 
 ## 6. Deploy
 
 1. **Deploy** → **New deployment** → gear → **Web app**.
-2. **Execute as: Me**. **Who has access: Anyone** — not "Anyone with a Google
-   Account", because the app calls this with no Google login at all.
-3. **Deploy**, then authorize: pick the dedicated account, **Advanced** → **Go
-   to… (unsafe)** → **Allow**. It asks to see and edit your spreadsheets, which is
-   the `spreadsheets` scope from step 3.
-4. Copy the **Web app URL**, ending in `/exec`.
+2. **Execute as: Me**, **Who has access: Anyone**, not "Anyone with a Google Account" — no Google login.
+3. **Deploy**, then authorize as the dedicated account: **Advanced** → **Go to… (unsafe)** → **Allow**
+   (the spreadsheets prompt is step 3's scope), and copy the **Web app URL**, ending in `/exec`.
 
-The script answers only POSTs, so there is nothing to check in a browser address
-bar — that is deliberate. Confirm it this way instead, which also proves the part
-most likely to be wrong:
+Only POSTs are answered, so a browser address bar proves nothing. With `$URL`, `$KEY` and `$SHEET` set:
 
 ```sh
-URL='https://script.google.com/macros/s/…/exec'
-KEY='…'
-SHEET='…'
 TOKEN=$(curl -sSL "$URL" -H 'Content-Type: text/plain;charset=utf-8' \
   --data "{\"key\":\"$KEY\"}" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')
 curl -sS -H "Authorization: Bearer $TOKEN" \
   "https://sheets.googleapis.com/v4/spreadsheets/$SHEET?fields=sheets(properties(title))"
 ```
 
-A tab list means it works. `SERVICE_DISABLED` means step 4 did not take.
-
-`--data` with no `-X POST` is deliberate: `/exec` answers with a 302 that has to be
-followed as a GET.
+A tab list means it works; `SERVICE_DISABLED` means step 4 did not take. `--data` with no `-X POST`
+is deliberate: `/exec` answers with a 302 that has to be followed as a GET.
 
 ## 7. Point the app at it
 
-Local development — `.env` is gitignored:
-
-```sh
-cp .env.example .env   # paste the /exec URL
-npm run dev            # http://localhost:5173/verbose-octo-pancake/
-```
-
-For GitHub Pages, **Settings → Secrets and variables → Actions → Variables** must
-hold `VITE_SCRIPT_URL`. It is a *variable*, not a secret: Vite inlines it into the
-bundle, so it is public either way, and marking it secret would imply a
-confidentiality the deployed site cannot provide. **Settings → Pages → Source**
-must be **GitHub Actions** — under "Deploy from a branch" Pages publishes the
-repository tree verbatim and ignores the artifact, and the tell is a 404 for
-`/src/main.jsx`.
+Locally, `cp .env.example .env` (gitignored), paste the `/exec` URL, and `npm run dev` serves
+http://localhost:5173/verbose-octo-pancake/. For Pages, **Settings → Secrets and variables → Actions →
+Variables** must hold `VITE_SCRIPT_URL` — a *variable*, not a secret, since Vite inlines it into the bundle
+and it is public either way — and **Settings → Pages → Source** must be **GitHub Actions**, or Pages
+publishes the repository tree verbatim and ignores the artifact, with a 404 for `/src/main.jsx` as the tell.
 
 ## 8. Each device, once
 
-Open the app and paste the app key. It is stored in that device's `localStorage`
-and nothing expires, so this happens once per phone rather than once an hour.
-
-Two things worth knowing about iOS. An installed web app has **its own storage,
-separate from Safari's**, so entering the key in Safari does not carry over —
-install first (**Share → Add to Home Screen**) and enter it there. And iOS can
-evict storage from an app left unused for a long stretch; if that happens you
-retype the key and the ledger rebuilds from the sheet.
-
-Then pick which of the two people you are. That is a per-device choice and nothing
-detects it, because the token belongs to the sheet's owner rather than to either of
-you.
+Open the app and paste the app key; nothing expires, so this is once per phone, not once an hour. An
+installed web app has **its own storage, separate from Safari's**, so install first (**Share → Add to Home
+Screen**) and enter the key there; iOS can also evict storage from an app left unused for long, after which
+you retype the key and the ledger rebuilds. Then pick which of the two people you are — a per-device choice
+nothing detects, because the token belongs to the sheet's owner.
 
 ## 9. The recurring-cost trigger (optional)
 
-Only needed if you want rent to land in the sheet without anyone opening the app.
-Without this step **Settings → Recurring costs** still lists every recurring cost with a
-**Record** button wherever the month is missing one, and a tap fills in the form — which
-is the whole feature for anyone happy to confirm the figure.
-[README.md](README.md#recurring-tab) describes the tab.
-
-Set up at least one cost first, or a run has nothing to do. Every cost with an **amount**
-posts itself; one with a blank amount — a utility bill whose figure changes — cannot, so
-those stay on the page with a Record button.
-
-A cost that ends is **stopped**, not deleted: the row's id is the sheet's only record of
-which months it already covered.
-
-Same script project as the token minter: it already holds `SHEET_ID` and the
-`spreadsheets` authorization, and `postRecurring` is already in the `Code.gs` from step 3.
+Only needed if you want rent to land without anyone opening the app; without it, **Settings → Recurring
+costs** still lists every cost with a **Record** button wherever the month is missing one
+([README.md](README.md#recurring-tab) describes the tab). Set up a cost first, or a run has nothing to do:
+one with an **amount** posts itself, one with a blank amount stays tap-to-record, and a cost that ends is
+**stopped**, not deleted, since its id is the sheet's only record of the months it covered. Same project as
+the minter, which already holds `SHEET_ID`, the authorization and `postRecurring`, from step 3.
 
 1. Confirm the manifest from step 3 carries `"timeZone": "Asia/Tokyo"`.
-2. **Editor** → clock icon (**Triggers**) → **Add Trigger**: function `postRecurring`,
-   deployment **Head**, event source **Time-driven**, **Day timer**, **3am to 4am**.
-3. Set **Failure notification settings** to **Notify me immediately** — not the
-   **daily** default. That mail is the only channel that reports this stopping, and the
-   app cannot see it.
-4. **Save**, and authorize when prompted.
-5. Run `postRecurring` once from the editor and check **Executions**.
+2. **Editor** → clock icon (**Triggers**) → **Add Trigger**: function `postRecurring`, deployment
+   **Head**, event source **Time-driven**, **Day timer**, **3am to 4am**.
+3. Set **Failure notification settings** to **Notify me immediately**, not the **daily** default: that
+   mail is the only channel reporting this stopping, and the app cannot see it.
+4. **Save** and authorize, then run `postRecurring` once from the editor and check **Executions**.
 
-Create the trigger in the UI rather than with `ScriptApp.newTrigger`, which would need
-the `script.scriptapp` scope adding to `oauthScopes` — and pinning that list to
-`spreadsheets` alone is worth keeping.
-
-One thing about how this deploys, and it is deliberate. **Triggers run HEAD; the web app
-runs the pinned deployment.** Saving `Code.gs` changes
-tonight's 3am run immediately, while the token endpoint keeps serving the version from
-step 6. So adding the poster needs no new deployment — and a half-finished edit left
-saved in the editor runs unattended.
-
-Cost is about 90 seconds of runtime a month against the free 90 minutes **per day**,
-which the token minter also draws on.
+Create the trigger in the UI, not with `ScriptApp.newTrigger`, which would need `script.scriptapp` added to
+`oauthScopes`. **Triggers run HEAD; the web app runs the pinned deployment** — saving `Code.gs` changes
+tonight's 3am run immediately while the token endpoint keeps serving step 6's version, so adding the poster
+needs no new deployment and a half-finished edit left saved in the editor runs unattended. Cost is ~90
+seconds of runtime a month against the free 90 minutes **per day**, shared with the minter.
 
 ## Rotating the app key
 
-The only incident response this design has, and it takes about a minute. Do it if a
-phone is lost, if the key gets shared by accident, or on any suspicion at all.
+The only incident response this design has, and about a minute. Do it if a phone is lost, if the key is
+shared by accident, or on any suspicion at all.
 
-1. `openssl rand -hex 32`
-2. Apps Script → **Project Settings** → **Script Properties** → edit `APP_KEY`.
-3. Both people open the app and enter the new key.
+Generate one with `openssl rand -hex 32`, edit `APP_KEY` under Apps Script → **Project Settings** →
+**Script Properties**, and have both people open the app and enter it.
 
-No redeployment: `APP_KEY` is read inside `doPost`, so a property change takes
-effect on the next request. Editing `Code.gs` is the opposite — a deployment is
-pinned to a version, so saving the editor changes nothing until **Deploy → Manage
-deployments →** pencil → **New version**.
-
-Rotation stops new tokens immediately. A token already issued lives out its hour —
-there is no way to revoke one individually, which is the accepted cost of this
-design. The endpoint URL does not change and the app does not need rebuilding.
+No redeployment: `APP_KEY` is read inside `doPost`, so the change takes effect on the next request.
+Editing `Code.gs` is the opposite — a deployment is pinned to a version, so saving the editor changes
+nothing until **Deploy → Manage deployments →** pencil → **New version**. Rotation stops new tokens at once,
+but one already issued lives out its hour, since there is no revoking it individually; the endpoint URL does
+not change and the app needs no rebuild.
