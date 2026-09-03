@@ -92,7 +92,7 @@ export default {
   'recurring.hint': '{month}を表示しています。タップすると編集できます。',
   'recurring.empty': 'まだありません。家賃など、毎月かかるものを追加しましょう。',
   'recurring.notLoaded': 'まだ読み込めていません。シートを読み込んでからお試しください。',
-  'recurring.add': '追加',
+  'recurring.add': '定期の支出を追加',
   'recurring.amountVaries': '金額は変動',
   'recurring.schedule': '{day}日',
   'recurring.paidBy': '{name}の支払い',
@@ -122,7 +122,7 @@ export default {
   'recurring.retire': 'この支出を止める',
   'recurring.restore': 'この支出を再開する',
   'recurring.delete': '完全に削除',
-  'recurring.deleteTitle': '完全に削除',
+  'recurring.deleteTitle': '停止ではなく削除',
   'recurring.deleteHint':
     'recurring タブから行を削除します。すでに追加された記録は台帳に残りますが、どの月を記録したかはシートから失われるため、同じ支出を再度追加すると同じ月を二重に記録することがあります。「止める」ならその記録は残ります。',
 
@@ -133,6 +133,7 @@ export default {
   'deleted.hint':
     'この月に削除した記録です。ここで元に戻すか、設定ですべての削除ずみを完全に削除できます。',
   'deleted.meta': '{date}・{name}の支払い',
+  'deleted.settlementMeta': '{date}・{payer}が{other}に支払い',
   'deleted.restore': '元に戻す',
   'deleted.restoreEntry': '{description}を元に戻す',
 

@@ -175,7 +175,10 @@ export default {
   'recurring.retire': 'Stop this cost',
   'recurring.restore': 'Start this cost again',
   'recurring.delete': 'Delete for good',
-  'recurring.deleteTitle': 'Delete for good',
+  // Names the DECISION, not the button under it: the two used to be the same words, so
+  // the block printed "Delete for good" twice in a row. `SettingsSheet`'s forget-key block
+  // is the pattern — the label says what this is about, the button says what it does.
+  'recurring.deleteTitle': 'Delete instead of stopping',
   // The description is the whole guard. "Delete" does not tell anyone that what is
   // lost is the sheet's record of which months this cost already covered — and that
   // adding it back afterwards can therefore record a month twice.
@@ -192,6 +195,10 @@ export default {
   'deleted.hint':
     'Deleted from this month. Restore one here, or clear every deleted row for good in settings.',
   'deleted.meta': '{date} · {name} paid',
+  // A tombstoned settlement is the same fact as a live one, so it says the same thing
+  // plus the date. Left to the line above, a payback read as an expense the payer had
+  // bought something with — the one row where losing the direction reverses the meaning.
+  'deleted.settlementMeta': '{date} · {payer} paid {other}',
   'deleted.restore': 'Restore',
   'deleted.restoreEntry': 'Restore {description}',
 

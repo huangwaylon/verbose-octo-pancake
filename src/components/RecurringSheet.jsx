@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { isRetired, recurringRows } from '../lib/recurring.js'
-import { monthLabel } from '../lib/dates.js'
+import { dayOf, monthLabel } from '../lib/dates.js'
 import { OpenSheetLink } from './OpenSheetLink.jsx'
 import { PlusIcon } from './icons.jsx'
 import { useMoney, usePeopleLabels, useT } from '../i18n/index.js'
@@ -116,20 +116,30 @@ function RecurringRow({ state, label, money, onEdit, onRecord }) {
   const { template, draft, due, recorded, scheduled } = state
 
   /**
-   * Why this row has no Record button, in words rather than by its absence. Retired first:
-   * "stopped" and "not this month" are different facts, and a quarterly cost out of quarter is
-   * only the second. Still said for a row that CAN be recorded early — "due on day 27" beside
-   * "Record now" is the whole of what makes the second one an informed tap.
+   * Why this row has no Record button, in words rather than by its absence.
+   *
+   * `scheduled` is asked FIRST and retirement only refines it, because the two are about
+   * different spans: `active_to` is a fact about the cost now, `scheduled` is about the month on
+   * screen. Asked the other way round, a cost retired in July and viewed IN July — still inside
+   * its own window, so still recordable — printed "stopped" beside its own Record button.
+   * "stopped" and "not this month" are then the two ways of not applying, and a quarterly cost
+   * out of quarter is only the second.
+   *
+   * The not-yet-due wording carries the day, so it stands in for the schedule line rather than
+   * repeating it — and it takes the day from the INSTANCE, which is the clamped one. A cost
+   * declared on the 31st is due on the 28th in February, and naming the 31st there would put a
+   * date on screen that the row's own Record button stops agreeing with three days earlier.
    */
+  const notYetDue = scheduled && !recorded && !due
   const status = recorded
     ? t('recurring.recorded')
-    : isRetired(template)
-      ? t('recurring.stopped')
-      : !scheduled
-        ? t('recurring.notThisMonth')
-        : !due
-          ? t('recurring.notYetDue', { day: template.dayOfMonth })
-          : null
+    : !scheduled
+      ? isRetired(template)
+        ? t('recurring.stopped')
+        : t('recurring.notThisMonth')
+      : notYetDue
+        ? t('recurring.notYetDue', { day: dayOf(draft.date) })
+        : null
 
   const name = template.description || t('entry.expense')
 
@@ -140,7 +150,7 @@ function RecurringRow({ state, label, money, onEdit, onRecord }) {
    */
   const meta = [
     template.amountYen == null ? t('recurring.amountVaries') : money(template.amountYen),
-    t('recurring.schedule', { day: template.dayOfMonth }),
+    notYetDue ? null : t('recurring.schedule', { day: template.dayOfMonth }),
     t('recurring.paidBy', { name: label(template.payer) }),
     status,
   ]

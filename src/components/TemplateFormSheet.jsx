@@ -1,11 +1,12 @@
 import { useId, useRef, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { parseAmountToYen, yenToSheetString } from '../lib/money.js'
-import { defaultSplitFor } from '../lib/split.js'
-import { templateFormProblem } from '../lib/recurring.js'
+import { isRetired, templateFormProblem } from '../lib/recurring.js'
 import { PEOPLE, PERSON, otherPerson } from '../schema.js'
 import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
 import { Field, FieldError } from './Field.jsx'
+import { AmountField } from './AmountField.jsx'
+import { SheetFormFooter } from './SheetFormFooter.jsx'
 import { CategoryField } from './CategoryField.jsx'
 import { Segmented } from './Segmented.jsx'
 import { SplitField, useEntrySplit } from './SplitField.jsx'
@@ -77,7 +78,9 @@ export function TemplateFormSheet({
     refused === 'amount' && rejected.amount === amount ? t('error.badTemplateAmount') : null
   const dayError = refused === 'day' && rejected.day === day ? t('error.badDay') : null
 
-  const retired = Boolean(template.activeTo)
+  // Through `isRetired`, never a second reading of `activeTo`: this decides which of the two
+  // opposite writes the footer button performs, so the two readings drifting flips a control.
+  const retired = isRetired(template)
 
   /** What the form says, or null with the first bad field focused. Shared by every write. */
   function collect() {
@@ -129,36 +132,33 @@ export function TemplateFormSheet({
       full
       onClose={onClose}
       footer={
-        <>
-          {editing && (
-            <button
-              type="button"
-              /* push-end shoves it to the far left of the right-aligned footer, away from
-                 Save. Not `btn--danger`: retiring is reversible, so colouring it as
-                 destructive would overstate what it does. */
-              className="btn btn--icon push-end"
-              onClick={() => run(retired ? onRestore : onRetire)}
-              disabled={busy}
-              aria-label={retired ? t('recurring.restore') : t('recurring.retire')}
-            >
-              <RetireIcon />
-            </button>
-          )}
-          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>
-            {t('common.cancel')}
-          </button>
-          <button
-            type="submit"
-            form="template-form"
-            className="btn btn--primary"
-            disabled={busy}
-            /* The failure this button produced has to be reachable FROM it. Ids are
-               document-global, so sitting outside the form is no obstacle. */
-            aria-describedby={saveError ? saveErrorId : undefined}
-          >
-            {busy ? <span className="spinner" /> : editing ? t('common.save') : t('common.add')}
-          </button>
-        </>
+        <SheetFormFooter
+          formId="template-form"
+          busy={busy}
+          editing={editing}
+          onCancel={onClose}
+          leading={
+            editing && (
+              <button
+                type="button"
+                /* push-end shoves it to the far left of the right-aligned footer, away from
+                   Save. Not `btn--danger`: retiring is reversible, so colouring it as
+                   destructive would overstate what it does. */
+                className="btn btn--icon push-end"
+                onClick={() => run(retired ? onRestore : onRetire)}
+                disabled={busy}
+                aria-label={retired ? t('recurring.restore') : t('recurring.retire')}
+                /* This button produces the same `saveError` Save does, and it is icon-only —
+                   so with the description on Save alone there was nothing on the control
+                   that failed to re-read. */
+                aria-describedby={saveError ? saveErrorId : undefined}
+              >
+                <RetireIcon />
+              </button>
+            )
+          }
+          describedBy={saveError ? saveErrorId : undefined}
+        />
       }
     >
       <form
@@ -192,32 +192,18 @@ export function TemplateFormSheet({
           {nameError && <FieldError id={nameErrorId}>{nameError}</FieldError>}
         </Field>
 
-        <Field
-          htmlFor="template-amount"
-          label={
-            <>
-              {t('form.amount')} <span className="field__hint">{t('common.optional')}</span>
-            </>
-          }
+        <AmountField
+          id="template-amount"
+          inputRef={amountInput}
+          value={amount}
+          onChange={setAmount}
+          error={amountError}
+          errorId={amountErrorId}
           hint={t('recurring.amountHint')}
-        >
-          <input
-            id="template-amount"
-            ref={amountInput}
-            className="input tnum"
-            type="text"
-            /* The yen has no sub-unit, so a decimal point on the pad would only invite an
-               amount 100x wrong. */
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder={t('recurring.amountVaries')}
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            aria-invalid={amountError ? 'true' : undefined}
-            aria-describedby={amountError ? amountErrorId : undefined}
-          />
-          {amountError && <FieldError id={amountErrorId}>{amountError}</FieldError>}
-        </Field>
+          placeholder={t('recurring.amountVaries')}
+          /* Blank is a real answer here, and the one a utility bill needs. */
+          optional
+        />
 
         <CategoryField
           id="template-category"
@@ -261,7 +247,7 @@ export function TemplateFormSheet({
           defaultLabel={t('recurring.splitDefault')}
           defaultHint={t('recurring.splitDefaultHint', {
             owner: possessive(payer),
-            percent: Math.round(defaultSplitFor(config, payer) * 100),
+            percent: split.configuredPercent,
           })}
         />
 
@@ -272,8 +258,6 @@ export function TemplateFormSheet({
         {/* And what saving does NOT do: a month already recorded keeps the figures it was
             recorded with, which is right and completely invisible. */}
         {editing && <p className="field__hint">{t('recurring.editScopeHint')}</p>}
-
-        {saveError && <FieldError id={saveErrorId}>{saveError}</FieldError>}
 
         {/* Last in the body, where the irreversible thing belongs. The description is the
             whole guard: what a deleted row costs is the sheet's memory of which months this
@@ -292,6 +276,12 @@ export function TemplateFormSheet({
             </div>
           </Field>
         )}
+
+        {/* A save failure is not a field's problem, so it stays last — directly above the
+            footer holding the buttons that produced it. Below the delete block rather than
+            above it: from up there the nearest words to a failed save are "Delete for good",
+            and on a 320px phone the message can be a screen away from the footer. */}
+        {saveError && <FieldError id={saveErrorId}>{saveError}</FieldError>}
       </form>
     </BottomSheet>
   )

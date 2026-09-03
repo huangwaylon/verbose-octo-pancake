@@ -37,6 +37,12 @@ export function useEntrySplit(entry, config, payer, { allowDefault = false } = {
     mode,
     percent,
     payerShare: mode === 'even' ? EVEN_SHARE : share,
+    /**
+     * The configured default as a whole percent, so the "Default" option's own label does not
+     * re-derive it. One number, one derivation: what the label promises and what the mode saves
+     * have to be the same figure.
+     */
+    configuredPercent: Math.round(configuredShare * 100),
     /** Dragging or hitting a preset pins the entry, so it survives a payer switch. */
     setPercent: (next) => setOverride(splitAtPercent(next)),
     setMode: (next) => setOverride(nextSplit(next, configuredShare)),

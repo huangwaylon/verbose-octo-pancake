@@ -272,7 +272,12 @@ export default function App() {
       {overlay?.kind === 'confirmTemplate' && (
         <ConfirmSheet
           title={t('confirm.deleteTemplateTitle')}
-          body={t('confirm.deleteTemplateBody', { name: overlay.template.description })}
+          body={t('confirm.deleteTemplateBody', {
+            /* The same fallback the row uses. The edited template is deliberately what
+               arrives here, so the name can be whatever is in the field — cleared, it left
+               the guard sentence naming nothing at all. */
+            name: overlay.template.description || t('entry.expense'),
+          })}
           confirmLabel={t('recurring.delete')}
           onConfirm={() => deleteTemplate(overlay.template)}
           onClose={() => openTemplate('edit', overlay.template)}

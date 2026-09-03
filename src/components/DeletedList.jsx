@@ -1,7 +1,8 @@
 import { dayLabel } from '../lib/dates.js'
+import { ENTRY_TYPE, otherPerson } from '../schema.js'
 import { useDayLabels, useEntryTitle, usePeopleLabels, useT } from '../i18n/index.js'
 import { EntryLine } from './EntryLine.jsx'
-import { ChevronRightIcon } from './icons.jsx'
+import { ChevronRightIcon, SwapIcon } from './icons.jsx'
 
 /**
  * The tombstones from the month on screen, most recently deleted first. Scoped to
@@ -34,6 +35,7 @@ export function DeletedList({ entries, config, me, onRestore }) {
             key={entry.id}
             entry={entry}
             payerLabel={label(entry.payer)}
+            otherLabel={label(otherPerson(entry.payer))}
             dateLabel={dayLabel(entry.date, { locale, labels })}
             onRestore={onRestore}
           />
@@ -47,16 +49,33 @@ export function DeletedList({ entries, config, me, onRestore }) {
  * Its own component because it calls a hook per row: `useEntryTitle` needs the entry,
  * and the title is wanted twice — as the visible text and inside the restore button's
  * accessible name. The row's shape and its amount are `EntryLine`'s job.
+ *
+ * A settlement is marked here the way `EntryRow` marks one, and for the same reason: the
+ * two rows are the same fact either side of a delete. Left to the expense treatment, a
+ * tombstoned payback lost its icon, its `entry--settlement` styling and its direction, and
+ * read as an expense the payer had bought something with — so the one control beside it
+ * offered to restore something other than what it says.
  */
-function DeletedRow({ entry, payerLabel, dateLabel, onRestore }) {
+function DeletedRow({ entry, payerLabel, otherLabel, dateLabel, onRestore }) {
   const { t } = useT()
   const description = useEntryTitle(entry)
+  const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
 
   return (
     <EntryLine
       entry={entry}
       description={description}
-      meta={t('deleted.meta', { date: dateLabel, name: payerLabel })}
+      meta={
+        isSettlement
+          ? t('deleted.settlementMeta', {
+              date: dateLabel,
+              payer: payerLabel,
+              other: otherLabel,
+            })
+          : t('deleted.meta', { date: dateLabel, name: payerLabel })
+      }
+      settlement={isSettlement}
+      icon={isSettlement ? <SwapIcon width={16} height={16} /> : null}
     >
       {/* Text, not an icon: there is no conventional glyph for "undelete", and
           several identical unlabelled buttons in a row say nothing about which

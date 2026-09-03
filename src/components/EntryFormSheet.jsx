@@ -4,9 +4,11 @@ import { parseAmountToYen, yenToSheetString } from '../lib/money.js'
 import { ENTRY_TYPE, PEOPLE, PERSON, otherPerson } from '../schema.js'
 import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
 import { Field, FieldError } from './Field.jsx'
+import { AmountField } from './AmountField.jsx'
 import { CategoryField } from './CategoryField.jsx'
 import { NoteField } from './NoteField.jsx'
 import { Segmented } from './Segmented.jsx'
+import { SheetFormFooter } from './SheetFormFooter.jsx'
 import { SplitField, useEntrySplit } from './SplitField.jsx'
 import { TrashIcon } from './icons.jsx'
 
@@ -111,68 +113,40 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
       full={!isSettlement}
       onClose={onClose}
       footer={
-        <>
-          {mode === 'edit' && (
-            <button
-              type="button"
-              /* push-end shoves the destructive action to the far left of the
-                 right-aligned footer, away from Save. */
-              className="btn btn--icon push-end"
-              onClick={() => onDelete(entry)}
-              disabled={busy}
-              aria-label={t('form.deleteEntry')}
-            >
-              <TrashIcon />
-            </button>
-          )}
-          <button type="button" className="btn btn--ghost" onClick={onClose} disabled={busy}>
-            {t('common.cancel')}
-          </button>
-          <button
-            type="submit"
-            form="entry-form"
-            className="btn btn--primary"
-            disabled={busy}
-            /* The failure this button produced has to be reachable FROM it, not merely
-               rendered above it. Ids are document-global, so sitting outside the form
-               is no obstacle — the same is already true of `form`. */
-            aria-describedby={saveError ? saveErrorId : undefined}
-          >
-            {busy ? (
-              <span className="spinner" />
-            ) : mode === 'edit' ? (
-              t('common.save')
-            ) : (
-              t('common.add')
-            )}
-          </button>
-        </>
+        <SheetFormFooter
+          formId="entry-form"
+          busy={busy}
+          editing={mode === 'edit'}
+          onCancel={onClose}
+          leading={
+            mode === 'edit' && (
+              <button
+                type="button"
+                /* push-end shoves the destructive action to the far left of the
+                   right-aligned footer, away from Save. */
+                className="btn btn--icon push-end"
+                onClick={() => onDelete(entry)}
+                disabled={busy}
+                aria-label={t('form.deleteEntry')}
+              >
+                <TrashIcon />
+              </button>
+            )
+          }
+          describedBy={saveError ? saveErrorId : undefined}
+        />
       }
     >
       <form id="entry-form" className="stack" onSubmit={handleSubmit}>
-        <Field htmlFor="entry-amount" label={t('form.amount')}>
-          <input
-            id="entry-amount"
-            ref={amountInput}
-            /* Tabular figures because this is the one field digits are typed into one at
-               a time, and proportional ones shift every glyph as the value grows. */
-            className="input tnum"
-            type="text"
-            /* The yen has no sub-unit, so a decimal point on the pad would only
-               invite an amount 100x wrong. */
-            inputMode="numeric"
-            autoComplete="off"
-            placeholder={t('form.amountPlaceholder')}
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            aria-invalid={amountError ? 'true' : undefined}
-            aria-describedby={amountError ? amountErrorId : undefined}
-          />
-          {/* Inside the field, not at the foot of the form: `aria-describedby` reaches it
-              either way, but from down there it renders a screen's worth below the input
-              it describes, with nothing scrolling it into view on submit. */}
-          {amountError && <FieldError id={amountErrorId}>{amountError}</FieldError>}
-        </Field>
+        <AmountField
+          id="entry-amount"
+          inputRef={amountInput}
+          value={amount}
+          onChange={setAmount}
+          error={amountError}
+          errorId={amountErrorId}
+          placeholder={t('form.amountPlaceholder')}
+        />
 
         {!isSettlement && (
           <>

@@ -57,21 +57,36 @@ export function isIsoDate(value) {
   )
 }
 
-export function todayIso(now = new Date()) {
-  return toIso(now)
-}
-
-/** Two-digit zero padding, which every 'YYYY-MM[-DD]' string below is built from. */
+/** Two-digit zero padding, which every 'YYYY-MM[-DD]' string here is built from. */
 function pad(value) {
   return String(value).padStart(2, '0')
 }
 
-function toIso(date) {
+/**
+ * A local Date as 'YYYY-MM-DD' — the one place that string is assembled, and the reason it is
+ * assembled from y/m/d parts rather than `toISOString`, which is UTC and shifts the day west of
+ * Greenwich. Defaults to now, which is what every caller of it by this name wants.
+ */
+export function todayIso(date = new Date()) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
 
+/** The same date as its 'YYYY-MM' key: a prefix of the day, so the two cannot disagree. */
+function monthKeyOf(date) {
+  return todayIso(date).slice(0, 7)
+}
+
 export function currentMonthKey(now = new Date()) {
-  return todayIso(now).slice(0, 7)
+  return monthKeyOf(now)
+}
+
+/**
+ * The day-of-month an ISO date falls on. Here rather than a `slice` at the one call site,
+ * because reading a date positionally is this module's job — and the caller wants the CLAMPED
+ * day a recurring instance actually carries, not the day its template declares.
+ */
+export function dayOf(iso) {
+  return isIsoDate(iso) ? Number(iso.slice(8, 10)) : null
 }
 
 function partsOf(iso) {
@@ -131,6 +146,8 @@ export function dayInMonth(monthKey, day) {
   if (!parts) return ''
   const last = new Date(parts.year, parts.month, 0).getDate()
   const clamped = Math.min(Math.max(Number.isInteger(day) ? day : 1, 1), last)
+  // Assembled here rather than through `todayIso`: `new Date(50, ...)` means 1950, so a
+  // two-digit year would come back as a different one entirely.
   return `${parts.year}-${pad(parts.month)}-${pad(clamped)}`
 }
 
@@ -138,8 +155,7 @@ export function dayInMonth(monthKey, day) {
 export function shiftMonth(monthKey, delta) {
   const parts = monthParts(monthKey)
   if (!parts) return ''
-  const date = new Date(parts.year, parts.month - 1 + delta, 1)
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
+  return monthKeyOf(new Date(parts.year, parts.month - 1 + delta, 1))
 }
 
 /**
@@ -173,12 +189,12 @@ export function monthLabel(monthKey, { locale, now = new Date() } = {}) {
  */
 export function dayLabel(iso, { now = new Date(), locale, labels = EN_DAY_LABELS } = {}) {
   if (!iso) return labels.none
-  const today = toIso(now)
+  const today = todayIso(now)
   if (iso === today) return labels.today
 
   const yesterday = new Date(now)
   yesterday.setDate(yesterday.getDate() - 1)
-  if (iso === toIso(yesterday)) return labels.yesterday
+  if (iso === todayIso(yesterday)) return labels.yesterday
 
   const date = partsOf(iso)
   const sameYear = date.getFullYear() === now.getFullYear()

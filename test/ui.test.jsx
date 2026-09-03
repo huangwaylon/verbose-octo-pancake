@@ -537,6 +537,23 @@ describe('deleted entries list', () => {
   it('dims a row whose write has not landed yet', () => {
     expect(render([{ ...removed('a'), pending: true }])).toContain('entry--pending')
   })
+
+  /**
+   * A tombstoned settlement is the same fact as a live one, and it used to lose all three of
+   * the things that say so — the icon, the `entry--settlement` class and the direction. What it
+   * read as instead was an expense the payer had bought something with, which is the one row
+   * where dropping the direction reverses the meaning of what the Restore beside it will do.
+   */
+  it('keeps a settlement recognisable as one after it is deleted', () => {
+    const markup = render([
+      removed('s', { type: ENTRY_TYPE.SETTLEMENT, payerShare: 0, description: '' }),
+    ])
+
+    expect(markup).toContain('entry--settlement')
+    // The direction, both names, in order — never just "You paid", which is what an expense
+    // row says. `label` is viewer-relative, so p1 reads as "You" for whoever is holding it.
+    expect(markup).toContain('You paid Sam')
+  })
 })
 
 describe('Japanese rendering', () => {

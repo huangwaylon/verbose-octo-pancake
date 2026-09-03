@@ -476,6 +476,20 @@ describe('the recurring page renders', () => {
     expect(quarterly).not.toContain('stopped')
   })
 
+  /**
+   * `active_to` is INCLUSIVE, so the month a cost was stopped in is still one it applies to —
+   * and still one that may need recording. Asked in the wrong order, the row printed "stopped"
+   * next to its own Record button: two statements about the same cost that cannot both be true.
+   */
+  it('does not call a cost stopped in a month it still applies to', () => {
+    const markup = render({
+      templates: [template({ id: 'rent', description: 'Rent', active_to: '2026-08' })],
+    })
+
+    expect(markup).toContain('>Record<')
+    expect(markup).not.toContain('stopped')
+  })
+
   it('distinguishes "not loaded" from "none", so nobody adds a second copy', () => {
     expect(render({ templates: [], loaded: true })).toContain('Nothing set up yet')
     expect(render({ templates: [], loaded: false })).toContain('Not loaded yet')
