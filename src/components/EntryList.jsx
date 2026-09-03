@@ -5,23 +5,12 @@ import { useDayLabels, useMoney, usePeopleLabels, useT } from '../i18n/index.js'
 import { RepeatIcon, WalletIcon } from './icons.jsx'
 
 /**
- * The month's entries, in sections: the recurring costs it has recorded, then one per day.
+ * The month's entries, in sections: the recurring costs it has recorded, then one per day. Which rows
+ * are fixed is `monthSections`' decision, in `lib/`. No loading state: `App` gates `idle` and
+ * `loading` and paints the cached ledger otherwise.
  *
- * There is no loading state here. `App` shows a gate for `idle` and `loading` and
- * paints the cached ledger for everything else, so this component only ever
- * renders real rows or a genuine empty month. The day labels and the two people's
- * names are resolved once here rather than per row.
- *
- * The fixed costs lead because that is the order the month is read in: rent and the bills
- * are settled facts, and what is worth scanning is the shopping under them. Which rows are
- * fixed is `monthSections`' decision, in `lib/`; all this owns is that a section is a section,
- * so the two are one component and cannot drift apart.
- *
- * Memoised, and it is the memo that matters most in the app: `App` re-renders on
- * every toast, every refresh and every month change, and this subtree is the only
- * one whose size grows with the ledger. Every prop is stable unless the month's data
- * actually changed — `groups` and `recurring` come from `useLedgerView`'s memo chain, and
- * `onEdit` and `onDelete` are both `useCallback`s in `App`.
+ * Memoised, and it is the memo that matters most: `App` re-renders on every toast, refresh and month
+ * change, and this subtree is the only one whose size grows with the ledger.
  */
 function EntryListInner({ groups, recurring = null, config, me, onEdit, onDelete }) {
   const { t, locale } = useT()
@@ -29,7 +18,7 @@ function EntryListInner({ groups, recurring = null, config, me, onEdit, onDelete
   const labels = useDayLabels()
   const { label } = usePeopleLabels(config, me)
 
-  // Both halves, because a month whose only entries are its fixed costs is not an empty one.
+  // Both: a month whose only entries are its fixed costs is not empty.
   if (!groups.length && !recurring) {
     return (
       <div className="card empty">
@@ -37,14 +26,12 @@ function EntryListInner({ groups, recurring = null, config, me, onEdit, onDelete
           <WalletIcon width={28} height={28} />
         </span>
         <p className="empty__title">{t('list.emptyTitle')}</p>
-        {/* No button: the block add button sits a screen above this card, and two
-            identically named accent buttons read as two different actions. */}
+        {/* No button: two identically named accent buttons read as two different actions. */}
         <p className="empty__text">{t('list.emptyText')}</p>
       </div>
     )
   }
 
-  /** What every section needs to render a row, resolved once for the whole month. */
   const shared = { money, label, onEdit, onDelete }
 
   return (
@@ -52,8 +39,8 @@ function EntryListInner({ groups, recurring = null, config, me, onEdit, onDelete
       {recurring && (
         <EntrySection
           title={t('list.recurring')}
-          /* The one icon in this band, and the only thing that says at a glance that the
-             section is not a day. The word carries it on its own for a screen reader. */
+          /* The only thing saying at a glance that the section is not a day; the word carries
+             it for a screen reader. */
           icon={<RepeatIcon width={15} height={15} />}
           entries={recurring.entries}
           totalYen={recurring.totalYen}
@@ -73,24 +60,16 @@ function EntryListInner({ groups, recurring = null, config, me, onEdit, onDelete
   )
 }
 
-/**
- * One labelled band of rows. The recurring section and a day are the same thing rendered
- * twice, and what they disagree about is the title above them.
- */
 function EntrySection({ title, icon = null, entries, totalYen, money, label, onEdit, onDelete }) {
   return (
     <section className="entry-section">
-      {/* Outside the white card, on the page ground: structure carried by
-          typography and whitespace rather than a tinted header bar. */}
       <header className="entry-section__label">
         <h3 className="entry-section__title">
           {icon}
           {title}
         </h3>
-        {/* Omitted at zero rather than printed. A day whose only entry is a
-            settlement totals nothing — settlements are transfers, never spend — and
-            "¥0" over a six-figure row reads as a bug rather than as arithmetic.
-            Display only: no total is recomputed and no type is branched on. */}
+        {/* Omitted at zero: a day whose only entry is a settlement totals nothing, and "¥0"
+            over a six-figure row reads as a bug. Display only — nothing is recomputed. */}
         {totalYen > 0 && <span className="entry-section__total tnum">{money(totalYen)}</span>}
       </header>
       <ul className="surface">

@@ -3,10 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_CONFIG, mergeConfig } from '../src/config.js'
 import { installStorage, removeStorage } from './support/storage.js'
 
-/**
- * The launch cache. It is only a cache — the sheet is the source of truth — so
- * every doubt resolves to "ignore it and re-read", never to a repair.
- */
+// The launch cache. Only a cache — the sheet is the source of truth — so every doubt resolves
+// to "ignore it and re-read", never to a repair.
 
 const SHEET = 'sheet-a'
 
@@ -35,8 +33,7 @@ afterEach(removeStorage)
 describe('round trip', () => {
   it('preserves the amount exactly', async () => {
     const { snapshot } = await load()
-    // Whole yen as an integer, so JSON is lossless and nothing is re-decoded on the
-    // way back in — this is the one input never read through `rowToEntry`.
+    // Whole yen as an integer, so JSON is lossless: nothing here is re-decoded on the way in.
     snapshot.writeSnapshot(SHEET, [entry({ amountYen: 1250 })], {})
     const read = snapshot.readSnapshot(SHEET)
     expect(read.entries[0].amountYen).toBe(1250)
@@ -52,8 +49,8 @@ describe('round trip', () => {
 
   it('stores the partial config, so a changed default still applies', async () => {
     const { snapshot } = await load()
-    // Only what the sheet actually said. Storing the merged config would freeze
-    // the building build's defaults into every later launch.
+    // Only what the sheet said: the merged config freezes this build's defaults into every
+    // later launch.
     snapshot.writeSnapshot(SHEET, [], { defaultSplitP1: 0.8 })
     const read = snapshot.readSnapshot(SHEET)
     expect(read.config).toEqual({ defaultSplitP1: 0.8 })
@@ -65,20 +62,15 @@ describe('round trip', () => {
   it('does not write twice for an unchanged ledger', async () => {
     const { snapshot } = await load()
     snapshot.writeSnapshot(SHEET, [entry()], {})
-    // Spied, not compared: the two calls build the SAME string, so reading the stored value
-    // back is satisfied by a second write of identical bytes and the guard could be deleted
-    // without this failing. What is being asserted is that the write did not happen.
+    // Spied, not compared: both calls build the SAME string, so reading the stored value back
+    // is satisfied by a second write of identical bytes.
     const writes = vi.spyOn(globalThis.localStorage, 'setItem')
     snapshot.writeSnapshot(SHEET, [entry()], {})
     expect(writes).not.toHaveBeenCalled()
   })
 
-  /**
-   * The reference guard has to name the SHEET as well as the two references, or a switch from
-   * one spreadsheet to another — reachable without a `forgetKey`, since a rejected key leaves
-   * the old id in storage while the gate asks for a new one — caches the first sheet's ledger
-   * under the second one's id. `lastPayload` already carried the id; `lastSource` did not.
-   */
+  // The guard has to name the SHEET as well as the two references, or a switch of spreadsheet
+  // — reachable without a `forgetKey` — caches the first sheet's ledger under the second's id.
   it('writes again for the same list under a different spreadsheet', async () => {
     const { snapshot } = await load()
     const entries = [entry()]
@@ -92,12 +84,10 @@ describe('round trip', () => {
   })
 
   it('does not rewrite what it just restored, which is every cached launch', async () => {
-    // `useLedger` persists whatever is on screen once nothing is pending, and on a
-    // cached launch that is the list this read just returned — so a read that does
-    // not remember what storage holds makes every launch pay a full serialize and a
-    // synchronous setItem of bytes already there, on the frame someone is waiting on.
-    // The payload is produced by `writeSnapshot` rather than hand-authored, so this
-    // asserts byte-identity through the real encoder.
+    // `useLedger` persists whatever is on screen once nothing is pending, which on a cached
+    // launch is the list this read just returned — so a read that does not remember what
+    // storage holds costs a serialize and a setItem of bytes already there, on the frame
+    // someone is waiting on.
     const seeded = await load()
     seeded.snapshot.writeSnapshot(SHEET, [entry()], { person1Name: 'Waylon' })
     const payload = seeded.store.get('sf.snapshot')
@@ -106,8 +96,8 @@ describe('round trip', () => {
     const { snapshot } = await load({ 'sf.snapshot': payload })
     const restored = snapshot.readSnapshot(SHEET)
     const writes = vi.spyOn(globalThis.localStorage, 'setItem')
-    // The serialize is the expensive half — a long ledger is a quarter of a megabyte
-    // of JSON built to be thrown away — so it has to be skipped, not just its write.
+    // The serialize is the expensive half — a quarter of a megabyte thrown away — so it has
+    // to be skipped, not just its write.
     const serialize = vi.spyOn(JSON, 'stringify')
 
     snapshot.writeSnapshot(SHEET, restored.entries, restored.config)
@@ -125,7 +115,6 @@ describe('what gets ignored', () => {
   it('ignores a snapshot of a different spreadsheet', async () => {
     const { snapshot } = await load()
     snapshot.writeSnapshot(SHEET, [entry()], {})
-    // Somebody else's ledger, or this device pointed at a new sheet.
     expect(snapshot.readSnapshot('sheet-b')).toBe(null)
   })
 
@@ -155,14 +144,9 @@ describe('what gets ignored', () => {
 
   it('refuses to write a ledger too large for the quota', async () => {
     const { store, snapshot } = await load()
-    // writeStored swallows QuotaExceededError, so an oversized payload would
-    // silently never persist and launch would stay slow with no signal at all.
-    //
-    // The 800,000-character cap is the whole subject, and rows of this shape cross it
-    // at about 5,130 — so this is just past it rather than the 20,000 it used to be,
-    // which spent four times the work proving the same crossing. A fixture that fell
-    // back UNDER the cap fails this test rather than passing it vacuously, which is
-    // what happens every time the row shape loses a field: re-measure, do not pad.
+    // writeStored swallows QuotaExceededError, so an oversized payload silently never
+    // persists. Rows of this shape cross the 800,000-character cap at about 5,130; a fixture
+    // that fell UNDER it fails rather than passing vacuously — re-measure, do not pad.
     const overCap = Array.from({ length: 5_400 }, (_unused, index) => entry({ id: `e${index}` }))
     snapshot.writeSnapshot(SHEET, overCap, {})
     expect(store.has('sf.snapshot')).toBe(false)
@@ -176,9 +160,8 @@ describe('what gets ignored', () => {
   })
 
   it('can be rewritten after clearing, even with identical data', async () => {
-    // The skip-unchanged guard is module state, so clearing has to reset it too.
-    // Wiping the key without resetting it left the next load convinced it had
-    // already saved, and no snapshot was ever written again.
+    // The skip-unchanged guard is module state: wiping the key without resetting it leaves
+    // the next load convinced it had already saved, and nothing is ever written again.
     const { store, snapshot } = await load()
     snapshot.writeSnapshot(SHEET, [entry()], {})
     snapshot.clearSnapshot()
@@ -188,13 +171,10 @@ describe('what gets ignored', () => {
 })
 
 /**
- * The cache is the one input never decoded through `rowToEntry`, and it is restored
- * during the FIRST render — so a row the aggregates cannot take is not a bad number,
- * it is an app that will not launch, with no way in to clear the cache. `splitYen`
- * throws on a non-numeric share and `sumYen` on a non-integer amount.
- *
- * Whole-list rejection is the point: a partially dropped ledger is a wrong balance on
- * screen, which is worse than the empty frame a re-read costs.
+ * The one input never decoded through `rowToEntry`, restored during the FIRST render — so a row
+ * the aggregates cannot take is not a bad number, it is an app that will not launch, with no
+ * way in to clear the cache. Whole-list rejection is the point: a partially dropped ledger is
+ * a wrong balance on screen.
  */
 describe('a row the balance could not survive', () => {
   const stored = (entries) => ({
@@ -208,8 +188,7 @@ describe('a row the balance could not survive', () => {
     'a null share': { payerShare: null },
     'an empty-string share': { payerShare: '' },
     'a non-numeric share': { payerShare: 'half' },
-    // A junk payer decides the SIGN of the balance, so it is a wrong number rather
-    // than a crash — which is worse.
+    // A junk payer decides the SIGN of the balance: a wrong number, not a crash.
     'a payer who is neither person': { payer: 'p3' },
     'a missing payer': { payer: undefined },
     'a missing id': { id: undefined },
@@ -236,8 +215,7 @@ describe('a row the balance could not survive', () => {
   })
 
   it('accepts a share of exactly 0 and exactly 1, which are real splits', async () => {
-    // A settlement is `payerShare: 0`, and "the payer covered all of it" is 1. A
-    // falsy-check guard instead of `Number.isFinite` would reject the settlement.
+    // A falsy-check guard instead of `Number.isFinite` would reject every settlement.
     const { snapshot } = await load(stored([entry({ payerShare: 0 }), entry({ payerShare: 1 })]))
     expect(snapshot.readSnapshot(SHEET).entries).toHaveLength(2)
   })

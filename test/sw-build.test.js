@@ -7,11 +7,9 @@ import { buildFromDist, precachePaths } from '../scripts/build-sw.js'
 import { DEFAULT_BASE, resolveBase } from '../base.js'
 
 /**
- * The service worker's failure modes are completely silent, which is why this file
- * exists. An incomplete precache list makes `install` reject, so no worker ever
- * activates and nothing about the app looks wrong — it is just never fast. A build
- * id that misses a change leaves `sw.js` byte-identical, so the browser sees no
- * update and the new `index.html` never reaches the device.
+ * The worker's failure modes are completely silent. An incomplete precache list makes `install`
+ * reject, so no worker ever activates and nothing looks wrong — it is just never fast. A build
+ * id that misses a change leaves `sw.js` byte-identical, so the new `index.html` never lands.
  */
 
 const BASE = DEFAULT_BASE
@@ -59,8 +57,8 @@ describe('the precache list', () => {
 
 describe('the build id', () => {
   it('changes when index.html changes, even though no asset name does', () => {
-    // The exact case that would ship a broken update: index.html is not in the JS
-    // module graph, so a one-character edit leaves every hashed filename alone.
+    // The exact case that ships a broken update: index.html is not in the JS module graph,
+    // so a one-character edit leaves every hashed filename alone.
     const dir = fixture()
     const before = buildFromDist(dir, BASE).source
     writeFileSync(join(dir, 'index.html'), '<!doctype html><title>Shared Finance</title>')
@@ -79,8 +77,8 @@ describe('the generated worker', () => {
   const { source } = buildFromDist(fixture(), BASE)
 
   it('bails out of cross-origin requests before responding to anything', () => {
-    // Scope governs which clients are controlled, not which requests are seen, so
-    // the token endpoint and the Sheets API both reach this handler.
+    // Scope governs which clients are controlled, not which requests are seen, so the token
+    // endpoint and the Sheets API both reach this handler.
     const bailOut = source.search(/origin !== self\.location\.origin\)\s*return/)
     const fetchHandler = source.indexOf("addEventListener('fetch'")
     const firstRespondWith = source.indexOf('respondWith', fetchHandler)
@@ -89,15 +87,14 @@ describe('the generated worker', () => {
   })
 
   it('serves a navigation from the index key rather than the request', () => {
-    // A start_url launch asks for BASE; the precached key is BASE + index.html, so
-    // matching the request itself would miss and fall through to the network.
+    // A start_url launch asks for BASE; the precached key is BASE + index.html, so matching
+    // the request itself would miss and fall through to the network.
     expect(source).toMatch(/mode === 'navigate' \? INDEX :/)
   })
 
   it('ignores Vary, or the cache silently only works online', () => {
-    // Pages sends 'Vary: Accept-Encoding' and vite preview sends 'Vary: Origin'.
-    // caches.match honours Vary by default, so a header difference between the
-    // precache fetch and the page's request misses and falls through to network.
+    // caches.match honours Vary by default, and Pages sends 'Vary: Accept-Encoding' while
+    // vite preview sends 'Vary: Origin' — so a header difference misses and hits the network.
     expect(source).toContain('ignoreVary: true')
   })
 
@@ -111,15 +108,9 @@ describe('the generated worker', () => {
     expect(source).toContain("event.data.type === 'SKIP_WAITING'")
   })
 
-  /**
-   * RUN rather than grepped, because the interesting half is which keys survive and a
-   * substring check cannot see that.
-   *
-   * `caches.keys()` is scoped to the ORIGIN, not to this worker's scope, and every project
-   * Pages site under one account shares `<user>.github.io` — so a sweep of "everything that
-   * is not this build" deletes the precache of every other app published from that account.
-   * Silent both ways: this app looks perfect, and the other one is merely never fast again.
-   */
+  // RUN rather than grepped: the interesting half is which keys SURVIVE. `caches.keys()` is
+  // scoped to the ORIGIN and every project Pages site under one account shares
+  // `<user>.github.io`, so a sweep of "not this build" wipes every other app's precache.
   it('deletes only its own superseded caches, not everything on the origin', async () => {
     const deleted = []
     const listeners = {}
@@ -154,23 +145,19 @@ describe('the build wiring', () => {
   })
 
   it('emits a worker that is valid JavaScript', () => {
-    // Every other assertion in this file is a substring check, so a typo inside the
-    // template literal produces a syntactically invalid sw.js that still contains
-    // all of them: green suite, `install` fails, no worker activates. `Function`
-    // compiles without executing, so no `self` or `caches` is needed.
+    // Every other assertion here is a substring check, which a typo inside the template
+    // literal satisfies while producing an invalid sw.js: green suite, no worker activates.
     const { source } = buildFromDist(fixture(), BASE)
     expect(() => new Function(source)).not.toThrow()
   })
 
   it('builds the bundle and the worker against the same base path', () => {
-    // Vite writes asset URLs under its `base`; the worker precaches BASE + path.
-    // Two different prefixes means every precached URL 404s, `install` rejects, and
-    // no worker ever activates — with nothing on screen looking wrong.
+    // Vite writes asset URLs under its `base` and the worker precaches BASE + path: two
+    // prefixes means every precached URL 404s and no worker ever activates.
     const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8')
     expect(viteConfig).toContain('resolveBase')
     const builder = readFileSync(new URL('../scripts/build-sw.js', import.meta.url), 'utf8')
     expect(builder).toContain('resolveBase')
-    // And that both would follow the same override.
     expect(resolveBase({ VITE_BASE: '/' })).toBe('/')
     expect(resolveBase({})).toBe(DEFAULT_BASE)
   })

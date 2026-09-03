@@ -48,11 +48,8 @@ describe('parseAmountToYen — formats a human actually types', () => {
     expect(parseAmountToYen('1250 ¥')).toBe(1250)
   })
 
-  /**
-   * The comma rule has one definition for the whole app, at
-   * `decimalSeparatorIndex`, and both readings of it decide what lands in the sheet
-   * — so both are pinned here rather than left to the caller.
-   */
+  // The comma rule has one definition for the whole app, `decimalSeparatorIndex`, and both
+  // readings of it decide what lands in the sheet — so both are pinned here.
   it('treats a comma before one or two digits as a decimal separator', () => {
     expect(parseAmountToYen('42,10')).toBe(42)
     expect(parseAmountToYen('42,50')).toBe(43)
@@ -108,7 +105,6 @@ describe('parseAmountToYen — formats a human actually types', () => {
   it('refuses magnitudes that would leave the safe integer range', () => {
     expect(parseAmountToYen('9999999999999')).toBe(9999999999999) // 13 digits, fine
     expect(parseAmountToYen('99999999999999')).toBeNull() // 14, refused
-    // Leading zeros do not count towards the limit.
     expect(parseAmountToYen('0000000000000001')).toBe(1)
   })
 })
@@ -148,17 +144,10 @@ describe('splitYen — never loses or invents a yen', () => {
   const shares = [0, 0.5, 1, 0.333, 0.6667]
   const amounts = [0, 1, 3, 7, 99, 101, 4210, 123456789]
 
-  /**
-   * Conservation on its own cannot fail against the current implementation —
-   * `otherYen` IS `yen - payerYen`, so the sum is an algebraic identity and a
-   * `payerYen + 1` mutation passes. It is still worth asserting, because the
-   * plausible rewrite is computing each side from its own share
-   * (`Math.round(yen * (1 - share))`), which loses a yen on every odd amount.
-   *
-   * So the bound below is the half that can fail: the payer's own side, stated as a
-   * property rather than restated as the formula. Anything further than half a yen
-   * from the exact share is money moved by rounding.
-   */
+  // Conservation alone cannot fail today — `otherYen` IS `yen - payerYen`, so the sum is an
+  // identity a `payerYen + 1` mutation passes. It is still asserted because the plausible
+  // rewrite computes each side from its own share, losing a yen on every odd amount; the
+  // half-yen bound is the half that CAN fail.
   it('sums back to the original amount, and lands within half a yen of the exact share', () => {
     for (const yen of amounts) {
       for (const share of shares) {
@@ -185,7 +174,6 @@ describe('splitYen — never loses or invents a yen', () => {
   })
 
   it('rounds the payer up on an odd even split and hands the rest to the other', () => {
-    // 3 yen, even split: payer 2, other 1 — documented remainder-to-other rule.
     expect(splitYen(3, 0.5)).toEqual({ payerYen: 2, otherYen: 1 })
     expect(splitYen(1, 0.5)).toEqual({ payerYen: 1, otherYen: 0 })
     expect(splitYen(7, 0.5)).toEqual({ payerYen: 4, otherYen: 3 })
@@ -208,21 +196,16 @@ describe('splitYen — never loses or invents a yen', () => {
   })
 
   it('handles negative amounts without breaking the invariant', () => {
-    // The literals, not the `payerYen + otherYen === yen` identity: that one is algebra on
-    // `otherYen: yen - payerYen` and a `payerYen + 1` mutation passes it. JS rounds -1.5
-    // towards +Infinity, so the payer's half of -3 is -1 and the other person absorbs -2.
+    // The literals, not the sum identity a `payerYen + 1` mutation passes. JS rounds -1.5
+    // towards +Infinity, so the payer's half of -3 is -1 and the other absorbs -2.
     expect(splitYen(-3, 0.5)).toEqual({ payerYen: -1, otherYen: -2 })
     expect(splitYen(-101, 0.8)).toEqual({ payerYen: -81, otherYen: -20 })
     expect(splitYen(-1, 1)).toEqual({ payerYen: -1, otherYen: 0 })
   })
 })
 
-/**
- * The one reading of a share a human typed, and the last thing between an unparseable
- * config cell and `splitYen`. Every case here is money: a share read wrong moves a real
- * figure on a real screen, and `null` is the only answer that lets the caller's own default
- * win instead.
- */
+// The one reading of a share a human typed, and the last thing between an unparseable config
+// cell and `splitYen`. `null` is the only answer that lets the caller's default win instead.
 describe('parseShare', () => {
   it('reads a fraction as a fraction and anything above 1 as a percentage', () => {
     expect(parseShare('0.5')).toBe(0.5)
@@ -230,24 +213,19 @@ describe('parseShare', () => {
     expect(parseShare('80')).toBe(0.8)
     expect(parseShare('1')).toBe(1)
     expect(parseShare('0')).toBe(0)
-    // A spreadsheet is where people write the symbol too.
     expect(parseShare('80%')).toBe(0.8)
   })
 
   it('clamps a percentage that overshoots rather than refusing it', () => {
-    // 150% is the payer covering all of it, not a refusal — and `2` is 2%, because the
-    // above-1-is-a-percentage rule reads the NUMBER, not how it was typed.
+    // `2` is 2%: the above-1-is-a-percentage rule reads the NUMBER, not how it was typed.
     expect(parseShare('150')).toBe(1)
     expect(parseShare(2)).toBe(0.02)
     expect(parseShare('101')).toBe(1)
   })
 
-  /**
-   * REFUSED rather than truncated, which is what `parseFloat` would do: it reads '0,5' as
-   * 0 — the payer covering nothing, so the other person owes all of every expense they pay
-   * for — and '0.5x' as 0.5. A comma is read in exactly one place in this app, and it is
-   * not here. Refusing hands the caller its own documented default instead.
-   */
+  // REFUSED rather than truncated as `parseFloat` would: it reads '0,5' as 0 — the payer
+  // covering nothing of what they pay for — and '0.5x' as 0.5. Refusing hands the caller its
+  // own documented default instead.
   it('refuses a value it cannot read whole, rather than reading part of one', () => {
     for (const bad of ['0,5', '0.5x', '0b1', '1e3', 'half', '', ' ', '-0.5', null, undefined, {}]) {
       expect(parseShare(bad), JSON.stringify(bad)).toBeNull()
@@ -300,8 +278,7 @@ describe('formatYen', () => {
   it('renders yen with grouping and no fractional part', () => {
     const en = formatYen(1250, { locale: 'en' })
     expect(en).toContain('1,250')
-    // Assert the ABSENCE of a fraction rather than the symbol: `en` uses ¥ and `ja`
-    // fullwidth ￥, and which one varies by ICU version.
+    // The ABSENCE of a fraction rather than the symbol, which varies by ICU version.
     expect(en).not.toMatch(/[.,]\d{2}$/)
 
     const ja = formatYen(1250, { locale: 'ja' })
@@ -334,11 +311,8 @@ describe('formatYen', () => {
 })
 
 describe('formatYenParts', () => {
-  /**
-   * `Header` styles the symbol apart from the digits and handles no other recessive
-   * part, so "there is a currency part, an integer part, and nothing fractional" is
-   * exactly the contract it depends on.
-   */
+  // `Header` styles the symbol apart from the digits and handles no other part, so this is
+  // exactly the contract it depends on.
   it('exposes a symbol and an integer, and never a fraction', () => {
     const types = formatYenParts(1250, { locale: 'en' }).map((part) => part.type)
     expect(types).toContain('currency')

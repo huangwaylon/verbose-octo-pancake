@@ -33,17 +33,13 @@ import {
 import { Toasts } from '../src/components/Toasts.jsx'
 
 /**
- * Render smoke tests. These catch the class of bug a build cannot: a component
- * that throws on a real prop shape, or a view that silently drops data. They
- * render to static markup, so no DOM or browser is needed.
+ * Render smoke tests: a component that throws on a real prop shape, or a view that
+ * silently drops data. Static markup, so no DOM.
  */
 
 /**
- * The shared expense. Amounts stay at the call sites: every figure in the assertions
- * below — ¥4,210, the ¥8,359 month total, the ¥70 balance — is derived from them.
- *
- * `en` renders the halfwidth ¥; `ja` renders fullwidth ￥. These render at the default
- * locale, so halfwidth is what the markup carries.
+ * Every figure the assertions below read — ¥4,210, the ¥8,359 total, the ¥70 balance — is
+ * derived from these amounts. The default locale renders the halfwidth ¥, not `ja`'s ￥.
  */
 const entry = (overrides) => expense({ date: '2026-08-04', ...overrides })
 
@@ -88,8 +84,7 @@ describe('gates render', () => {
   })
 
   it('announces the wait with the label the caller supplies', () => {
-    // The gate has no string of its own — the caller says what is loading, so
-    // the same spinner can speak for the sheet, the config or the rows.
+    // The caller says what is loading, so one spinner serves the sheet, the config and the rows.
     const markup = renderToStaticMarkup(<LoadingGate label="Loading your sheet" />)
     expect(markup).toContain('aria-busy="true"')
     expect(markup).toContain('Loading your sheet')
@@ -118,8 +113,7 @@ describe('toasts render', () => {
   })
 
   it('interrupts for a failure and waits its turn for anything else', () => {
-    // A write failure has to be spoken now; a "Deleted" confirmation must not
-    // cut across whatever the person is reading.
+    // A write failure must interrupt; a "Deleted" confirmation must not.
     const markup = renderToStaticMarkup(
       <Toasts
         toasts={[
@@ -134,8 +128,7 @@ describe('toasts render', () => {
     expect(markup).toMatch(
       /role="alert"[^>]*aria-live="assertive"|aria-live="assertive"[^>]*role="alert"/,
     )
-    // The urgency belongs to the individual toast, not the stack: one shared
-    // region cannot be polite and assertive at once.
+    // The urgency belongs to the toast: one shared region cannot be polite and assertive.
     expect(markup).toContain('class="toast-stack"')
     expect(markup).not.toMatch(/class="toast-stack"[^>]*aria-live/)
   })
@@ -156,9 +149,7 @@ describe('the header carries the balance', () => {
 
   it('names the debtor from the viewer’s perspective', () => {
     const balance = computeBalance(entries)
-    // Same numbers, opposite wording. p1 is the debtor in this fixture, so it is
-    // p1 who must be told they owe — asserted per side, not as a disjunction that
-    // a component saying "You owe" to both people would satisfy.
+    // Per side, not a disjunction that a component saying "You owe" to both people satisfies.
     expect(balance.debtor).toBe(PERSON.P1)
     expect(render({ me: PERSON.P1 })).toContain('You owe')
     expect(render({ me: PERSON.P2 })).not.toContain('You owe')
@@ -166,11 +157,9 @@ describe('the header carries the balance', () => {
   })
 
   it('speaks the whole fact once: named on the heading, hidden on the line below', () => {
-    // The visible composition is digits in spans; a heading that reads "¥70" says
-    // nothing in a screen reader's heading list, and read span by span it announces
-    // as "yen seven zero". The visible copy of the sentence is then hidden, or it is
-    // announced twice over. The span assertion is what stops the whole composition
-    // collapsing to a flat string, which every other check here would survive.
+    // Read span by span an "¥70" heading announces as "yen seven zero", and the visible copy
+    // of the sentence is then hidden or spoken twice. The span assertion is what stops the
+    // composition collapsing to a flat string, which every other check here would survive.
     const markup = render()
     expect(markup).toContain('<h1 class="balance__amount" aria-label="You owe Sam ¥70">')
     expect(markup).toContain('<p class="balance__direction" aria-hidden="true">You owe Sam</p>')
@@ -187,9 +176,8 @@ describe('the header carries the balance', () => {
     expect(markup).not.toContain('¥')
   })
 
-  // Settling happens by wire transfer outside the app, so the balance carries no
-  // action. Named after what it asserts — a count — rather than after the invariant:
-  // a settle button replacing one of the two would pass.
+  // Settling happens by wire transfer outside the app, so the balance carries no action.
+  // A count rather than the invariant: a settle button replacing one of the two would pass.
   it('carries only the two chrome controls', () => {
     expect(render().match(/<button/g)).toHaveLength(2)
   })
@@ -200,8 +188,7 @@ describe('the header carries the balance', () => {
     expect(render({ busy: false })).not.toContain('spinner')
   })
 
-  // The figure moves on every write, but each of those writes already announces
-  // itself through a toast; a second live region here queues behind it.
+  // Every write that moves the figure already speaks through a toast; a second region queues.
   it('is not a live region', () => {
     expect(render()).not.toContain('aria-live')
     expect(render()).not.toContain('role="status"')
@@ -209,8 +196,7 @@ describe('the header carries the balance', () => {
 })
 
 describe('summary card renders', () => {
-  // The view is a module singleton, so a case that sets it puts it back — the same rule the
-  // locale carries, and for the same reason: it would otherwise leak into every case below.
+  // The view is a module singleton, so a case that sets it puts it back.
   afterEach(() => summaryView.set(SUMMARY_VIEWS[0]))
 
   it('shows the month total, each person’s share, and the categories', () => {
@@ -228,18 +214,13 @@ describe('summary card renders', () => {
     expect(markup).toContain('Dining')
     expect(markup).toContain('Your share')
     expect(markup).toContain('Sam’s share')
-    // The settlement must not be counted as spending. Asserted as the total that
-    // is right and the total that would be wrong: the fixture's settlement is
-    // ¥1,000, so a "not ¥9,359" check has to name the settlement-inclusive figure.
+    // The wrong figure has to be named too: the fixture's settlement is ¥1,000.
     expect(markup).toContain('¥8,359')
     expect(markup).not.toContain('¥9,359')
   })
 
-  /**
-   * ONE figure per person, the other a tap away — two lines each is four rows of the card once
-   * the config tab holds real names. Which one is a stored preference, so the toggle survives a
-   * reload and a test can set it: internal state would leave the second view with no check at all.
-   */
+  // Which figure shows is a stored preference, so a test can set it: internal state would
+  // leave the second view with no check at all.
   it('shows one figure per person, and swaps which on the toggle', () => {
     const render = () =>
       renderToStaticMarkup(
@@ -254,8 +235,7 @@ describe('summary card renders', () => {
       )
     const paid = spendByPerson(entries)
     const share = shareByPerson(entries)
-    // The fixture's entry `c` is ¥1,799 at a share of 1 — p1 paid it and covers all of it — so
-    // the two views genuinely differ and a card rendering one twice would be visible here.
+    // Entry `c` is ¥1,799 at a share of 1, so a card rendering one view twice would show here.
     expect(paid.p1).not.toBe(share.p1)
 
     const shares = render()
@@ -325,9 +305,7 @@ describe('entry list renders', () => {
   })
 
   it('explains an empty month without a second add button', () => {
-    // The block button above the list is the one add affordance: two identically
-    // named accent buttons on one screen read as two different actions, and in a
-    // screen reader's control list they are indistinguishable.
+    // One add affordance: two identically named accent buttons read as two different actions.
     const markup = renderToStaticMarkup(
       <EntryList groups={[]} config={config} me={PERSON.P1} onEdit={noop} onDelete={noop} />,
     )
@@ -336,11 +314,8 @@ describe('entry list renders', () => {
     expect(markup).not.toContain('<button')
   })
 
-  /**
-   * The fixed costs are lifted out of their days into one section above them. What has to hold
-   * is that a row appears ONCE: rendered in both places it reads as a double charge of money
-   * that moved once.
-   */
+  // Fixed costs are lifted out of their days into one section above them, and a row has to
+  // appear ONCE: rendered in both places it reads as a double charge of money that moved once.
   describe('the recurring section', () => {
     const rent = entry({
       id: 'rent#2026-08',
@@ -366,14 +341,12 @@ describe('entry list renders', () => {
       const markup = render([shop, rent])
       expect(markup).toContain('Recurring costs')
       expect(markup.indexOf('Recurring costs')).toBeLessThan(markup.indexOf('Groceries'))
-      // Its own total, like a day's: 220,000 is rent alone, so it is the section being
-      // totalled rather than the month.
+      // 220,000 is rent alone, so it is the section being totalled rather than the month.
       expect(markup).toContain('¥220,000')
     })
 
     it('renders a recurring entry once, not in its day as well', () => {
-      // The 27th holds nothing else, so a duplicated row would leave a second band with the
-      // same figure in it.
+      // The 27th holds nothing else, so a duplicate leaves a second band with the same figure.
       expect(render([shop, rent]).match(/¥220,000/g)).toHaveLength(2) // the row and the total
       expect(render([shop, rent]).match(/entry__desc/g)).toHaveLength(2) // rent, and the shop
     })
@@ -391,11 +364,8 @@ describe('entry list renders', () => {
   })
 })
 
-/**
- * The recurring page and its form. Between them these are the app's only write path into
- * the `recurring` tab, and the whole reason the page exists is to say something a list of
- * names cannot: which costs this month is still missing, and which it is not.
- */
+// The app's only write path into the `recurring` tab, and the whole reason the page exists is
+// to say what a list of names cannot: which costs this month is still missing.
 describe('the recurring page renders', () => {
   const template = (fields) =>
     rowToTemplate(templateRow({ payer: 'p1', day_of_month: '27', ...fields }))
@@ -427,40 +397,32 @@ describe('the recurring page renders', () => {
     expect(markup).toContain('Recurring costs')
     expect(markup).toContain('Rent')
     expect(markup).toContain('¥220,000')
-    // Which month the page is acting on, because it is not necessarily this one: a month
-    // missed while nobody was recording has to stay recordable.
+    // Which month the page is acting on, because it is not necessarily this one.
     expect(markup).toContain('August')
   })
 
   it('says the amount varies rather than printing a zero', () => {
-    // "¥0" would read as a bill for nothing. The absent symbol is the assertion rather than
-    // the present word, because a blank amount is NULL here — `money(null)` throws in
-    // `assertYen` — so losing the branch is a white screen rather than a wrong figure, and
-    // only checking for the symbol distinguishes "said Varies" from "said nothing".
+    // The absent symbol, not the present word: a blank amount is NULL and `money(null)` throws,
+    // so losing the branch is a white screen rather than a wrong figure.
     const markup = render({ templates: [GAS] })
     expect(markup).toContain('Varies')
     expect(markup).not.toContain('¥')
   })
 
-  /**
-   * The four states are the point of the page. Rendered as two, rent-on-the-27th viewed on
-   * the 3rd is indistinguishable from rent already paid — so each says which it is, in
-   * words rather than by the absence of a control.
-   */
+  // Rendered as two states, rent-on-the-27th viewed on the 3rd is indistinguishable from rent
+  // already paid — so each row says which it is, in words rather than by a missing control.
   it('offers Record only for a month it is missing, and explains every other row', () => {
-    // August is over, so a 27th is due and Record is offered. The delimited form, because
-    // bare 'Record' is also satisfied by 'Record now' — the other half of this very test.
+    // The delimited form, because bare 'Record' is also satisfied by 'Record now'.
     expect(render()).toContain('>Record<')
 
-    // Already in the ledger — including as a tombstone, which is what a deliberately
-    // removed double charge leaves.
+    // Including a tombstone, which is what a deliberately removed double charge leaves.
     const recorded = render({ entries: [expense({ id: 'rent#2026-08' })] })
     expect(recorded).toContain('recorded')
     expect(recorded).not.toContain('>Record<')
 
     // Stopped through `active_to`: still listed, so it can be restarted — and it says STOPPED
-    // rather than "not this month", which is what a quarterly cost out of quarter says. Two
-    // different facts, and the row is the only place they can be told apart.
+    // rather than "not this month", which a quarterly cost out of quarter says. The row is the
+    // only place those two facts can be told apart.
     const stopped = render({
       templates: [template({ id: 'rent', description: 'Rent', active_to: '2026-07' })],
     })
@@ -468,7 +430,6 @@ describe('the recurring page renders', () => {
     expect(stopped).toContain('stopped')
     expect(stopped).not.toContain('>Record<')
 
-    // A quarterly cost, in a month outside its quarter.
     const quarterly = render({
       templates: [template({ id: 'tax', description: 'Tax', months: '1,7' })],
     })
@@ -476,11 +437,8 @@ describe('the recurring page renders', () => {
     expect(quarterly).not.toContain('stopped')
   })
 
-  /**
-   * `active_to` is INCLUSIVE, so the month a cost was stopped in is still one it applies to —
-   * and still one that may need recording. Asked in the wrong order, the row printed "stopped"
-   * next to its own Record button: two statements about the same cost that cannot both be true.
-   */
+  // `active_to` is INCLUSIVE, so the month a cost was stopped in still applies and may still
+  // need recording. Asked in the wrong order, the row printed "stopped" beside its own Record.
   it('does not call a cost stopped in a month it still applies to', () => {
     const markup = render({
       templates: [template({ id: 'rent', description: 'Rent', active_to: '2026-08' })],
@@ -495,21 +453,14 @@ describe('the recurring page renders', () => {
     expect(render({ templates: [], loaded: false })).toContain('Not loaded yet')
   })
 
-  /**
-   * A cost whose day has not come is still recordable — rent paid on the 3rd — and the row has
-   * to say both things at once: the schedule it is on, and that recording it now is a choice.
-   *
-   * 2099 rather than a month near today, because this component reads the real clock: any month
-   * that is currently in the future stops being one, and the case would then silently assert
-   * nothing. The suite's other rows deliberately use a month that has passed.
-   */
+  // Recording early is a choice, so the row says the schedule as well. 2099 because this reads
+  // the real clock: a nearer month stops being future and the case would then assert nothing.
   it('offers Record now, not Record, for a cost its day has not reached', () => {
     const markup = render({ monthKey: '2099-08' })
     expect(markup).toContain('>Record now<')
     expect(markup).toContain('aria-label="Record Rent now"')
     // Beside it, not instead of it: the day is what makes an early tap an informed one.
     expect(markup).toContain('due on day 27')
-    // And a recorded row still offers nothing, whichever month is on screen.
     const recorded = render({ monthKey: '2099-08', entries: [expense({ id: 'rent#2099-08' })] })
     expect(recorded).not.toContain('Record now')
   })
@@ -552,39 +503,31 @@ describe('the recurring form renders', () => {
     expect(markup).not.toContain('Delete for good')
   })
 
-  /**
-   * Two ways to stop a cost, and which one a thumb lands on matters. The safe, reversible one
-   * is the footer icon; the irreversible one is last in the body behind prose that says what it
-   * costs — the same placement `SettingsSheet` gives "Forget key".
-   */
+  // The reversible stop is the footer icon; the irreversible one is last in the body, behind
+  // prose saying what it costs. Which one a thumb lands on matters.
   it('puts the reversible stop in the footer and the irreversible one last, explained', () => {
     const markup = render({
       draft: { mode: 'edit', template: { ...newTemplate(PERSON.P1), description: 'Rent' } },
     })
     expect(markup).toContain('Stop this cost')
     expect(markup).toContain('Delete for good')
-    // After the split control, which is the last field — so it is not among the form's inputs.
+    // After the split control, the last field — so it is not among the form's inputs.
     expect(markup.indexOf('Delete for good')).toBeGreaterThan(markup.indexOf('name="split"'))
-    // And the cost of it is stated, because "delete" does not imply losing the sheet's record
-    // of which months this cost covered.
+    // "Delete" does not imply losing the sheet's record of which months this cost covered.
     expect(markup).toContain('the sheet forgets which months it covered')
     expect(markup).toContain('btn--danger')
   })
 
-  /**
-   * A blank `payer_share` is a DURABLE declaration — follow the payer's default, forever —
-   * and also the marker that makes `postRecurring` leave a row alone. So a new template
-   * opens on the Default mode and says what that resolves to; resolving it to a number
-   * would detach the cost from the config tab silently.
-   */
+  // A blank `payer_share` is a DURABLE declaration — follow the payer's default, forever — and
+  // the marker that makes `postRecurring` leave a row alone. Resolving it to a number on open
+  // would detach the cost from the config tab silently.
   it('opens a blank share on Default, and names whose default at what percent', () => {
     const markup = render({ config: { ...config, defaultSplitP1: 0.8 } })
-    // The element, not two separate substring checks: `checked` on a different radio in
-    // the same group is exactly the failure this is for.
+    // The element, not two substring checks: `checked` on another radio in the same group is
+    // exactly the failure this is for.
     expect(markup).toContain('name="split" checked="" value="default"')
-    // The whole sentence, because the trap is the POSSESSIVE: English inflects, so
-    // interpolating the viewer-relative label produces "Follows You’s default split". The
-    // fixture's `me` is p1 and p1 is the payer, so that is exactly the case rendered here.
+    // The whole sentence, because the trap is the POSSESSIVE: interpolating the viewer-relative
+    // label produces "Follows You’s default split", and the fixture's `me` is the payer.
     expect(markup).toContain('Follows Your default split, 80% today.')
     expect(markup).not.toContain('You’s')
   })
@@ -604,11 +547,8 @@ describe('the recurring form renders', () => {
     ).toContain('Start this cost again')
   })
 
-  /**
-   * The three columns this form does not show have to be MENTIONED, because it writes the
-   * whole row: a quarterly cost edited here keeps its schedule, and nothing on screen would
-   * otherwise say so.
-   */
+  // The three columns this form does not show have to be MENTIONED, because it writes the whole
+  // row: a quarterly cost edited here keeps its schedule, and nothing else on screen says so.
   it('says where the schedule columns live, and what an edit does not change', () => {
     const markup = render({ draft: { mode: 'edit', template: newTemplate(PERSON.P1) } })
     expect(markup).toContain('recurring tab of your sheet')
@@ -616,11 +556,8 @@ describe('the recurring form renders', () => {
   })
 })
 
-/**
- * The assembled surface. Nothing else in the suite renders it — only
- * `scripts/preview.jsx` does — so this is the one place the tree the app actually
- * ships can be checked for a control that was meant to be gone or duplicated.
- */
+// Nothing else in the suite renders the assembled surface, so this is the one place the tree
+// the app ships can be checked for a control meant to be gone or duplicated.
 describe('the signed-in surface renders', () => {
   const view = {
     balance: computeBalance(entries),
@@ -651,9 +588,8 @@ describe('the signed-in surface renders', () => {
   )
 
   it('offers exactly one way into the entry form', () => {
-    // The FAB and the empty card's button are both gone; this is the count that says
-    // so, and it is what fails if either comes back — the FAB carried this same
-    // string as its accessible name.
+    // The FAB carried this same string as its accessible name, so the count is what fails if
+    // it or the empty card's button comes back.
     expect(markup.match(/Add an expense/g)).toHaveLength(1)
     expect(markup).toContain('class="btn btn--primary btn--block add-action"')
   })
@@ -702,8 +638,7 @@ describe('settings renders', () => {
     expect(markup).toContain('Settings')
     expect(markup).toContain('Alex')
     expect(markup).toContain('Sam')
-    // The config tab's values, shown so nobody has to open the spreadsheet to
-    // check what the app thinks they are.
+    // The config tab's values, so nobody has to open the spreadsheet to check them.
     expect(markup).toContain('Groceries')
     expect(markup).toContain('Dining')
   })
@@ -713,8 +648,7 @@ describe('settings renders', () => {
   })
 
   it('disables the destructive action when there is nothing to remove', () => {
-    // The only irreversible thing in the app. A live button that does nothing is
-    // worse than a disabled one that says so.
+    // A live button that does nothing is worse than a disabled one that says so.
     const markup = render({ tombstoneCount: 0 })
     expect(markup).toContain('Nothing to remove')
     expect(markup).toMatch(/<button[^>]*disabled/)
@@ -733,9 +667,8 @@ describe('settings renders', () => {
 
   it('names the accent presets for a screen reader, not by swatch colour alone', () => {
     const markup = render()
-    // The swatch list specifically: a bare `role="radiogroup"` check passes on the
-    // two Segmented groups above it, so it would survive deleting both attributes
-    // from the swatches entirely.
+    // The swatch list specifically: a bare `role="radiogroup"` check passes on the two
+    // Segmented groups above it.
     expect(markup).toContain('<div class="swatches" role="radiogroup" aria-label="Accent">')
     for (const preset of ['Indigo', 'Pine', 'Teal', 'Plum', 'Sepia']) {
       expect(markup).toContain(preset)

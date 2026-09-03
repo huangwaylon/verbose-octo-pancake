@@ -2,12 +2,9 @@
  * The entry fixtures every suite needs, and the raw sheet row they map to.
  *
  * One builder rather than one per file: a builder that forgets an id reintroduces
- * `crypto.randomUUID` into a fixture, and a row written out as a positional array
- * silently mis-maps every cell the moment a column list gains an entry.
- *
- * What is NOT centralised is deliberate: a test whose amounts, shares or dates are what it
- * asserts about passes them in. The defaults here are only what has to exist for an entry
- * to be valid at all.
+ * `crypto.randomUUID` into a fixture, and a row written out as a positional array silently
+ * mis-maps every cell the moment a column list gains an entry. The defaults are only what
+ * an entry needs to be valid at all — a test passes in whatever it asserts about.
  */
 
 import {
@@ -27,11 +24,7 @@ import { DEFAULT_CONFIG } from '../../src/config.js'
  */
 export const DELETED_AT = '2026-08-06T00:00:00.000Z'
 
-/**
- * A complete, valid expense with no randomness in it.
- *
- * @param {object} [over] any entry field
- */
+/** A complete, valid expense with no randomness in it. */
 export function expense(over = {}) {
   return makeEntry({
     id: 'e1',
@@ -49,9 +42,9 @@ export function expense(over = {}) {
 /**
  * A settlement: no category, and no share of its own.
  *
- * `payerShare` is deliberately NOT set here. `makeEntry` derives 0 from the type, and that
- * is what the app relies on — a fixture that stated it would turn every
- * `payerShare === 0` assertion downstream into an assertion about this file.
+ * `payerShare` is deliberately NOT set. `makeEntry` derives 0 from the type, and stating it
+ * here would turn every `payerShare === 0` assertion downstream into an assertion about
+ * this file.
  */
 export function settlement(over = {}) {
   return expense({ type: ENTRY_TYPE.SETTLEMENT, category: '', payerShare: null, ...over })
@@ -70,10 +63,6 @@ export function tombstone(over = {}) {
  * values lands under the neighbouring field. Taking the TAB matters as much, because there
  * are two layouts — a row built to the expenses list and read as a settlement puts
  * `category` under `payer`.
- *
- * @param {Record<string, string|number>} fields any subset of the tab's columns
- * @param {object} [tab] defaults to p1's expenses tab
- * @returns {string[]} one cell per column, blank for anything unnamed
  */
 export function row(fields, tab = expenseTab(PERSON.P1)) {
   return columnRow(fields, tab.columns)
@@ -96,7 +85,7 @@ export function templateRow(fields) {
 
 /**
  * A row read back as a field map, so an assertion names the column it means rather than an
- * index. The inverse of `row`, and the reason a positional expectation never appears in a test.
+ * index. The inverse of `row`, and why a positional expectation never appears in a test.
  */
 export function asFields(cells, columns) {
   return Object.fromEntries(columns.map((column, at) => [column, cells[at]]))

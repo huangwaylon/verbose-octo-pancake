@@ -1,23 +1,19 @@
 /**
- * Emits `dist/sw.js` after a Vite build.
+ * Emits `dist/sw.js` after a Vite build. Three things here look like implementation detail
+ * and are not, and all three fail silently:
  *
- * Three things here look like implementation detail and are not:
+ * The base path comes from `base.js`, which `vite.config.js` reads too. A worker built
+ * against a different prefix from the bundle precaches URLs that 404, so `install` rejects
+ * and no worker ever activates.
  *
- * The base path comes from `base.js`, which `vite.config.js` reads too. A worker
- * built against a different prefix from the bundle precaches URLs that 404, so
- * `install` rejects and no worker ever activates.
+ * The precache list comes from walking `dist/`, NOT from `.vite/manifest.json`, whose only
+ * entry maps `"index.html"` to the JS chunk — `index.html` itself and everything copied from
+ * `public/` are absent by construction. A manifest-derived list would precache 2 of 7 files.
  *
- * The precache list comes from walking `dist/`, NOT from `.vite/manifest.json`.
- * That manifest is not even emitted without `build.manifest`, and when it is, its
- * only entry maps `"index.html"` to the JS chunk — `index.html` itself is absent,
- * and everything copied from `public/` (the webmanifest, the icons) is absent by
- * construction. A manifest-derived list would precache 2 of 7 files and quietly
- * miss the one file the whole "precache as a unit" guarantee is named after.
- *
- * The build id hashes file CONTENTS, not names. `index.html` is not in the JS
- * module graph, so editing it changes no hashed filename; a name-derived id would
- * leave `sw.js` byte-identical, the browser would see no update, and the new
- * `index.html` would never reach the device. The CSP lives in `index.html`.
+ * The build id hashes file CONTENTS, not names. `index.html` is not in the JS module graph,
+ * so editing it changes no hashed filename; a name-derived id would leave `sw.js`
+ * byte-identical, the browser would see no update, and the new `index.html` (which carries
+ * the CSP) would never reach the device.
  */
 
 import { createHash } from 'node:crypto'
@@ -27,11 +23,9 @@ import { fileURLToPath } from 'node:url'
 import { resolveBase } from '../base.js'
 
 /**
- * Namespaces this app's caches on an origin it may have to share.
- *
- * Every project Pages site under one account serves from `<user>.github.io`, and the Cache
- * Storage API is scoped to the ORIGIN — so `activate`'s sweep has to be able to tell this
- * app's old caches from another app's current one.
+ * Namespaces this app's caches on an origin it may have to share: every project Pages site
+ * under one account serves from `<user>.github.io` and Cache Storage is scoped to the ORIGIN,
+ * so `activate`'s sweep has to tell this app's old caches from another app's current one.
  */
 const CACHE_PREFIX = 'sf-'
 

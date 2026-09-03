@@ -1,25 +1,15 @@
 /**
- * A fake `SpreadsheetApp` for `apps-script/Code.gs`.
- *
- * The poster runs unattended and its failures are WRITES, so the assertions are about what
- * landed in which tab — the same reason `sheets-api.js` exists for the client. Nothing else
- * in this repo can see this code at all: `Code.gs` is pasted into the Apps Script editor
- * rather than deployed from a build, so a typo in it is invisible everywhere except in a
- * 3am execution log.
- *
- * The source is loaded through `new Function`, which also proves it PARSES. It is ES5-shaped
- * `var` code by convention, so evaluating it in one scope and pulling the declared functions
- * back out is enough — no module system to stub.
+ * A fake `SpreadsheetApp` for `apps-script/Code.gs`. The poster runs unattended and its
+ * failures are WRITES, so the assertions are about what landed in which tab. Nothing else in
+ * the repo can see this code — `Code.gs` is pasted into the Apps Script editor rather than
+ * built — so loading it through `new Function` also proves it PARSES.
  */
 import { readFileSync } from 'node:fs'
 
 /**
- * One sheet as a real GRID, header row included.
- *
- * Row 1 is the header and `rows` starts at row 1, deliberately: the poster reads the
- * expenses and recurring tabs from row 2 but the CONFIG tab from row 1, and a harness that
- * modelled "the data below the header" would silently shift one of those by a row — which is
- * the exact class of bug this file exists to catch.
+ * One sheet as a real GRID, header included: the poster reads the expenses and recurring tabs
+ * from row 2 but the CONFIG tab from row 1, and a harness modelling "the data below the
+ * header" would silently shift one of them by a row.
  */
 function fakeSheet(grid) {
   return {
@@ -46,8 +36,8 @@ function fakeSheet(grid) {
           this.formats.push({ row: startRow, format })
         },
         setValues: (written) => {
-          // Recorded per row rather than as a flag, because "was it formatted first" is
-          // the whole assertion and a later format would satisfy a flag just as well.
+          // Recorded per row rather than as a flag: "was it formatted FIRST" is the whole
+          // assertion, and a later format would satisfy a flag just as well.
           const already = this.formats.some((entry) => entry.row === startRow)
           written.forEach((value, offset) => {
             this.appended.push({ row: startRow + offset, values: value, textFormatted: already })
@@ -59,14 +49,8 @@ function fakeSheet(grid) {
   }
 }
 
-/**
- * Evaluate `Code.gs` against fake Google globals and return its functions plus the sheets.
- *
- * Each tab is given its HEADER as well as its rows, because a real one has one and the
- * poster has to skip it — for two of the three tabs and not the third.
- *
- * @param {{tabs: Record<string, {header: any[], rows: any[][]}>, sheetId?: string}} setup
- */
+// Evaluate `Code.gs` against fake Google globals. Each tab gets its HEADER as well as its
+// rows, because a real one has one and the poster skips it — for two of the three tabs.
 export function loadPoster({ tabs, sheetId = 'sheet-under-test' }) {
   const sheets = {}
   for (const [title, { header, rows }] of Object.entries(tabs)) {
@@ -98,8 +82,8 @@ export function loadPoster({ tabs, sheetId = 'sheet-under-test' }) {
     },
     Session: { getScriptTimeZone: () => 'Asia/Tokyo' },
     Utilities: {
-      // Only the one format the poster asks for. Deliberately not a real formatter: a
-      // stub that quietly answered something else would make trap 3 untestable.
+      // Deliberately not a real formatter: a stub answering something else would make
+      // trap 3 untestable.
       formatDate: (date, zone, pattern) => {
         if (pattern !== 'yyyy-MM-dd') throw new Error(`unexpected pattern ${pattern}`)
         return globals.__today

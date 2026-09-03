@@ -1,24 +1,10 @@
 /**
- * English catalog. The reference locale: `lookup` falls back here for a key a
- * translation is missing, and `test/i18n.test.js` compares every other catalog
- * against this key set.
+ * English catalog, and the reference locale `lookup` and `test/i18n.test.js` measure against.
  *
- * Flat dotted keys, not nested objects, because the drift test then reduces to a
- * key-set comparison, lookup is one property access, and the key literal appears
- * verbatim at the call site so a static scan can prove coverage and find dead
- * keys.
- *
- * A value is a string, except for a pluralised key, where it is an object keyed
- * by CLDR plural category. That is the only exception, which is what makes
- * `typeof value === 'object'` a safe discriminator in the engine.
- *
- * Separators and symbols (`·`, `%`) live in the text rather than in JSX, so
- * their placement is a translation decision at zero code cost.
- *
- * The prefix is the SURFACE, not the feature: a string rendered by `SettingsSheet` is
- * `settings.*` wherever it came from. And a control repeated down a column — Restore, Record —
- * gets a `*Name`/`*Entry` variant naming its own row, or a screen reader reads the same word N
- * times with nothing to tell them apart.
+ * Flat dotted keys, so the literal appears verbatim at the call site and a static scan can prove
+ * coverage. A pluralised value is an object keyed by CLDR category — the only non-string. Separators
+ * (`·`, `%`) live in the text, so their placement is a translation decision. The prefix is the
+ * SURFACE, not the feature, and a control repeated down a column gets a `*Name`/`*Entry` variant.
  */
 export default {
   // --- app chrome -----------------------------------------------------------
@@ -28,24 +14,19 @@ export default {
   'common.you': 'You',
   'common.person1': 'Person 1',
   'common.person2': 'Person 2',
-  // The two possessive forms `usePeopleLabels` chooses between. English inflects,
-  // so "You" cannot simply be dropped into the `{name}’s` one.
+  // English inflects, so "You" cannot be dropped into the `{name}’s` form.
   'common.yourPossessive': 'Your',
   'common.namePossessive': '{name}’s',
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'common.add': 'Add',
-  // The app's one primary action, on the block button under the balance.
   'common.addExpense': 'Add an expense',
   'common.delete': 'Delete',
   'common.close': 'Close',
   'common.retry': 'Try again',
   'common.optional': 'optional',
-  // Shared by the list row's meta line and the summary's per-person figure:
-  // one sentence, so a translator writes it once.
   'common.paid': '{name} paid',
-  // Shared by the split control and the summary's per-person figure, and possessive
-  // because English inflects: `label` would read "You share".
+  // Possessive because English inflects: `label` would read "You share".
   'common.share': '{owner} share',
   'common.whoPaid': 'Who paid',
   'common.notePresets': 'Frequent notes',
@@ -57,11 +38,7 @@ export default {
   'month.next': 'Next month',
 
   // --- balance --------------------------------------------------------------
-  // The line under the figure. The figure itself is a visual composition of
-  // Intl's parts, so the heading holding it is named by one of the two sentences
-  // below instead — a heading that reads "¥12,500" says nothing in a screen
-  // reader's heading list. Both readings exist in full because the word order
-  // differs per language; the amount cannot be appended by the caller.
+  // Both readings in full: word order differs per language, so the caller cannot append the amount.
   'balance.youOwe': 'You owe {name}',
   'balance.owesYou': '{name} owes you',
   'balance.youOweAmount': 'You owe {name} {amount}',
@@ -70,11 +47,7 @@ export default {
 
   // --- month summary --------------------------------------------------------
   'summary.title': 'This month',
-  // Covers both figures below it — cash out of pocket, and what that person owes once
-  // every split is applied — where "Who paid" would only describe the first.
   'summary.perPerson': 'Per person',
-  // A toggle, not a heading: pressed means the paid figures are on screen, and the lines
-  // themselves say which of the two they are.
   'summary.paidToggle': 'Paid',
   'summary.byCategory': 'By category',
   'summary.uncategorized': 'Uncategorized',
@@ -85,21 +58,14 @@ export default {
   'summary.share': '{percent}%',
 
   // --- dates ----------------------------------------------------------------
-  // Passed into dates.dayLabel, which stays pure and receives them as strings.
-  // Deliberately not Intl.RelativeTimeFormat: it returns lowercase "today" in
-  // English and hands control of user-facing copy to ICU version drift.
+  // Not Intl.RelativeTimeFormat: lowercase "today" in English, and ICU version drift.
   'date.today': 'Today',
   'date.yesterday': 'Yesterday',
   'date.none': 'No date',
 
   // --- entry list -----------------------------------------------------------
   'list.emptyTitle': 'Nothing logged this month',
-  // No button here: the block button above the list is the one add affordance,
-  // and two identical accent buttons on one screen read as two different actions.
   'list.emptyText': 'Add a grocery run or a meal you split.',
-  // The section above the days, holding what the recurring tab has recorded this
-  // month. The same words as `recurring.title`, because it is the same thing —
-  // the prefix follows the SURFACE, and this one is the ledger's.
   'list.recurring': 'Recurring costs',
 
   'entry.expense': 'Expense',
@@ -113,8 +79,6 @@ export default {
   'entry.metaSeparator': ' · ',
 
   // --- recurring costs: the settings row -----------------------------------
-  // Under `settings.` because the surface decides the prefix, not the feature:
-  // these three render beside settings.deletedRowsHint and nothing else.
   'settings.recurringHint':
     'Rent, the gym, anything that comes round every month with an amount you already know.',
   'settings.recurringCount': {
@@ -124,22 +88,16 @@ export default {
   'settings.recurringEmpty': 'Set one up',
 
   // --- recurring costs: the page --------------------------------------------
-  // "Recurring costs" rather than "Subscriptions": rent is the reason this
-  // exists and it is nobody's subscription.
+  // Not "Subscriptions": rent is the reason this exists, and it is nobody's subscription.
   'recurring.title': 'Recurring costs',
   'recurring.hint': 'Showing {month}. Tap a cost to edit it.',
   'recurring.empty': 'Nothing set up yet. Add rent, or anything else that comes round every month.',
-  // A cached launch has an empty list for a completely different reason, and
-  // "none yet" there invites a second copy of a cost that already exists.
   'recurring.notLoaded': 'Not loaded yet — pull the sheet in and come back.',
   'recurring.add': 'Add a cost',
   'recurring.amountVaries': 'Varies',
-  // A row's own state, in words. Never by colour, and never by the absence of
-  // the Record button: not-yet-due and already-paid look identical without these.
   // "day {day}" rather than an ordinal, which English cannot form from a number.
   'recurring.schedule': 'on day {day}',
-  // 'paid by {name}' rather than '{name} pays': `label` answers "You" for whoever is
-  // holding the phone, and English does not inflect that to "You pays".
+  // Not '{name} pays': `label` answers "You", and English does not inflect that to "You pays".
   'recurring.paidBy': 'paid by {name}',
   'recurring.recorded': 'recorded',
   'recurring.notYetDue': 'due on day {day}',
@@ -147,9 +105,6 @@ export default {
   'recurring.stopped': 'stopped',
   'recurring.record': 'Record',
   'recurring.recordName': 'Record {name}',
-  // The same control on a cost whose day has not come — rent paid on the 3rd. The row
-  // still says "due on day 27" beside it, so what this word adds is that recording it is
-  // a decision rather than the schedule catching up.
   'recurring.recordNow': 'Record now',
   'recurring.recordNowName': 'Record {name} now',
 
@@ -158,15 +113,12 @@ export default {
   'recurring.editTitle': 'Edit recurring cost',
   'recurring.name': 'Name',
   'recurring.namePlaceholder': 'Rent',
-  // Blank is a real answer here, and the one a utility bill needs.
   'recurring.amountHint': 'Leave it empty if the amount changes every month.',
   'recurring.day': 'Day of the month',
-  // "on its own", not "never": the page offers Record now before this day, and the daily
-  // poster is the thing this actually governs.
+  // "on its own", not "never": the page offers Record now earlier. This governs the poster.
   'recurring.dayHint':
     'Nothing is recorded on its own before this day. A 31 lands on the last day of short months.',
-  // Names the person and the number, because the mode saves a BLANK cell: the
-  // figure shown is the config tab's and moves when that does.
+  // Names the person and the number: the mode saves a BLANK cell, so the figure can move.
   'recurring.splitDefault': 'Default',
   'recurring.splitDefaultHint': 'Follows {owner} default split, {percent}% today.',
   'recurring.sheetOnlyHint':
@@ -175,19 +127,13 @@ export default {
   'recurring.retire': 'Stop this cost',
   'recurring.restore': 'Start this cost again',
   'recurring.delete': 'Delete for good',
-  // Names the DECISION, not the button under it: the two used to be the same words, so
-  // the block printed "Delete for good" twice in a row. `SettingsSheet`'s forget-key block
-  // is the pattern — the label says what this is about, the button says what it does.
+  // Names the DECISION, not the button under it, or the block prints "Delete for good" twice.
   'recurring.deleteTitle': 'Delete instead of stopping',
-  // The description is the whole guard. "Delete" does not tell anyone that what is
-  // lost is the sheet's record of which months this cost already covered — and that
-  // adding it back afterwards can therefore record a month twice.
+  // The whole guard: what is lost is the record of which months this cost already covered.
   'recurring.deleteHint':
     'Removes the row from the recurring tab. The entries it already added stay in your ledger, but the sheet forgets which months it covered — so adding this cost again could record a month twice. Stopping it keeps that memory.',
 
   // --- deleted entries ------------------------------------------------------
-  // The count is in the summary line because the section is collapsed: closed,
-  // it is the only thing that says whether opening it is worth it.
   'deleted.title': {
     one: 'Deleted · {count} entry',
     other: 'Deleted · {count} entries',
@@ -195,9 +141,7 @@ export default {
   'deleted.hint':
     'Deleted from this month. Restore one here, or clear every deleted row for good in settings.',
   'deleted.meta': '{date} · {name} paid',
-  // A tombstoned settlement is the same fact as a live one, so it says the same thing
-  // plus the date. Left to the line above, a payback read as an expense the payer had
-  // bought something with — the one row where losing the direction reverses the meaning.
+  // A payback read as an expense loses its direction — the one row where that reverses meaning.
   'deleted.settlementMeta': '{date} · {payer} paid {other}',
   'deleted.restore': 'Restore',
   'deleted.restoreEntry': 'Restore {description}',
@@ -227,8 +171,7 @@ export default {
   'form.splitCustom': 'Custom',
   'form.splitAll': 'All {name}',
   'form.splitHalf': 'Half',
-  // The slider's spoken value. A range otherwise announces a bare "70", which
-  // says nothing about whose share it is.
+  // The slider's spoken value: a range otherwise announces a bare "70".
   'form.splitValue': '{owner} share, {percent}%',
   'form.breakdown': '{payer}: {payerAmount} · {other}: {otherAmount}',
   'form.deleteEntry': 'Delete this entry',
@@ -242,8 +185,7 @@ export default {
   'settings.languageHint': 'Stored on this device. The sheet is unaffected.',
   'settings.accent': 'Accent',
   'settings.accentHint': 'Stored on this device, like the language.',
-  // The five presets, named after the traditional dye colours they are taken
-  // from. Latin names in English, the kanji names in Japanese.
+  // Traditional dye colours: Latin names in English, kanji in Japanese.
   'accent.indigo': 'Indigo',
   'accent.pine': 'Pine',
   'accent.teal': 'Teal',
@@ -272,8 +214,6 @@ export default {
     other: 'Removed {count} deleted rows.',
   },
   'settings.compactError': 'Could not compact the sheet.',
-  // Removing rows shifts every row below them, so it cannot run while a write is
-  // still resolving its own row number.
   'settings.compactBusy': 'A change is still saving. Try again in a moment.',
   'settings.forgetKey': 'Forget key on this device',
   'settings.forgetKeyTitle': 'App key',
@@ -306,26 +246,19 @@ export default {
   'toast.retired': 'Stopped',
   'toast.restoreFailed': 'Could not restore that.',
   'error.readSheet': 'Could not read the sheet.',
-  // Every failed Sheets request lands here. The API's own English text stays on
-  // the error for the console; this is what the person is told.
   'error.sheetRequest': 'The sheet would not answer. Try again in a moment.',
-  // 403/404: not a blip. The account can no longer reach the spreadsheet, so
-  // retrying forever would just hide it behind "showing saved data".
+  // 403/404: not a blip, so retrying would hide it behind "showing saved data".
   'error.sheetUnreachable':
     'This app can no longer reach the sheet. Check that it is still shared with the account that owns it.',
-  // `ensureStructure` refusing to adopt a spreadsheet that is somebody else's work.
   'error.notOurSheet':
     'That spreadsheet already has other tabs and none of this app’s, so it is probably not the ledger. Check the SHEET_ID script property.',
   'error.entryGone': 'That entry is no longer in the sheet. Refresh to see the latest data.',
   'error.missingTabs': 'Could not find the expenses tabs in the sheet.',
-  // Both paths that report a bad key end here: the reply to a just-typed key,
-  // and the notice on a later launch that still holds a rejected one.
   'error.badKey': 'That app key was rejected. Check it, or ask for the current one.',
   'error.keyRequired': 'Enter your app key.',
   'error.offline': 'Could not reach the sheet. Check your connection and try again.',
   'error.scriptUnavailable': 'The sheet service is busy or unavailable. Try again in a moment.',
-  // The script's own authorization lapsed — an unpublished consent screen expires
-  // after 7 days. Names the fix, because retrying cannot help.
+  // An unpublished consent screen expires after 7 days. Names the fix: retrying cannot help.
   'error.scriptUnauthorized':
     'The sheet service needs re-authorizing. Open the Apps Script project and run it once, then publish its consent screen.',
   'error.scriptMisconfigured':
@@ -336,46 +269,30 @@ export default {
   'error.badPayer': 'Payer must be one of the two people.',
   'error.badShare': 'Split must be between 0 and 100%.',
   'error.missingCategory': 'Pick a category.',
-  // Template validation. `badPayer` and `badShare` are shared with an entry: the same
-  // cell means the same thing, so a second sentence would be a second translation.
+  // Template validation; `badPayer` and `badShare` are shared with an entry.
   'error.missingDescription': 'Give it a name, like Rent.',
   'error.badTemplateAmount': 'Amount must be a whole number of yen, or empty if it varies.',
   'error.badDay': 'Day of the month must be between 1 and 31.',
-  // Two rows carrying one id: writing to either would put one cost's values over the
-  // other's, so the fix has to happen in the sheet.
   'error.duplicateTemplate':
     'Two rows in the recurring tab share one id, so this cannot be saved safely. Give one of them a different id in the sheet.',
   'warning.staleData': 'Showing saved data — could not reach the sheet.',
-  // The config tab is gone or renamed, so every value falls back to a default —
-  // including each person's default split, which decides how every expense divides.
   'warning.configMissing':
     'The config tab is missing, so names, categories and the default split are the defaults. Restore it in the sheet.',
-  // These rows are in the balance but belong to no month, so they appear in no
-  // list and cannot be found from here.
   'warning.undatedRows': {
     one: '{count} row in the sheet has a date that cannot be read, so it appears in no month.',
     other: '{count} rows in the sheet have dates that cannot be read, so they appear in no month.',
   },
-  // A row whose amount cell cannot be read at all is left out of every total, so the
-  // balance is short by it. Naming the count is the only way anyone would know.
   'warning.undecodedRows': {
     one: '{count} row in the sheet has an amount that cannot be read, so it is left out of the totals.',
     other:
       '{count} rows in the sheet have amounts that cannot be read, so they are left out of the totals.',
   },
-  // Settlements only: an expense takes its payer from the tab it sits in, so the
-  // settlements tab holds the one payer cell anybody can get wrong. Names the cell,
-  // because that is what has to be fixed and the amount may read perfectly well.
   'warning.unattributedRows': {
     one: '{count} settlement names nobody who paid, so it is left out of the balance.',
     other: '{count} settlements name nobody who paid, so they are left out of the balance.',
   },
-  // Nothing on screen is wrong because of one of these — which is why it is the last
-  // notice — but a recurring cost that stops being offered is exactly the forgetting the
-  // recurring tab exists to prevent, so it cannot be silent either. "Cannot be used" rather
-  // than "cannot be read": the count also covers a row whose id another row already has,
-  // which reads perfectly well. And it names the page, not "above" — nothing about recurring
-  // costs is on the ledger.
+  // Last, because nothing on screen is wrong. "Cannot be used", not "cannot be read": it covers a
+  // row whose id another row already has, which reads fine.
   'warning.undecodedTemplates': {
     one: '{count} row in the recurring tab cannot be used, so it is missing from Recurring costs.',
     other:

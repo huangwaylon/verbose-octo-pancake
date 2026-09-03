@@ -3,20 +3,11 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Guards package-lock.json against private-registry URLs.
- *
- * This repo is developed on a machine where NPM_CONFIG_REGISTRY points at an
- * internal Apple mirror. `npm install` bakes whatever registry it used into
- * every `resolved` URL, producing a lockfile that works locally and fails on
- * any other machine with `getaddrinfo ENOTFOUND` — which npm surfaces as the
- * useless "Exit handler never called!", naming neither the registry nor the file.
- *
- * A repo-level .npmrc cannot prevent this: npm ranks environment variables
- * above project .npmrc, so the env var wins. Regenerate with an explicit
- * override instead:
- *
- *   rm -rf node_modules package-lock.json
- *   npm install --registry=https://registry.npmjs.org
+ * Guards package-lock.json against private-registry URLs. `npm install` bakes whatever
+ * registry it used into every `resolved` URL, and this machine's env points at an internal
+ * mirror — producing a lockfile that works locally and fails everywhere else with
+ * `getaddrinfo ENOTFOUND`, which npm surfaces as the useless "Exit handler never called!".
+ * A repo .npmrc cannot prevent it (env vars rank higher); the fix is in the messages below.
  */
 
 const PUBLIC_REGISTRY = 'https://registry.npmjs.org/'

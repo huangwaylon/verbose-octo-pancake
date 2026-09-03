@@ -7,14 +7,11 @@ import { PlusIcon } from './icons.jsx'
 import { useT } from '../i18n/index.js'
 
 /**
- * The whole signed-in surface: the header, the add action, and the two columns.
+ * The whole signed-in surface. Everything arrives as props: no ledger, no connection, no writes.
  *
- * Separate from `App` because THREE things render it — the app, `scripts/preview.jsx`,
- * which is the only check that any of it LOOKS right, and one static render in
- * `test/render.test.jsx`. Written more than once, a layout change would silently leave both
- * checks looking at a tree the app no longer has.
- *
- * Everything arrives as props: no ledger, no connection, no writes.
+ * Separate from `App` because THREE things render it — the app, `scripts/preview.jsx` (the only
+ * check that any of it LOOKS right) and one static render in `test/render.test.jsx`. Written twice,
+ * a layout change would leave both checks looking at a tree the app no longer has.
  */
 export function LedgerScreen({
   config,
@@ -46,9 +43,7 @@ export function LedgerScreen({
 
       <main className="layout">
         <aside className="layout__aside">
-          {/* The one way into the entry form, and the first thing under the
-              balance. Above the notices rather than below them: a primary action
-              whose vertical position moves with the connection is a mis-tap. */}
+          {/* Above the notices: a primary action that moves with the connection is a mis-tap. */}
           <button type="button" className="btn btn--primary btn--block add-action" onClick={onAdd}>
             <PlusIcon />
             {t('common.addExpense')}

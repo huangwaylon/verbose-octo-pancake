@@ -2,16 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 
 /**
- * The CSS has no test that renders it, and it does not need one — but merging two
- * identical rules into a selector list is a routine tidy-up that can silently
- * attach a selector to the WRONG block. Merge `.sheet__title` with `.empty__title`
- * and land it on `.sheet__body`, and the sheet heading becomes a scroll container
- * while every other test in the suite still passes.
- *
- * So this file pins the declarations of the shared rules only, and asserts that a
- * heading never picks up layout properties from the block below it. Only a selector
- * that actually shares a declaration block belongs in the tables below — a
- * standalone rule cannot be mis-merged, so an entry for one tests nothing.
+ * Merging two identical rules into a selector list is a routine tidy-up that can silently attach
+ * a selector to the WRONG block: merge `.sheet__title` with `.empty__title` and land it on
+ * `.sheet__body`, and the sheet heading becomes a scroll container with every other test passing.
+ * So this pins the SHARED rules' declarations only — a standalone rule cannot be mis-merged, so
+ * an entry for one in the tables below tests nothing.
  */
 
 /** Comments stripped first: they contain commas and braces of their own. */
@@ -43,24 +38,20 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
     ['primitives', '.empty__title'],
   ]
 
-  // The two legend dots share one shape rule and differ only in colour, so a merge
-  // here is exactly the kind this file exists to catch: land the shared block on the
-  // wrong selector and one legend loses its dot entirely, silently.
+  // One shared shape rule: land it on the wrong selector and a legend silently loses its dot.
   it.each([['.summary__person-swatch'], ['.chart__swatch']])('%s is still a dot', (selector) => {
     for (const property of ['width', 'height', 'border-radius']) {
       expect(declares(FILES.app, selector, property)).toBe(true)
     }
   })
 
-  // The VALUE, not the property: the meter's dot takes its colour from the shared block, so a
-  // merge that moved the colour onto the other selector would leave it painting nothing.
-  // The chart's dot is deliberately absent — its colour is set inline, per slice.
+  // The VALUE, not the property: a merge moving the colour onto the other selector leaves the
+  // meter's dot painting nothing. The chart's dot is absent — its colour is inline, per slice.
   it('the meter dot still paints itself, var(--accent)', () => {
     expect(blocksFor(FILES.app, '.summary__person-swatch').at(-1)).toContain('var(--accent)')
   })
 
-  // The two ledger tracks share one block now, so they are mis-mergeable in the way this
-  // file exists to catch: land it on one and the other stops being a column at all.
+  // One shared block: land it on one track and the other stops being a column at all.
   it.each([['.layout__aside'], ['.layout__main']])('%s is still a flex column', (selector) => {
     for (const property of ['display', 'flex-direction', 'gap']) {
       expect(declares(FILES.app, selector, property)).toBe(true)
@@ -96,8 +87,7 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
       const css = FILES.primitives
       expect(declares(css, selector, 'position')).toBe(true)
       expect(declares(css, selector, 'opacity')).toBe(true)
-      // `display: none` or `visibility: hidden` would take the radio out of the
-      // focus order, and the label's focus ring with it.
+      // `display: none` or `visibility: hidden` takes the radio out of the focus order.
       expect(declares(css, selector, 'display')).toBe(false)
       expect(declares(css, selector, 'visibility')).toBe(false)
     },
@@ -121,17 +111,13 @@ describe('rules the docs promise', () => {
   })
 })
 
-/**
- * The target is one platform: Safari on iOS, installed to the Home Screen, on a
- * phone. Every rule below is invisible on a desktop browser and wrong on a phone,
- * which is exactly the combination no other test in this suite can catch.
- */
+// Every rule below is invisible in a desktop browser and wrong on the target — Safari on iOS,
+// installed to the Home Screen, on a phone — which is the combination nothing else can catch.
 describe('the rules an installed iOS web app depends on', () => {
   const all = Object.values(FILES).join('\n')
 
   it('gates every hover rule behind a hover-capable pointer', () => {
-    // iOS applies :hover on tap and holds it until the next tap elsewhere, so an
-    // ungated rule leaves a button looking stuck in a selected state.
+    // iOS applies :hover on tap and holds it, so an ungated rule leaves a button looking stuck.
     const ungated = []
     for (const [, source] of Object.entries(FILES)) {
       // Split on the at-rules so a rule's enclosing media query is knowable.
@@ -148,18 +134,14 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('gives every hover-styled control an :active state too', () => {
-    // The platform tap highlight is cleared in base.css, so :active is the only
-    // press feedback a finger gets.
-    //
-    // EVERY selector in a list, not merely the last one: merging two byte-identical
-    // blocks into a selector list is a routine tidy-up, and a check that read the tail
+    // The platform tap highlight is cleared in base.css, so :active is the only press feedback
+    // a finger gets. EVERY selector in a list, not merely the last: a check reading the tail
     // alone would quietly stop covering everything above it.
     const styledBy = (pseudo) => {
       const found = new Set()
       const attached = new RegExp(`^(.*):${pseudo}(?::not\\(\\[disabled\\]\\))?$`)
       for (const rule of all.matchAll(/([^{}]+)\{/g)) {
-        // An at-rule prelude is not a selector list, and `@media (hover:hover)` would
-        // read as one.
+        // An at-rule prelude is not a selector list, and `@media (hover:hover)` reads as one.
         if (rule[1].trim().startsWith('@')) continue
         for (const part of rule[1].split(',')) {
           const match = part.trim().match(attached)
@@ -182,16 +164,12 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('lifts the sheet clear of the software keyboard', () => {
-    // `dvh` tracks the LAYOUT viewport, which iOS does not shrink for the keyboard,
-    // so without this the footer's Save button sits behind it — and the decimal
-    // keypad has no Done key to dismiss with. Two selectors inside the sheet name the
-    // inset and each matters: the container pads by it, and the footer spends
-    // `--safe-bottom` only on what the keyboard is not already covering. Neither panel
-    // names it — both cap themselves against `100%` of the container's already-padded
-    // box instead, so the inset has one source of truth rather than a copy per panel.
+    // `dvh` tracks the LAYOUT viewport, which iOS does not shrink for the keyboard, so without
+    // this the footer's Save sits behind it with no Done key. Both selectors matter: the
+    // container pads by the inset, the footer spends `--safe-bottom` only on what the keyboard
+    // is not covering, and neither panel names it — both cap against `100%` of the padded box.
     expect(blocksFor(FILES.primitives, '.sheet').join()).toContain('--keyboard-inset')
-    // The home indicator's clearance is worth nothing behind a keyboard, and that is
-    // the one moment the panel has no height to spare.
+    // The home indicator's clearance is worth nothing behind a keyboard.
     expect(blocksFor(FILES.primitives, '.sheet__footer').join()).toContain('--keyboard-inset')
     for (const selector of ['.sheet__panel', '.sheet__panel--full']) {
       expect(blocksFor(FILES.primitives, selector).join()).not.toContain('--keyboard-inset')
@@ -199,11 +177,8 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('lifts the key screen’s Connect button clear of the keyboard too', () => {
-    // The app key is the one text field outside a sheet, and `.gate` is one viewport
-    // tall and centres its content — so there is nothing for iOS to scroll and the
-    // keypad simply covers the button while the field above it stays visible. The box
-    // is border-box at `100dvh`, so spending the inset as bottom padding shrinks the
-    // content box being centred in. `KeyGate` mounts the same publisher the sheet uses.
+    // `.gate` is one viewport tall and centres its content, so nothing scrolls and the keypad
+    // simply covers the button. Border-box at `100dvh`, so the inset shrinks what is centred.
     expect(blocksFor(FILES.app, '.gate').join()).toContain('--keyboard-inset')
   })
 
@@ -215,11 +190,9 @@ describe('the rules an installed iOS web app depends on', () => {
       expect(body).toContain('--keyboard-inset')
     }
 
-    // And a cap has to be relative to the box that padding just shrank, not to the
-    // whole viewport — `100%` is that box, since `.sheet` is `fixed; inset: 0`. A cap
-    // written against `dvh` alone lets a tall dialog overflow the padded box and pushes
-    // its footer straight back under the keyboard. `max-height: none` is the deliberate
-    // exception: the full-screen phone panel takes 100% of the container directly.
+    // And a cap has to be relative to the box padding just shrank — `100%` is that box, since
+    // `.sheet` is `fixed; inset: 0`. Against `dvh` a tall dialog overflows it and pushes its
+    // footer back under the keyboard. `max-height: none` is the full-screen phone exception.
     for (const selector of ['.sheet__panel', '.sheet__panel--full']) {
       for (const body of blocksFor(FILES.primitives, selector)) {
         const capped = body.match(/(?:^|;|\s)max-height\s*:([^;]*)/)
@@ -230,40 +203,36 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('lets the sheet body shrink, so the footer cannot leave the panel', () => {
-    // `.sheet__panel` is a COLUMN flex container, so the body's automatic minimum size
-    // is its min-content HEIGHT and `flex: 1 1 auto` does not override it. Without this
-    // the body refuses to shrink and pushes the footer out through the rounded corner —
-    // and in landscape, back under the keyboard.
+    // `.sheet__panel` is a COLUMN flex container, so the body's automatic minimum is its
+    // min-content HEIGHT and `flex: 1 1 auto` does not override it: the footer goes out through
+    // the rounded corner, and in landscape under the keyboard.
     expect(declares(FILES.primitives, '.sheet__body', 'min-height')).toBe(true)
   })
 
   it('gives the full-screen panel the whole screen, and undoes it for the dialog', () => {
-    // PER BLOCK again: with both in one bucket, hoisting `height: auto` out of the media
-    // query and deleting the reset satisfies every string on a panel never full screen.
+    // PER BLOCK again: with both in one bucket, hoisting `height: auto` out of the media query
+    // and deleting the reset satisfies every string on a panel never full screen.
     const blocks = blocksFor(FILES.primitives, '.sheet__panel--full')
     expect(blocks).toHaveLength(2)
     const [phone, dialog] = blocks
 
     expect(phone).toContain('height: 100%')
-    // `44rem` is the term that binds on an iPhone 15, so the cap has to be lifted and
-    // not merely out-asked, or "full screen" is a 704px panel with square corners.
+    // `44rem` binds on an iPhone 15, so the cap has to be lifted rather than merely out-asked,
+    // or "full screen" is a 704px panel with square corners.
     expect(phone).toContain('max-height: none')
     expect(phone).toContain('border-radius: 0')
-    // The panel is the top of the screen now, and `position: fixed` puts it outside
-    // base.css's insets on `body`, so it composes its own or the title renders under
-    // the Dynamic Island.
+    // `position: fixed` puts the panel outside base.css's insets on `body`, so it composes its
+    // own or the title renders under the Dynamic Island.
     expect(phone).toContain('--safe-top')
 
-    // Full screen is a phone treatment: a surviving `height` gets capped by max-height
-    // into a fixed 44rem box, so a two-button confirmation renders 704px tall.
+    // A surviving `height` gets capped into a fixed 44rem box: a confirmation 704px tall.
     expect(dialog).toContain('height: auto')
     expect(dialog).toContain('padding: 0')
   })
 
   it('undoes the full-screen panel’s descendant rules for the dialog too', () => {
-    // The hairline exists because a full-bleed header has no edge of its own. Left
-    // standing above the breakpoint it gives the entry-form dialog chrome that the
-    // delete confirmation beside it at the same width does not have.
+    // The hairline exists because a full-bleed header has no edge of its own. Left standing above
+    // the breakpoint it gives the entry-form dialog chrome the confirmation beside it lacks.
     for (const selector of [
       '.sheet__panel--full .sheet__header',
       '.sheet__panel--full .sheet__body',
@@ -272,20 +241,16 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('keeps a toast from swallowing the taps of what it covers', () => {
-    // The toast stack outranks everything except a sheet, and it now overlays the
-    // last rows of the ledger and their delete controls rather than a FAB. Being
-    // transparent to pointer events is the whole guarantee; the offset only has to
-    // clear the home indicator.
+    // The stack overlays the last rows of the ledger and their delete controls, so being
+    // transparent to pointer events is the whole guarantee.
     const stack = blocksFor(FILES.primitives, '.toast-stack').join()
     expect(stack).toContain('pointer-events: none')
     expect(stack).toContain('--safe-bottom')
   })
 
   it('sizes the band with the token the sticky aside offsets by', () => {
-    // The aside reads --header-height from outside the header, so the band's height
-    // has to be pinned by min-height rather than left to its content to decide.
-    // Asserted as the token, not merely as the property: `min-height: 0` declares it
-    // and pins nothing.
+    // The aside reads --header-height from outside the header, so the height must be pinned by
+    // min-height. The TOKEN, not merely the property: `min-height: 0` declares it and pins none.
     expect(blocksFor(FILES.app, '.app__header').join()).toContain(
       'min-height: var(--header-height)',
     )
@@ -293,43 +258,35 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('truncates the hero figure but never the sentence that gives it direction', () => {
-    // The figure must stay a BLOCK box: text-overflow only paints on a block
-    // overflowing with inline content, so as a flex row it clips mid-digit with no
-    // ellipsis — a wrong number rather than a visibly incomplete one. And it does
-    // nothing at all without `nowrap`, since a figure that wraps never overflows.
+    // The figure must stay a BLOCK box: text-overflow only paints on a block overflowing with
+    // inline content, so as a flex row it clips mid-digit — a wrong number rather than a visibly
+    // incomplete one — and it does nothing without `nowrap`.
     expect(declares(FILES.app, '.balance__amount', 'text-overflow')).toBe(true)
     expect(declares(FILES.app, '.balance__amount', 'white-space')).toBe(true)
     expect(declares(FILES.app, '.balance__amount', 'display')).toBe(false)
-    // The exact opposite for the line below it: 「{name}に支払い」 is verb-final, so a
-    // tail ellipsis leaves a name with nothing said about which way money runs.
-    // `white-space` is the half that does the harm; ellipsis alone cannot truncate.
+    // The opposite below it: 「{name}に支払い」 is verb-final, so a tail ellipsis leaves a name
+    // with nothing said about which way money runs. `white-space` is the half that does harm.
     expect(declares(FILES.app, '.balance__direction', 'white-space')).toBe(false)
-    // Without this the figure pushes the refresh and settings buttons off the
-    // trailing edge of the header instead of being truncated at all.
+    // Without this the figure pushes the refresh and settings buttons off the trailing edge.
     expect(declares(FILES.app, '.balance', 'min-width')).toBe(true)
   })
 
   it('spends no tap on a double-tap wait for a control that is not a button', () => {
-    // base.css sets touch-action on `button` only, so the label-, summary- and
-    // div-based controls need their own.
+    // base.css sets touch-action on `button` only, so the rest need their own.
     for (const [file, selector] of [
       ['primitives', '.segmented__option'],
       ['primitives', '.swatch'],
       ['primitives', '.sheet__backdrop'],
-      // `.btn` is worn by an `<a>` as well as a `<button>` — the link to the sheet in
-      // Settings is the only route to it and got the 300ms wait.
+      // `.btn` is worn by an `<a>` too — the link to the sheet in Settings got the 300ms wait.
       ['primitives', '.btn'],
-      // A `<label htmlFor>` forwards its tap to the control it names, so it is a
-      // tappable that `button` never covers.
+      // A `<label htmlFor>` forwards its tap, so it is a tappable `button` never covers.
       ['primitives', '.field__label'],
       ['app', '.deleted__summary'],
-      // The button form only: the deleted list renders the same class as an inert
-      // span, where a press state promises a tap that does nothing.
+      // The button form only: the deleted list renders the same class as an inert span.
       ['app', 'button.entry__main'],
       // The same affordance in a sheet. Only ever a button, so no element qualifier.
       ['app', '.recurring__main'],
-      // A wrapping `<label>`: its hint and its output forward a tap to the range inside
-      // it, so the pair of them is 300ms of nothing on the split control.
+      // A wrapping `<label>`: its hint and its output both forward a tap to the range inside.
       ['app', '.split-control__slider'],
     ]) {
       expect(declares(FILES[file], selector, 'touch-action')).toBe(true)
@@ -338,35 +295,30 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('never lets a control set the width of the sheet it sits in', () => {
-    // `.sheet` is a row flex container, so the panel's automatic minimum size is its
-    // min-content width; a date input's intrinsic minimum on iOS is enough to push
-    // the whole panel — and every field in it — off the right of the screen.
+    // `.sheet` is a row flex container, so the panel's automatic minimum is its min-content
+    // width; a date input's intrinsic minimum on iOS pushes the whole panel off the screen.
     expect(declares(FILES.primitives, '.sheet__panel', 'min-width')).toBe(true)
     expect(declares(FILES.primitives, '.input[type="date"]', 'min-width')).toBe(true)
-    // Dropping the platform appearance is what stops iOS sizing the field from the
-    // locale's date format rather than from its container.
+    // Dropping the platform appearance stops iOS sizing the field from the locale's format.
     expect(declares(FILES.primitives, '.input[type="date"]', 'appearance')).toBe(true)
   })
 
   it('never lets a sheet scroll sideways, whatever the config tab holds', () => {
-    // With overflow-y set, a `visible` overflow-x computes to `auto`, so one
-    // over-wide child turns the panel into a horizontal scroller at 320px.
+    // With overflow-y set, a `visible` overflow-x computes to `auto`, so one over-wide child
+    // turns the panel into a horizontal scroller at 320px.
     expect(declares(FILES.primitives, '.sheet__body', 'overflow-x')).toBe(true)
     for (const selector of ['.segmented__option', '.pill']) {
       expect(declares(FILES.primitives, selector, 'overflow-wrap')).toBe(true)
     }
-    // The recurring page holds the same hand-authored text, and WRAPS it rather than
-    // truncating — inside a sheet there is nothing to scroll a truncation into view.
-    // These two need no `min-width` of their own: they are flex items on the CROSS axis
-    // of a column, which `.recurring__main`'s own guard already lets shrink.
+    // The recurring page WRAPS the same hand-authored text rather than truncating — inside a
+    // sheet nothing scrolls a truncation into view. These two are flex items on the CROSS axis
+    // of a column, which `.recurring__main` already lets shrink, so they need no `min-width`.
     for (const selector of ['.recurring__name', '.recurring__meta']) {
       expect(declares(FILES.app, selector, 'overflow-wrap')).toBe(true)
     }
-    // Every other holder of it carries the PAIR: a flex or grid item's automatic minimum
-    // is its min-content WIDTH, and `body`'s `overflow-wrap` does not reduce that, so
-    // either one alone leaves a long name sizing the box it sits in. `.summary__person-name`
-    // is the one on the PAGE rather than in a sheet, where nothing clips the overflow and
-    // it is the whole screen that scrolls sideways at 320px.
+    // Every other holder carries the PAIR: an item's automatic minimum is its min-content WIDTH,
+    // which `overflow-wrap` does not reduce. `.summary__person-name` is the one on the PAGE,
+    // where nothing clips and the whole screen scrolls sideways at 320px.
     for (const selector of [
       '.summary__person-name',
       '.chart__name',
@@ -380,10 +332,8 @@ describe('the rules an installed iOS web app depends on', () => {
   })
 
   it('never lets a LEDGER column be sized by its widest unbreakable child', () => {
-    // Both grid tracks, because a grid item's automatic minimum is its min-content WIDTH:
-    // one non-wrapping descendant sizes the whole column and the page scrolls sideways at
-    // 320px. Nothing in the aside relies on it today, which is exactly why it has to stay
-    // stated — and only the stress pages' SIDEWAYS readout would show it going.
+    // Both tracks: one non-wrapping descendant sizes the whole column and the page scrolls
+    // sideways at 320px. Nothing in the aside relies on it today, and only a stress page shows it.
     for (const selector of ['.layout__aside', '.layout__main']) {
       expect(declares(FILES.app, selector, 'min-width')).toBe(true)
     }
@@ -391,11 +341,9 @@ describe('the rules an installed iOS web app depends on', () => {
 })
 
 /**
- * The two colours a custom property cannot reach. `theme-color` and the install manifest
- * are both read before any stylesheet exists, and the favicon is a data URI, so all three
- * restate a token's literal and no CSS fix is possible. Drift shows up only as a band of
- * the wrong colour around the installed app, or a tile in last season's accent — nothing
- * in the suite and no preview page renders either.
+ * `theme-color`, the manifest and the data-URI favicon are read before any stylesheet exists, so
+ * all three restate a token's literal and no CSS fix is possible. Drift shows only as a band of
+ * the wrong colour around the installed app, or a tile in last season's accent.
  */
 describe('the copies of a token that live outside tokens.css', () => {
   const tokens = strip(readFileSync('src/styles/tokens.css', 'utf8'))
@@ -413,8 +361,7 @@ describe('the copies of a token that live outside tokens.css', () => {
   })
 
   it('draws the favicon in the DEFAULT accent', () => {
-    // The tile cannot follow the per-device preset, so it carries the one every install
-    // starts on. Percent-encoded in the data URI, `#` and all.
+    // The tile cannot follow the per-device preset, so it carries the one every install starts on.
     const icon = html.match(/href="(data:image\/svg\+xml,[^"]*)"/)[1]
     expect(decodeURIComponent(icon)).toContain(`fill='${token('--accent')}'`)
   })

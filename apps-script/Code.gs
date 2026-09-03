@@ -6,30 +6,27 @@
  * `postRecurring` must be allowed to. Each says why where it lives.
  *
  * Deployed as a web app from the account that OWNS the ledger spreadsheet, so
- * `ScriptApp.getOAuthToken()` returns a token that can reach that sheet. The
- * browser therefore never authenticates to Google at all — which is the whole
- * point: no popup, no redirect, and no hourly re-consent anywhere in the app.
+ * `ScriptApp.getOAuthToken()` returns a token that can reach that sheet. The browser
+ * therefore never authenticates to Google at all — no popup, no redirect, no
+ * re-consent anywhere in the app.
  *
- * Access is "anyone, even anonymous", and the `/exec` URL ships in a public
- * bundle, so the shared key is the ONLY access control. It is not protected by
- * the URL being hard to guess; assume the URL is known.
+ * Access is "anyone, even anonymous", and the `/exec` URL ships in a public bundle,
+ * so the shared key is the ONLY access control. Assume the URL is known.
  */
 
 /** The legitimate body is a 64-character key. Anything larger is not worth parsing. */
 var MAX_BODY_CHARS = 1024
 
 /**
- * CRITICAL: any uncaught throw here returns Google's HTML error page instead of
- * JSON, and the client classifies a non-JSON reply as a transient failure and
- * retries. A throw on the reject path is therefore a silent retry loop, so this
- * function must be structurally incapable of throwing.
+ * CRITICAL: any uncaught throw here returns Google's HTML error page instead of JSON,
+ * which the client classifies as transient and retries — so a throw on the reject path
+ * is a silent retry loop. This function must be structurally incapable of throwing.
  *
  * The reply vocabulary is exactly `{token, spreadsheetId}`, `{error:'unauthorized'}`
- * and `{error:'unavailable'}` — never an exception message, never an echo of the
- * request.
+ * and `{error:'unavailable'}` — never an exception message, never an echo of the request.
  *
- * Never read `e.parameter`. Accepting a key from the query string would write it
- * into Google's request logs; requiring it in the body is what keeps it out.
+ * Never read `e.parameter`. A key from the query string lands in Google's request logs;
+ * requiring it in the body is what keeps it out.
  */
 function doPost(e) {
   if (!e || !e.postData || !e.postData.contents) return unauthorized()
@@ -47,8 +44,8 @@ function doPost(e) {
   // Both of these can throw, which is the one way this function could still return
   // Google's HTML error page. `getOAuthToken` is the realistic case: the script's
   // authorization lapses if the consent screen is left in Testing (SETUP.md step 5),
-  // and an HTML reply is classified as transient, so the app would say "busy, try
-  // again in a moment" on every refresh forever instead of naming the cause.
+  // and an HTML reply reads as transient, so the app would say "busy, try again in a
+  // moment" on every refresh forever instead of naming the cause.
   try {
     var props = PropertiesService.getScriptProperties()
     var key = props.getProperty('APP_KEY')
@@ -64,10 +61,10 @@ function doPost(e) {
 }
 
 /**
- * There is deliberately no `doGet`. A GET-shaped endpoint that answers anything is
- * a free, crawlable confirmation that a live Apps Script web app is deployed here,
- * and it burns the same execution quota as a real call. Verify a deployment with
- * the POST in SETUP.md instead, which also proves the part that actually matters.
+ * There is deliberately no `doGet`. A GET-shaped endpoint that answers anything is a
+ * free, crawlable confirmation that a live Apps Script web app is deployed here, and it
+ * burns the same execution quota as a real call. Verify a deployment with the POST in
+ * SETUP.md instead, which also proves the part that matters.
  */
 
 /** One reply for every rejection: no length, prefix or position is revealed. */
@@ -87,33 +84,32 @@ function json(payload) {
  * ===========================================================================
  *
  * A daily time-driven trigger, so rent lands even if nobody opens the app for a
- * month. `SpreadsheetApp` reaches the sheet directly and spends none of the
- * per-user Sheets API quota the client protects with its 30-second focus floor.
+ * month. `SpreadsheetApp` reaches the sheet directly and spends none of the per-user
+ * Sheets API quota the client protects with its 30-second focus floor.
  *
- * CRITICAL, and the deliberate opposite of `doPost` above: this MUST be allowed
- * to throw. `exceptionLogging: STACKDRIVER` plus the trigger's own failure
- * notification means an uncaught throw in a TRIGGER mails the owner, and that mail
- * is the only channel by which this stopping is ever reported — the app cannot see
- * it. Do not tidy the asymmetry away.
+ * CRITICAL, and the deliberate opposite of `doPost` above: this MUST be allowed to
+ * throw. `exceptionLogging: STACKDRIVER` plus the trigger's own failure notification
+ * means an uncaught throw in a TRIGGER mails the owner, and that mail is the only
+ * channel by which this stopping is ever reported — the app cannot see it. Do not tidy
+ * the asymmetry away.
  *
  * The instance id is `<template id>#<YYYY-MM>`, derived identically here and in
- * `src/lib/recurring.js`, which is the whole of "already recorded" — it is what
- * makes this poster and the app's own Record control safe to coexist.
+ * `src/lib/recurring.js`, which is the whole of "already recorded" — it is what makes
+ * this poster and the app's own Record control safe to coexist.
  *
- * TRIGGERS RUN HEAD; the web app runs the pinned deployment. Saving this file
- * changes tonight's run immediately while the token endpoint keeps serving the
- * version from SETUP.md step 6 — so adding the poster needs no new deployment,
- * and a half-finished edit left saved in the editor runs unattended.
+ * TRIGGERS RUN HEAD; the web app runs the pinned deployment. Saving this file changes
+ * tonight's run immediately while the token endpoint keeps serving the version from
+ * SETUP.md step 6 — so adding the poster needs no new deployment, and a half-finished
+ * edit left saved in the editor runs unattended.
  */
 
 /**
- * The two column lists this file cannot import, being Python's problem's twin:
- * `test/schema.test.js` parses them out of this source and compares them to
- * `EXPENSE_COLUMNS` and `RECURRING_COLUMNS` in `src/schema.js`. Change them
- * together. A disagreement is silent in the worst way — the rows land looking
- * plausible with every value under the neighbouring field — and worse here than
- * in the Python script, because this file is PASTED into the editor rather than
- * deployed from the repo, so nothing in a build ever sees what is running.
+ * The two column lists this file cannot import: `test/schema.test.js` parses them out
+ * of this source and compares them to `EXPENSE_COLUMNS` and `RECURRING_COLUMNS` in
+ * `src/schema.js`. Change them together. A disagreement is silent in the worst way —
+ * the rows land looking plausible with every value under the neighbouring field — and
+ * worse here than in the Python script, because this file is PASTED into the editor
+ * rather than deployed from the repo, so nothing in a build sees what is running.
  */
 var EXPENSE_COLUMNS = [
   'date',
@@ -154,11 +150,10 @@ var MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 var MAX_INT_DIGITS = 13
 
 /**
- * The trigger's entry point. Runs daily rather than on the 1st: Google can delay
- * or skip a scheduled run, and this trigger's documented failure mode — the
- * consent screen lapsing, SETUP.md step 5 — is silent. A monthly trigger that
- * misses its one run does nothing for 30 days; a daily one gets 28 more chances,
- * each a no-op after the first.
+ * The trigger's entry point. Runs daily rather than on the 1st: Google can delay or
+ * skip a scheduled run, and this trigger's documented failure mode — the consent screen
+ * lapsing, SETUP.md step 5 — is silent. A monthly trigger that misses its one run does
+ * nothing for 30 days; a daily one gets 28 more chances, each a no-op after the first.
  */
 function postRecurring() {
   var lock = LockService.getScriptLock()
@@ -180,11 +175,7 @@ function postRecurring() {
 /**
  * Split out so a throwaway `function testAugust() { postRecurringFor('2026-08', 31) }`
  * can be run from the editor: a function with parameters gets `undefined` from the
- * Run dropdown.
- *
- * @param {string} monthKey 'YYYY-MM'
- * @param {number} dayOfMonth the day already reached, so nothing posts early
- * @returns {number} rows appended
+ * Run dropdown. `dayOfMonth` is the day already reached, so nothing posts early.
  */
 function postRecurringFor(monthKey, dayOfMonth) {
   var ss = SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SHEET_ID'))
@@ -212,11 +203,10 @@ function postRecurringFor(monthKey, dayOfMonth) {
     if (!appendInstance(ss, template, id, monthKey + '-' + pad2(day), share)) continue
 
     // Marked inside the loop, not just from `readHandledIds`: two rows sharing an id is
-    // the reachable mistake CLAUDE.md names — copy the rent row to add parking, forget to
-    // change `id` — and without this both post under `rent#2026-09`. The client keeps the
-    // FIRST row per id (`reconcileTemplates`) and the first of two live rows
-    // (`reconcileById`), so the second one's money would vanish from the balance while
-    // sitting in the sheet. First-wins here too, in both files, for one rule.
+    // the reachable mistake — copy the rent row to add parking, forget to change `id` —
+    // and without this both post under `rent#2026-09`. The client keeps the FIRST row per
+    // id (`reconcileTemplates`, `reconcileById`), so the second one's money would vanish
+    // from the balance while sitting in the sheet. First-wins here too, for one rule.
     handled[id] = true
     posted += 1
   }
@@ -226,16 +216,15 @@ function postRecurringFor(monthKey, dayOfMonth) {
 /**
  * Every id in BOTH expense tabs, TOMBSTONED ROWS INCLUDED.
  *
- * The tombstones are the half that is easy to get backwards, because every
- * consumer in the client filters through `isActive`: soft-delete this month's rent
- * because it was double-charged, and a scan that skipped tombstones re-posts it
- * tomorrow, and the day after. The id being present at all — live or dead — means
- * the month is handled.
+ * The tombstones are the half that is easy to get backwards, because every consumer in
+ * the client filters through `isActive`: soft-delete this month's rent because it was
+ * double-charged, and a scan that skipped tombstones re-posts it tomorrow, and the day
+ * after. The id being present at all — live or dead — means the month is handled.
  *
- * Both tabs, because editing an instance's payer MOVES the row: a payer-only scan
- * finds nothing and posts a second copy while the first sits under the other
- * person. The settlements tab is deliberately absent — an instance is only ever
- * appended to an expenses tab, and nothing in the app can change an entry's type.
+ * Both tabs, because editing an instance's payer MOVES the row: a payer-only scan finds
+ * nothing and posts a second copy while the first sits under the other person. The
+ * settlements tab is deliberately absent — an instance is only ever appended to an
+ * expenses tab, and nothing in the app can change an entry's type.
  */
 function readHandledIds(ss) {
   var handled = {}
@@ -280,19 +269,17 @@ function cellAt(row, field) {
 /**
  * A `recurring` row -> what this poster needs, or null for a row it must not post.
  *
- * Stricter than the client's `rowToTemplate` in exactly ONE place: a blank amount
- * is recurring-but-variable — a utility bill — and there is no figure to write, so
- * that row belongs to the recurring page where a person types it. Everything else
- * posts itself, which is the whole promise of the feature.
+ * Stricter than the client's `rowToTemplate` in exactly ONE place: a blank amount is
+ * recurring-but-variable — a utility bill — and there is no figure to write, so that row
+ * belongs to the recurring page where a person types it.
  *
- * A blank SHARE is not a refusal: it means "follow the payer's `default_split`",
- * and `defaultShares` reads it. Refusing it instead put a cliff under the form's
- * own default state — the Split control starts on "Default", which writes blank —
- * so the most likely cost anyone set up would silently never post.
+ * A blank SHARE is not a refusal: it means "follow the payer's `default_split`", read by
+ * `defaultShares`. Refusing it put a cliff under the form's own default state — the Split
+ * control starts on "Default", which writes blank — so the most likely cost anyone set up
+ * would silently never post.
  *
- * A row this cannot use is SKIPPED rather than thrown on, unlike an unexpected
- * failure: one typo in a gym row must not stop rent posting. The client counts and
- * reports the same rows on screen as `warning.undecodedTemplates`.
+ * A row this cannot use is SKIPPED rather than thrown on: one typo in a gym row must not
+ * stop rent posting. The client reports the same rows as `warning.undecodedTemplates`.
  */
 function toTemplate(row) {
   var id = cellAt(row, 'id')
@@ -359,9 +346,9 @@ function toTemplate(row) {
  * grouping '2,20,000' and a strip-and-Number posts ¥220,000 — and a '¥' symbol the app
  * strips makes `Number` refuse the row, so the cost silently never posts at all.
  *
- * So the separator rule and the grouping validation are ported here in full rather than
- * approximated. `test/apps-script.test.js` runs this and `parseAmountToYen` over ONE table
- * of inputs, which is the only thing that can see the two drift apart.
+ * So the separator rule and the grouping validation are ported in full rather than
+ * approximated. `test/apps-script.test.js` runs this and `parseAmountToYen` over ONE
+ * table of inputs, which is the only thing that can see the two drift apart.
  */
 function readYen(text) {
   var cleaned = text.replace(/[\s\u00a0\u202f\u2009]/g, '').replace(/[¥￥]/g, '')
@@ -410,11 +397,10 @@ function readYen(text) {
 /**
  * A hand-typed share as a fraction, or null.
  *
- * Above 1 reads as a percentage, exactly as `parseShare` does in the app: a spreadsheet
- * is where people write 80 rather than 0.8. Both places a share can be typed — the
- * `payer_share` column and the two `default_split_p*` config rows — go through this one
- * rule here, for the same reason the app has one: with two readings, the same `50` would
- * mean "half" in one place and "the payer covers all of it" in the other.
+ * Above 1 reads as a percentage, exactly as `parseShare` does in the app: a spreadsheet is
+ * where people write 80 rather than 0.8. Both places a share can be typed — `payer_share`
+ * and the two `default_split_p*` config rows — go through this one rule, because with two
+ * readings the same `50` would mean "half" in one place and "all of it" in the other.
  *
  * The WHOLE string has to be a number, and a value above 100 CLAMPS rather than refusing.
  * Both halves are `parseShare`'s, and both used to differ: `Number('80%')` is NaN, which
@@ -436,9 +422,9 @@ function readShare(text) {
  * `payer_share` blank.
  *
  * The FIRST usable value per key wins, exactly as `parseConfigRows` does in the app: a
- * stale duplicate `default_split_p1` lower down the tab would move money on every
- * expense that person is posted for. A key the tab does not carry falls back to
- * `EVEN_SHARE`, which is what `defaultSplitFor` does.
+ * stale duplicate `default_split_p1` lower down the tab would move money on every expense
+ * that person is posted for. A key the tab does not carry falls back to `EVEN_SHARE`, as
+ * `defaultSplitFor` does.
  */
 function defaultShares(ss) {
   var shares = {}
@@ -473,8 +459,8 @@ function isMonthKey(value) {
 }
 
 /**
- * A whole number inside an inclusive range. Both of `toTemplate`'s schedule cells need it, and
- * the app refuses exactly this much — `isDayOfMonth` and `parseMonths` in `schema.js`.
+ * A whole number inside an inclusive range. Both of `toTemplate`'s schedule cells need it,
+ * and the app refuses exactly this much — `isDayOfMonth` and `parseMonths` in `schema.js`.
  */
 function isWholeInRange(value, low, high) {
   return Math.floor(value) === value && value >= low && value <= high
@@ -495,12 +481,11 @@ function pad2(value) {
 /**
  * Append one instance to the payer's own expenses tab.
  *
- * The number format is set to plain text FIRST, because `setValues` behaves like
- * the `USER_ENTERED` the schema contract forbids: '2026-09-01' becomes a date
- * serial that reads back in the spreadsheet's own locale as '9/1/2026', which
- * `rowToEntry` rejects and `loadAll` reports as `undatedRows` — the exact cause
- * already documented for that counter. A description starting with '=' becomes a
- * formula. Text format is how RAW is spelled in `SpreadsheetApp`.
+ * The number format is set to plain text FIRST, because `setValues` behaves like the
+ * `USER_ENTERED` the schema contract forbids: '2026-09-01' becomes a date serial that
+ * reads back in the spreadsheet's own locale as '9/1/2026', which `rowToEntry` rejects and
+ * `loadAll` reports as `undatedRows`; a description starting with '=' becomes a formula.
+ * Text format is how RAW is spelled in `SpreadsheetApp`.
  *
  * The row number comes from `getLastRow()` immediately before the write. A client
  * `values.append` landing in the same instant would resolve the same row, which is
@@ -508,9 +493,9 @@ function pad2(value) {
  *
  * `share` arrives RESOLVED; only `defaultShares` can resolve a blank one.
  *
- * @returns {boolean} whether the row landed. A missing tab is the one false: the count
- *   `postRecurringFor` returns is the only signal a manual run from the editor gives, so
- *   counting a skip as posted would report a write that never happened.
+ * Returns whether the row landed. A missing tab is the one false: the count
+ * `postRecurringFor` returns is the only signal a manual run from the editor gives, so
+ * counting a skip as posted would report a write that never happened.
  */
 function appendInstance(ss, template, id, date, share) {
   var sheet = ss.getSheetByName(EXPENSE_TABS[template.payer])

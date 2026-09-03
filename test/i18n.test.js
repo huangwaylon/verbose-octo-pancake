@@ -18,12 +18,9 @@ import { CONNECTION_ERROR } from '../src/lib/connection.js'
 import { ACCENTS } from '../src/lib/theme.js'
 
 /**
- * The catalogs are data maintained by hand, so the interesting failures are
- * structural: a key added to one locale and not the other, a translator writing
- * {cnt} for {count}, a plural branch missing. Every check here is one of those.
- *
- * The locale is a module singleton, so anything that changes it must put it back
- * or the state leaks into other files.
+ * The catalogs are hand-maintained data, so the interesting failures are structural: a key
+ * added to one locale and not the other, {cnt} for {count}, a missing plural branch. The
+ * locale is a module singleton, so anything changing it must put it back.
  */
 afterEach(() => {
   setLocale(DEFAULT_LOCALE)
@@ -31,15 +28,11 @@ afterEach(() => {
 
 const OTHER_LOCALES = SUPPORTED.filter((tag) => tag !== DEFAULT_LOCALE)
 
-/** Keys whose translation is legitimately identical to the English. */
+/** Legitimately identical to the English. */
 const SAME_IN_BOTH = new Set([
-  // A percent sign is the same string in both languages. It stays in the catalog
-  // rather than being inlined so the *placement* of the symbol remains a
-  // translation decision.
+  // Not inlined, because the *placement* of the percent sign and whether the amount field
+  // prompts with "0", a fullwidth "０" or a word are translation decisions.
   'summary.share',
-  // A bare digit reads the same in both. It stays in the catalog for the same reason:
-  // whether the amount field prompts with "0", a fullwidth "０" or a word is a
-  // translation decision, not one for the component.
   'form.amountPlaceholder',
 ])
 
@@ -70,9 +63,8 @@ describe('catalog parity', () => {
     expect(mismatched).toEqual([])
   })
 
-  // Sets, not occurrence counts: Japanese sentence order legitimately repeats a
-  // name English uses once (`settings.defaultSplitValue`). What must never differ
-  // is *which* placeholders exist.
+  // Sets, not occurrence counts: Japanese sentence order legitimately repeats a name English
+  // uses once. Only *which* placeholders exist must match.
   it.each(OTHER_LOCALES)('%s interpolates exactly the same placeholders', (tag) => {
     const drifted = []
     for (const key of Object.keys(CATALOGS[DEFAULT_LOCALE])) {
@@ -80,7 +72,6 @@ describe('catalog parity', () => {
       const actual = [...placeholdersIn(CATALOGS[tag][key])].sort()
       if (expected.join() !== actual.join()) drifted.push({ key, expected, actual })
     }
-    // This is the check that stops a literal "{payer}" reaching a user.
     expect(drifted).toEqual([])
   })
 
@@ -90,8 +81,7 @@ describe('catalog parity', () => {
     for (const [key, value] of Object.entries(CATALOGS[tag])) {
       if (!value || typeof value !== 'object') continue
       const branches = Object.keys(value).sort()
-      // Exact, not superset: catches a missing 'one' in en AND a redundant
-      // 'one' in ja, and stays correct for any locale added later.
+      // Exact, not superset: catches a missing 'one' in en AND a redundant one in ja.
       if (branches.join() !== categories.join()) wrong.push({ key, branches, categories })
     }
     expect(wrong).toEqual([])
@@ -135,8 +125,8 @@ describe('catalog usage', () => {
   const DYNAMIC_PREFIXES = ['error.', 'accent.']
 
   const referenced = new Set()
-  // The catalogs themselves are excluded, or every key marks itself as referenced
-  // by being defined and the dead-key check below becomes vacuous.
+  // The catalogs are excluded, or every key marks itself referenced and the dead-key check
+  // below becomes vacuous.
   const CATALOG_FILES = ['en.js', 'ja.js'].map((name) => join('src', 'i18n', name))
   for (const file of sourceFiles('src').filter((path) => !CATALOG_FILES.includes(path))) {
     const source = readFileSync(file, 'utf8')
@@ -147,10 +137,9 @@ describe('catalog usage', () => {
     for (const match of source.matchAll(/\btranslate\(\s*[^,]+,\s*['"]([\w.]+)['"]/g)) {
       referenced.add(match[1])
     }
-    // Keys handed to a helper rather than to `t` directly — `errorMessage`'s
-    // fallback key, `App`'s report(). Matching every literal that IS a catalog key
-    // covers all of them without encoding each helper's argument position, at the
-    // cost of counting a key named in a comment as referenced.
+    // Keys handed to a helper rather than to `t` — `errorMessage`'s fallback, `App`'s
+    // report(). Matching every literal that IS a catalog key covers them all, at the cost
+    // of counting a key named in a comment as referenced.
     for (const match of source.matchAll(/['"](\w+(?:\.\w+)+)['"]/g)) {
       if (match[1] in CATALOGS[DEFAULT_LOCALE]) referenced.add(match[1])
     }
@@ -175,8 +164,7 @@ describe('catalog usage', () => {
   })
 
   it('names every accent preset, in every locale', () => {
-    // Same blind spot as the codes below: t(`accent.${preset}`) is built from
-    // the ACCENTS list, so an added preset would show an empty swatch label.
+    // Same runtime-key blind spot: an added preset would show an empty swatch label.
     const untranslated = []
     for (const preset of ACCENTS) {
       for (const tag of SUPPORTED) {
@@ -187,9 +175,8 @@ describe('catalog usage', () => {
   })
 
   it('translates every validation code, in every locale', () => {
-    // `error.<code>` is built at runtime, so the dead-key and unknown-key scans
-    // above cannot see it: a new ENTRY_ERROR would otherwise reach a person as
-    // the bare string "badAmount".
+    // `error.<code>` is built at runtime, invisible to the scans above: a new code reaches a
+    // person as the bare string "badAmount".
     const untranslated = []
     for (const code of Object.values(ENTRY_ERROR)) {
       for (const tag of SUPPORTED) {
@@ -200,9 +187,6 @@ describe('catalog usage', () => {
   })
 
   it('translates every template validation code, in every locale', () => {
-    // Its own test for the same reason `ENTRY_ERROR` has one: `error.<code>` is built at
-    // runtime, the `error.` prefix is exempt from the dead-key scan above, and a code with
-    // no catalog entry reaches a person as the bare string "badTemplateAmount".
     const untranslated = []
     for (const code of Object.values(TEMPLATE_ERROR)) {
       for (const tag of SUPPORTED) {
@@ -213,9 +197,8 @@ describe('catalog usage', () => {
   })
 
   it('translates every connection failure code, in every locale', () => {
-    // The same blind spot, one step worse: these codes are attached to an error
-    // rather than passed to t(), so the usage scan cannot see them either. Without
-    // this, a rotated key would surface as the bare string "badKey".
+    // Worse still: attached to an error rather than passed to t(), so the usage scan above
+    // cannot see them either.
     const untranslated = []
     for (const code of Object.values(CONNECTION_ERROR)) {
       for (const tag of SUPPORTED) {
@@ -227,15 +210,9 @@ describe('catalog usage', () => {
 })
 
 describe('no hardcoded user-facing strings in components', () => {
-  /**
-   * An attribute nobody sees rendered is the easiest place to leave English
-   * behind: an `aria-label` never goes near a catalog, so no catalog check can
-   * see it. Every icon-only control in the app depends on one.
-   *
-   * `aria-valuetext` earns its place here: the split slider's spoken value is a
-   * whole sentence, and it is the only spoken string in the app that is not also
-   * visible on screen, so nothing else would catch it going untranslated.
-   */
+  // An attribute nobody sees rendered is the easiest place to leave English behind, and no
+  // catalog check can see an `aria-label`. `aria-valuetext` is here because the slider's
+  // spoken value is the only spoken string not also visible on screen.
   const SPOKEN_ATTRIBUTES = ['aria-label', 'aria-valuetext', 'alt', 'placeholder', 'title']
 
   it('passes every spoken attribute through t(), not a bare literal', () => {
@@ -243,8 +220,7 @@ describe('no hardcoded user-facing strings in components', () => {
     for (const file of sourceFiles('src').filter((path) => path.endsWith('.jsx'))) {
       const source = readFileSync(file, 'utf8')
       for (const attribute of SPOKEN_ATTRIBUTES) {
-        // Only the literal form is a failure: the `{t('key')}` expression form is
-        // the fix, and `attr=""` is a deliberate "no accessible name".
+        // Only the literal form is a failure: `attr=""` is a deliberate "no accessible name".
         const literal = new RegExp(`\\b${attribute}=("[^"]+"|'[^']+')`, 'g')
         for (const match of source.matchAll(literal)) {
           offenders.push(`${file}: ${attribute}=${match[1]}`)
@@ -290,9 +266,8 @@ describe('engine', () => {
 })
 
 /**
- * The one path from a caught error to a sentence on screen. `cause.message` must
- * never be it: `sheets.js` and `connection.js` keep the API's own English there for
- * consoles, so showing it hands a Japanese reader "HTTP 403".
+ * The one path from a caught error to a sentence on screen. `cause.message` must never be it:
+ * `sheets.js` keeps the API's own English there for consoles, so it hands a reader "HTTP 403".
  */
 describe('errorMessage', () => {
   it('prefers the error’s own key, which says something specific', () => {
@@ -308,17 +283,14 @@ describe('errorMessage', () => {
       translate('en', 'error.sheetRequest'),
     )
 
-    // Exact equality per cause, which is what stops `.message` ever being the answer:
-    // an error carrying no key must produce the caller's translated sentence and
-    // nothing else, whatever English it happens to be holding.
+    // Exact equality per cause is what stops `.message` ever being the answer.
     for (const cause of [new Error('raw English'), undefined, null, {}]) {
       expect(errorMessage(cause, 'toast.deleteFailed')).toBe(translate('en', 'toast.deleteFailed'))
     }
   })
 
   it('keeps an error’s interpolation vars, so no placeholder reaches the screen', () => {
-    // No error key carries a placeholder today; this is what stops the first one
-    // that does from rendering the literal '{count}'.
+    // No error key carries a placeholder today; this stops the first one rendering '{count}'.
     const cause = i18nError('settings.removedRows', { count: 3 })
     expect(errorMessage(cause, 'error.readSheet')).toBe('Removed 3 deleted rows.')
     expect(errorMessage(cause, 'error.readSheet')).not.toContain('{count}')

@@ -7,17 +7,12 @@ import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { DonutChart } from './DonutChart.jsx'
 
 /**
- * Which of the two per-person figures the card shows, as a per-device preference.
+ * Which of the two per-person figures the card shows. Both matter — cash out of pocket, and what that
+ * person owes once every `payer_share` is applied — but two lines per person is four rows of the
+ * card, so one is shown and the other is a tap away.
  *
- * Both matter — cash out of pocket, and what that person owes once every `payer_share` is
- * applied — but only one fits: two lines per person is four rows of the card once the config tab
- * holds real names rather than "You" and "Sam". So one is shown and the other is a tap away.
- *
- * A stored preference rather than component state, for the same reason the locale and the accent
- * are: it is a standing choice about how this phone reads the card, so it should survive a reload
- * and a month change — and a test can set it without a DOM, which internal state could not.
- *
- * Beside the one control that owns it, exactly as `useEntrySplit` sits beside `SplitField`.
+ * A stored preference rather than component state, like the locale and the accent: it survives a
+ * reload and a month change, and a test can set it without a DOM.
  */
 export const SUMMARY_VIEWS = ['share', 'paid']
 
@@ -28,20 +23,12 @@ export const summaryView = storedPreference({
 })
 
 /**
- * The month's spending: a total, one figure per person, and a category breakdown.
- *
- * Two different forms on purpose. The category split is genuine part-to-whole
- * across many classes, so it gets the donut. "Per person" is exactly two values,
- * and a two-slice pie is the canonical chart anti-pattern — the number is the
- * chart — so that gets a meter bar plus the two figures.
- *
- * Memoised for the same reason `EntryList` is: it takes no handlers and every
- * figure it reads is one of `useLedgerView`'s memos, so a toast has no business
- * re-laying-out a chart.
+ * The month's spending. Two forms on purpose: the category split is genuine part-to-whole across
+ * many classes, so it gets the donut, while "Per person" is two values — the number IS the chart —
+ * so it gets a meter bar. Memoised, like `EntryList`: a toast must not re-lay-out a chart.
  */
 function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, me }) {
-  // Every hook runs before the early return below: hook order must not depend
-  // on props.
+  // Every hook runs before the early return below: hook order must not depend on props.
   const { t } = useT()
   const money = useMoney()
   const { label, possessive } = usePeopleLabels(config, me)
@@ -49,11 +36,7 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, m
 
   if (!monthSpend) return null
 
-  /**
-   * The meter follows the figures rather than always showing what was paid: a bar that split one
-   * way while the lines read another would be a second, silent claim about the same month.
-   * Either way it totals `monthSpend`, because `spendByPerson` and `shareByPerson` both do.
-   */
+  /** Split one way while the lines read another, the meter would be a second, silent claim. */
   const totals = showPaid ? byPerson : byShare
   const first = totals[PERSON.P1] ?? 0
   const second = totals[PERSON.P2] ?? 0
@@ -74,9 +57,8 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, m
       <div className="summary__section">
         <div className="summary__heading">
           <h2 className="eyebrow">{t('summary.perPerson')}</h2>
-          {/* `aria-pressed` rather than a label that flips between the two views, which
-              would never say whether it names the figure on screen or the one a tap away.
-              Same idiom as the note field's preset chips. */}
+          {/* `aria-pressed` rather than a label that flips: a flipping label never says whether
+              it names the figure on screen or the one a tap away. */}
           <button
             type="button"
             className={`btn btn--sm ${showPaid ? 'btn--primary' : 'btn--ghost'}`}
@@ -104,8 +86,7 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, m
             />
           </div>
         )}
-        {/* One line per person, and a SENTENCE rather than a bare figure under the toggle:
-            read on its own it still says which of the two it is. */}
+        {/* A SENTENCE, not a bare figure: read alone, each line still says which one it is. */}
         <div className="summary__people">
           {PEOPLE.map((person) => (
             <span className="summary__person" key={person}>

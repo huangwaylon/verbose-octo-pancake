@@ -4,15 +4,11 @@ import { useT } from '../i18n/index.js'
 /**
  * The stop between a destructive control and a write, and the one home of that shape.
  *
- * Two things about it are load-bearing and neither is visual. Cancel comes FIRST in the DOM as
- * well as on screen, because `BottomSheet` focuses the first control it finds and on a
- * destructive dialog that must be the way out. And it is content-sized rather than full
- * screen — `full` is a claim about the content, and a one-sentence question in a full-screen
- * panel is 600px of white asking whether to delete a ¥480 coffee.
+ * Cancel comes FIRST in the DOM as well as on screen, because `BottomSheet` focuses the first
+ * control it finds and on a destructive dialog that must be the way out. Content-sized rather than
+ * full screen, because a one-sentence question in a full-screen panel is 600px of white.
  *
- * The caller supplies the sentence, because only the caller knows what is being destroyed and
- * whether it can be undone. A delete someone can recover from is a different decision from one
- * they cannot, and the body is where that gets said.
+ * The caller supplies the sentence: only it knows what is destroyed and whether it can be undone.
  */
 export function ConfirmSheet({ title, body, confirmLabel, onConfirm, onClose }) {
   const { t } = useT()

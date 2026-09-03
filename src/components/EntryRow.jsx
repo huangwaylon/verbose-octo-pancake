@@ -5,14 +5,11 @@ import { EntryLine } from './EntryLine.jsx'
 import { SwapIcon, TrashIcon } from './icons.jsx'
 
 /**
- * One row in the month's list. `label` arrives from the list rather than being derived
- * here, so a long month resolves the two names once instead of per row.
+ * One row in the month's list. `label` arrives from the list, so a long month resolves the two names
+ * once instead of per row.
  *
- * Memoised because a row is the app's most repeated unit and none of its props changes
- * when the ledger does: adding one entry rebuilds the day's groups, and without this every
- * other row re-derives its title, its meta sentence and its `Intl` formatter for markup
- * that is byte-identical. Both handlers are stable by construction: `onEdit` and `onDelete`
- * are `useCallback`s in `App`.
+ * Memoised because a row is the app's most repeated unit: without it, adding one entry makes every
+ * other row re-derive its title, meta sentence and `Intl` formatter for byte-identical markup.
  */
 function EntryRowInner({ entry, label, onEdit, onDelete }) {
   const { t } = useT()

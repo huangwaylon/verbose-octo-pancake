@@ -34,10 +34,8 @@ import { DEFAULT_CONFIG } from '../src/config.js'
 const P1 = expenseTab(PERSON.P1)
 const P2 = expenseTab(PERSON.P2)
 
-/** A stamp for the one timestamp a row still carries. */
 const NOW = '2026-03-10T12:00:00.000Z'
 
-/** The shared expense at this file's own values. */
 const fullEntry = (overrides = {}) =>
   expense({
     id: 'entry-1',
@@ -49,17 +47,11 @@ const fullEntry = (overrides = {}) =>
 
 describe('column contract', () => {
   /**
-   * Both lists as literals, because nothing else in the suite can see a reorder: the
-   * shared `row` fixture BUILDS rows from a tab's own list, so it moves with the list
-   * and every assertion still passes.
-   *
-   * A reorder is silent and destructive in a live sheet. Every range and letter is
-   * derived from array position, and `ensureStructure` rewrites a header row that no
-   * longer matches while never touching data rows — so swapping two columns relabels
-   * every existing row under the wrong field, and `category`/`description` would read
-   * as plausible either way.
+   * Every list as a literal, because nothing else in the suite can see a reorder: the shared
+   * `row` fixture BUILDS rows from a tab's own list, so it moves with the list and every
+   * assertion still passes. `ensureStructure` rewrites a mismatched header without touching data
+   * rows, so a swap relabels every existing row under a neighbouring field.
    */
-  // Ordered to match the bank's CSV export — 取引日, 摘要, 引出額 — with `id` last.
   it('is exactly these expense columns, in this order', () => {
     expect(EXPENSE_COLUMNS).toEqual([
       'date',
@@ -83,12 +75,7 @@ describe('column contract', () => {
     ])
   })
 
-  /**
-   * The recurring tab is hand-authored, so its header row is the only instruction anyone
-   * gets about what to type where — and a reorder relabels every existing template under
-   * the wrong field while `ensureStructure` quietly rewrites the header to match.
-   * `payer_share` next to `payer`, and the four scheduling columns together.
-   */
+  // Hand-authored, so the header row is the only instruction anyone gets about what to type.
   it('is exactly these recurring columns, in this order', () => {
     expect(RECURRING_COLUMNS).toEqual([
       'description',
@@ -106,12 +93,8 @@ describe('column contract', () => {
     expect(RECURRING.headerRange).toBe('recurring!A1:J1')
   })
 
-  /**
-   * The two layouts put `deleted_at` at DIFFERENT indexes, which is the whole reason
-   * every positional lookup hangs off a tab rather than the module. Stated as literals
-   * on both sides: one shared index would have `compact` reading the settlements tab's
-   * `id` column — non-empty on every row — and hard-deleting every live settlement.
-   */
+  // Why positional lookups hang off a tab, literals on both sides: one shared index would have
+  // `compact` read the settlements `id` column — non-empty always — and delete every settlement.
   it('indexes deleted_at differently in the two layouts', () => {
     expect(P1.index('deleted_at')).toBe(5)
     expect(P1.letter('deleted_at')).toBe('F')
@@ -126,15 +109,9 @@ describe('column contract', () => {
     expect(DATA_TABS.map((tab) => tab.title)).toEqual(['expenses_p1', 'expenses_p2', 'settlements'])
   })
 
-  /**
-   * `recurring` is a tab the app maintains a header for and NEVER a data tab. `compact`
-   * and every read's row-to-tab mapping walk `DATA_TABS`, so its being in that list would
-   * hard-delete templates whose `active_to` column happens to be non-empty at the index
-   * `deleted_at` sits in for an expense.
-   *
-   * And the data tabs are the PREFIX of `SHEET_TABS`, because `loadAll` maps the first
-   * `DATA_TABS.length` replies back through `DATA_TABS`.
-   */
+  // `compact` walks `DATA_TABS`, so `RECURRING` in that list hard-deletes templates whose
+  // `active_to` is non-empty where an expense keeps `deleted_at`. The data tabs are its PREFIX
+  // because `loadAll` maps the first `DATA_TABS.length` replies back through them.
   it('keeps the recurring tab out of DATA_TABS and at the end of SHEET_TABS', () => {
     expect(DATA_TABS).not.toContain(RECURRING)
     expect(SHEET_TABS.map((tab) => tab.title)).toEqual([
@@ -145,18 +122,15 @@ describe('column contract', () => {
     ])
   })
 
-  /**
-   * The tab asserts what a row cannot. An expenses tab names its payer, so no cell can
-   * contradict it; the settlements tab answers null, meaning "read the cell".
-   */
+  // The tab asserts what a row cannot: an expenses tab names its payer, so no cell can contradict
+  // it; the settlements tab answers null, meaning "read the cell".
   it('says what each tab knows about its own rows', () => {
     expect([P1.type, P1.payer]).toEqual([ENTRY_TYPE.EXPENSE, PERSON.P1])
     expect([P2.type, P2.payer]).toEqual([ENTRY_TYPE.EXPENSE, PERSON.P2])
     expect([SETTLEMENTS.type, SETTLEMENTS.payer]).toEqual([ENTRY_TYPE.SETTLEMENT, null])
   })
 
-  // Literals on the expected side on purpose: interpolating the module's own
-  // FIRST_DATA_ROW would move both sides together and pin nothing.
+  // Literals: interpolating the module's own FIRST_DATA_ROW moves both sides and pins nothing.
   it('builds ranges that start below the header row', () => {
     expect(P1.dataRange).toBe('expenses_p1!A2:G')
     expect(P2.dataRange).toBe('expenses_p2!A2:G')
@@ -171,8 +145,7 @@ describe('column contract', () => {
   it('throws on an unknown column rather than writing to the wrong cell', () => {
     expect(() => P1.index('nope')).toThrow(/Unknown column/)
     expect(() => P1.letter('nope')).toThrow(/Unknown column/)
-    // A column the OTHER layout has is still unknown here, and must not silently
-    // resolve to whatever sits at that position.
+    // A column the OTHER layout has must not silently resolve to whatever sits at that position.
     expect(() => P1.index('payer')).toThrow(/Unknown column/)
     expect(() => SETTLEMENTS.index('category')).toThrow(/Unknown column/)
     expect(P1.has('payer')).toBe(false)
@@ -180,11 +153,9 @@ describe('column contract', () => {
   })
 
   it('stays within the 26 columns single-letter arithmetic can name', () => {
-    // Letters come from `String.fromCharCode(65 + index)`, so a 27th column would
-    // answer '[' and the API would reject every range built from it. This assertion is
-    // the whole guard: every caller passes a name from a list, so a list growing is the
-    // only way the limit can be crossed. `SHEET_TABS`, not `DATA_TABS`: the recurring
-    // layout is the widest of the four and the one most likely to gain a column.
+    // A 27th column answers '[' from `String.fromCharCode(65 + index)` and the API rejects every
+    // range built from it. This is the whole guard, and `SHEET_TABS` because the recurring layout
+    // is the widest of the four.
     for (const tab of SHEET_TABS) expect(tab.columns.length).toBeLessThanOrEqual(26)
   })
 
@@ -229,8 +200,7 @@ describe('rowToEntry', () => {
   })
 
   it('reads a cell Sheets returned as a number, not a string', () => {
-    // values.get hands back a bare number for a numeric cell, so every read goes
-    // through cellText rather than trusting the type.
+    // values.get hands back a bare number for a numeric cell, so no read may trust the type.
     expect(cellText([' 42.10 '], 0)).toBe('42.10')
     expect(cellText([1250], 0)).toBe('1250')
     expect(cellText([], 0)).toBe('')
@@ -257,21 +227,18 @@ describe('rowToEntry', () => {
     const row = rawRow({ id: 'x', amount: '100' })
     expect(rowToEntry(row, P1).payer).toBe(PERSON.P1)
     expect(rowToEntry(row, P2).payer).toBe(PERSON.P2)
-    // An expenses tab has no payer column at all, so there is nothing to disagree with.
     expect(P1.has('payer')).toBe(false)
-    // Refuses rather than picking one. The tab a row came from IS its type and, here,
-    // its payer — so a caller that cannot name the tab has lost track of what it is
-    // reading, and every entry it decodes would be attributed wrongly.
+    // Refuses rather than picking one: a caller that cannot name the tab has lost track of what
+    // it is reading, and every entry it decodes would be attributed wrongly.
     expect(() => rowToEntry(row, PERSON.P1)).toThrow(TypeError)
     expect(() => rowToEntry(row, undefined)).toThrow(TypeError)
   })
 
   /**
-   * The `recurring` tab has a real column list, so nothing about its SHAPE stops it being
-   * handed to either mapper — and the failure would be silent both ways. Read, every
-   * template answers null because there is no payer at that index, so the tab looks empty.
-   * Written, six of its ten columns fill with an entry's values under fields that mean
-   * something else. `type: null` is what makes both a throw.
+   * Nothing about the recurring tab's SHAPE stops it being handed to either mapper, and either
+   * way the failure is silent: read, every template answers null for want of a payer at that
+   * index, so the tab looks empty; written, six of ten columns fill with an entry's values under
+   * fields that mean something else. `type: null` is what makes both a throw.
    */
   it('refuses a tab that holds no entries, rather than answering null for every row', () => {
     const template = RECURRING.columns.map(() => 'x')
@@ -293,22 +260,16 @@ describe('rowToEntry', () => {
       expect(SETTLEMENTS.has('type')).toBe(false)
     })
 
-    /**
-     * A share of 0 is the whole definition of a settlement — the payer handed money
-     * over and the other person is responsible for all of it — so the column does not
-     * exist rather than holding a cell with one correct value.
-     */
+    // A share of 0 is the whole definition of a settlement, so the column does not exist rather
+    // than holding a cell with one correct value.
     it('has no share of its own, and reads as 0', () => {
       const entry = rowToEntry(settlementRow({ id: 's1', amount: '100', payer: 'p1' }), SETTLEMENTS)
       expect(entry.payerShare).toBe(0)
       expect(entry.category).toBe('')
     })
 
-    /**
-     * The payer decides the SIGN of this row's contribution, so a junk cell is a wrong
-     * balance rather than a missing row — which is why the row is dropped and counted
-     * instead of being attributed to a default.
-     */
+    // The payer decides the SIGN of this row's contribution, so a junk cell is a wrong balance
+    // rather than a missing row — hence dropped and counted, never given a default.
     it('refuses a row whose payer names neither person', () => {
       for (const payer of ['', 'p3', 'Waylon', 'both']) {
         const row = settlementRow({ id: 's1', amount: '100', payer })
@@ -330,8 +291,7 @@ describe('rowToEntry', () => {
   it('reads payer_share as a percentage above 1, exactly like the config tab', () => {
     const share = (payer_share) =>
       rowToEntry(rawRow({ id: 'x', amount: '100', payer_share }), P1).payerShare
-    // The rule that matters: somebody typing 80 into the column means 80%, not
-    // "the payer covers all of it" — the same reading the config tab gives it.
+    // Typing 80 means 80%, not "the payer covers all of it" — as the config tab reads it too.
     expect(share('80')).toBe(0.8)
     expect(share('0.8')).toBe(0.8)
     expect(share('100')).toBe(1)
@@ -347,11 +307,8 @@ describe('rowToEntry', () => {
     )
   })
 
-  /**
-   * There is no `type` cell to mistype: the tab decides, so an expenses tab cannot
-   * produce a settlement at all. A hand-typed "Settlement" read as an expense would
-   * inflate the month's spend and the category donut by the whole transfer.
-   */
+  // No `type` cell to mistype: a hand-typed "Settlement" read as an expense would inflate the
+  // month's spend and the category donut by the whole transfer.
   it('takes the type from the tab, so no cell can make an expense a settlement', () => {
     expect(P1.has('type')).toBe(false)
     expect(rowToEntry(rawRow({ id: 'x', amount: '100' }), P1).type).toBe(ENTRY_TYPE.EXPENSE)
@@ -373,9 +330,8 @@ describe('rowToEntry', () => {
 
 describe('entryToRow', () => {
   it('returns one cell per column of the tab being written to', () => {
-    // Literals, not `tab.columns.length`: `entryToRow` IS a map over that list, so
-    // deriving the expectation from it compares the module against itself and passes
-    // for any width. Seven and six are what the two `A:G` / `A:F` ranges spell.
+    // Literals, not `tab.columns.length`: `entryToRow` IS a map over that list, so deriving the
+    // expectation compares the module against itself and passes for any width.
     expect(entryToRow(fullEntry(), P1)).toHaveLength(7)
     expect(entryToRow(fullEntry({ description: '', category: '' }), P1)).toHaveLength(7)
     expect(entryToRow(fullEntry({ amountYen: 0 }), P1)).toHaveLength(7)
@@ -383,11 +339,8 @@ describe('entryToRow', () => {
     expect(entryToRow(settlement(), SETTLEMENTS)).toHaveLength(6)
   })
 
-  /**
-   * A field the tab does not carry is simply not written, and — the half that matters —
-   * one it DOES carry is filled from the entry. `payer` is the case: absent from an
-   * expenses row, present in a settlement one, and blank in neither.
-   */
+  // The half that matters is that a column the tab DOES carry is filled from the entry. `payer`
+  // is the case: absent from an expenses row, present in a settlement one, blank in neither.
   it('writes each tab only the columns it has', () => {
     const expenseCells = entryToRow(fullEntry(), P1)
     expect(expenseCells).toHaveLength(7)
@@ -396,7 +349,6 @@ describe('entryToRow', () => {
     const settlementCells = entryToRow(paid, SETTLEMENTS)
     expect(settlementCells[SETTLEMENTS.index('payer')]).toBe(PERSON.P2)
     expect(settlementCells[SETTLEMENTS.index('amount')]).toBe('500')
-    // The two columns a settlement has no use for are absent, not blank.
     expect(SETTLEMENTS.has('category')).toBe(false)
     expect(SETTLEMENTS.has('payer_share')).toBe(false)
   })
@@ -419,8 +371,8 @@ describe('entryToRow', () => {
   })
 
   it('writes an empty payer_share cell rather than the text "undefined" or "NaN"', () => {
-    // Pre-stringifying this field would defeat the null guard in the map and
-    // permanently pollute the cell, visible to anyone editing in Sheets.
+    // Pre-stringifying this field defeats the null guard in the map and permanently pollutes the
+    // cell, visible to anyone editing in Sheets.
     const share = P1.index('payer_share')
     for (const payerShare of [undefined, null, NaN, Infinity, 'half']) {
       const row = entryToRow({ ...fullEntry(), payerShare }, P1)
@@ -442,12 +394,9 @@ describe('entryToRow', () => {
 })
 
 describe('templateToRow', () => {
-  /**
-   * The recurring twin of `entryToRow`'s two cell guards. `test/recurring.test.js` owns the
-   * round trip; what is here is the pair of cells that can hold the text 'NaN', which
-   * `rowToTemplate` then refuses — so the template disappears from the page the app itself
-   * just wrote it to, which is the one failure that function's own header warns about.
-   */
+  // `test/recurring.test.js` owns the round trip; here is the pair of cells that can hold the
+  // text 'NaN', which `rowToTemplate` then refuses — so the template disappears from the page the
+  // app itself just wrote it to.
   const template = (over = {}) => ({
     id: 'rent',
     description: 'Rent',
@@ -472,8 +421,7 @@ describe('templateToRow', () => {
   })
 
   it('still writes a real share and day, blank meaning what it means', () => {
-    // Blank is a VALUE in both cells — follow the payer's default, and the 1st — so the
-    // guard above must not be the only branch anything ever takes.
+    // Blank is a VALUE in both cells, so the guard above must not be the only branch taken.
     const row = templateToRow(template({ payerShare: 0.8 }))
     expect(row[RECURRING.index('payer_share')]).toBe('0.8')
     expect(row[RECURRING.index('day_of_month')]).toBe('27')
@@ -503,8 +451,7 @@ describe('rowToEntry / entryToRow round trip', () => {
 
   for (const [name, entry] of cases) {
     it(`is lossless: ${name}`, () => {
-      // Through the tab the entry belongs in, which is exactly how `loadAll` reads it
-      // back and what `appendEntry` used to write it.
+      // Through the tab the entry belongs in, which is how `loadAll` reads it back.
       const tab = tabOf(entry)
       expect(rowToEntry(entryToRow(entry, tab), tab)).toEqual(entry)
     })
@@ -552,17 +499,13 @@ describe('makeEntry', () => {
     expect(a).toEqual(b)
   })
 
-  /**
-   * An entry reads no clock at all, so a fixture needs nothing injected to be
-   * reproducible. `deletedAt` is the one timestamp left and it is stamped by whoever
-   * performs the delete, not here — so a fresh entry carries none.
-   */
+  // An entry reads no clock, so a fixture needs nothing injected to be reproducible. `deletedAt`
+  // is the one timestamp left, and whoever performs the delete stamps it.
   it('reads no clock, and claims no timestamps', () => {
     const entry = makeEntry({ id: 'x', amountYen: 100 })
     expect(entry.deletedAt).toBeNull()
     expect('createdAt' in entry).toBe(false)
     expect('updatedAt' in entry).toBe(false)
-    // Round-tripping an entry through the builder must not invent one either.
     expect(makeEntry({ ...entry, amountYen: 200 })).toEqual({ ...entry, amountYen: 200 })
   })
 
@@ -576,8 +519,8 @@ describe('makeEntry', () => {
   it('passes an unrecognised payer through so validation can refuse it', () => {
     const entry = makeEntry({ id: 'a', payer: 'nonsense', type: 'nonsense' })
     expect(entry.type).toBe(ENTRY_TYPE.EXPENSE)
-    // Not rewritten to p1: guessing makes BAD_PAYER unreachable from every write
-    // path and files the expense under the wrong person's tab.
+    // Not rewritten to p1: guessing makes BAD_PAYER unreachable and files the expense under the
+    // wrong person's tab.
     expect(entry.payer).toBe('nonsense')
     expect(validateEntryCodes(entry)).toContain(ENTRY_ERROR.BAD_PAYER)
     expect(entry.deletedAt).toBeNull()
@@ -606,8 +549,8 @@ describe('validateEntryCodes', () => {
   })
 
   it('rejects a numeric STRING amount, which means makeEntry was bypassed', () => {
-    // `makeEntry` coerces both numerics, so validation only sees a string when something
-    // skipped it — and a string reaching `yenToSheetString` throws rather than writing a cell.
+    // `makeEntry` coerces, so a string here means something skipped it — and a string reaching
+    // `yenToSheetString` throws rather than writing a cell.
     expect(validateEntryCodes({ ...fullEntry(), amountYen: '4210' })).toEqual([
       ENTRY_ERROR.BAD_AMOUNT,
     ])
@@ -628,8 +571,7 @@ describe('validateEntryCodes', () => {
   })
 
   it('rejects a payerShare that is a numeric string rather than a number', () => {
-    // makeEntry coerces, so reaching validation with a string means someone
-    // bypassed it — and a string share must not slip through into the balance.
+    // Same bypass as the amount above, and a string share must not reach the balance.
     expect(validateEntryCodes({ ...fullEntry(), payerShare: '0.5' })).toEqual([
       ENTRY_ERROR.BAD_SHARE,
     ])
@@ -645,8 +587,7 @@ describe('validateEntryCodes', () => {
   })
 
   it('sees the default share, not the omission, when payerShare is left out', () => {
-    // makeEntry fills in the type-appropriate default, so an omitted share is
-    // never itself a validation error.
+    // makeEntry fills in the type's default, so an omission is never itself an error.
     for (const payerShare of [undefined, null]) {
       expect(validateEntryCodes(fullEntry({ payerShare }))).toEqual([])
     }
@@ -685,8 +626,8 @@ describe('validateEntryCodes', () => {
   })
 
   it('reports a code per problem, so nothing has to parse a sentence', () => {
-    // The codes are the stable contract between the validator and the catalogs;
-    // i18n.test.js is what proves each one has a translation.
+    // The codes are the contract between the validator and the catalogs; i18n.test.js proves each
+    // one has a translation.
     expect(validateEntryCodes({}).length).toBeGreaterThan(1)
     expect(validateEntryCodes({})).toContain(ENTRY_ERROR.MISSING_ID)
     expect(validateEntryCodes({})).toContain(ENTRY_ERROR.BAD_AMOUNT)
@@ -694,16 +635,11 @@ describe('validateEntryCodes', () => {
 })
 
 /**
- * `scripts/bank_to_ledger.py` writes rows for these same tabs and carries its own copy
- * of the column list, because it is Python and cannot import this module. Nothing else
- * can catch the two disagreeing: the script keeps emitting its old order and width, the
- * rows paste in looking plausible, and every value lands under the neighbouring field.
- *
- * It carries its own copy of the CATEGORY list for the same reason, and a disagreement
- * there is quieter still: a category the config tab does not offer renders the picker
- * blank on every imported row someone opens.
- *
- * Parsed out of the source rather than executed, so this needs no Python on the machine.
+ * The Python script cannot import this module, and nothing else can catch the two lists
+ * disagreeing: it keeps emitting its old order and width, the rows paste in looking plausible,
+ * and every value lands under the neighbouring field. Its CATEGORY copy fails more quietly still
+ * — a category the config tab does not offer renders the picker blank on every imported row.
+ * Parsed out of the source, so this needs no Python on the machine.
  */
 describe('the importer script agrees about the column list', () => {
   const pythonList = (name, [open, close] = '[]') => {
@@ -717,32 +653,22 @@ describe('the importer script agrees about the column list', () => {
     expect(pythonList('EXPENSE_COLUMNS')).toEqual(EXPENSE_COLUMNS)
   })
 
-  // The script emits settlement rows into their own file, at their own layout, so this
-  // list can drift independently of the one above.
+  // Emitted into their own file, at their own layout, so this list drifts independently.
   it('carries the same settlement columns in the same order', () => {
     expect(pythonList('SETTLEMENT_COLUMNS')).toEqual(SETTLEMENT_COLUMNS)
   })
 
-  // Order included: the app pre-selects `categories[0]` on a new entry, so the two
-  // lists reading the same names in a different order is still a disagreement worth
-  // seeing. The script's own assert is what pins each RULE to this vocabulary.
+  // Order included: the app pre-selects `categories[0]`, so a reordering is a disagreement too.
   it('classifies into the categories a fresh config offers', () => {
     expect(pythonList('CATEGORIES', '()')).toEqual(DEFAULT_CONFIG.categories)
   })
 })
 
 /**
- * `apps-script/Code.gs` posts recurring instances into the expenses tabs and reads the
- * recurring tab, and it carries its own copies of both lists for the same reason the
- * Python script does — it cannot import this module.
- *
- * It is the worse of the two homes, and this is the only thing that can see it: `Code.gs`
- * is PASTED into the Apps Script editor rather than deployed from the repo, so a
- * disagreement is invisible in a build AND in the running script. What it costs is a
- * nightly unattended write with every value one field over.
- *
- * Parsed out of the source, which is also why the `.gs` arrays are written one string per
- * line and stay outside Prettier's `{js,jsx}` glob.
+ * `Code.gs` is the worse of the two copies: it is PASTED into the Apps Script editor rather than
+ * deployed from the repo, so a disagreement is invisible in a build AND in the running script,
+ * and it costs a nightly unattended write with every value one field over. Parsed out of the
+ * source, which is why the `.gs` arrays are one string per line and outside Prettier's glob.
  */
 describe('the recurring poster agrees about the column lists', () => {
   const source = readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8')
@@ -762,20 +688,16 @@ describe('the recurring poster agrees about the column lists', () => {
   })
 
   it('appends to the tabs this module names, not to titles of its own', () => {
-    // Both people, because a payer change moves a row and a payer-only handled-scan
-    // would post a second copy under the other person.
+    // Both people: a payer change moves a row, and a one-tab handled-scan posts a second copy.
     const declared = source.match(/^var EXPENSE_TABS = \{(.*)\}$/m)
     expect(declared, 'EXPENSE_TABS not found in Code.gs').toBeTruthy()
     const titles = [...declared[1].matchAll(/'([^']+)'/g)].map((found) => found[1])
     expect(titles).toEqual(PEOPLE.map((person) => expenseTab(person).title))
   })
 
-  /**
-   * The tab TITLES and the two defaults, for the same reason as the column lists and with a
-   * quieter failure than any of them: rename the recurring tab here and `readTemplates`
-   * reads a tab that no longer exists, returns `[]`, and the poster posts nothing, forever.
-   * Nothing throws, no mail goes out, and the app itself looks perfect.
-   */
+  // The quietest failure of all: rename the recurring tab here and `readTemplates` reads a tab
+  // that is gone, returns `[]`, and the poster posts nothing, forever. Nothing throws, no mail
+  // goes out, and the app itself looks perfect.
   it('reads the same tab titles this module names', () => {
     expect(source).toContain(`var RECURRING_TAB = '${RECURRING.title}'`)
     expect(source).toContain(`var CONFIG_TAB = '${CONFIG_TAB}'`)
@@ -787,21 +709,15 @@ describe('the recurring poster agrees about the column lists', () => {
     expect(source).toContain(`cellAt(row, 'day_of_month') || '${DEFAULT_DAY_OF_MONTH}'`)
   })
 
-  /**
-   * The instance id is the whole of "already recorded", and the two derivations have to
-   * agree character for character or the poster and the page each post their own copy of
-   * every month's rent. `test/recurring.test.js` pins the client's side to the same shape.
-   */
+  // The instance id is the whole of "already recorded", and the two derivations must agree
+  // character for character or the poster and the page each post their own copy of every rent.
   it('joins the template id and the month with the same separator', () => {
     expect(source).toContain("template.id + '#' + monthKey")
   })
 
-  /**
-   * `setValues` coerces like the `USER_ENTERED` the schema contract forbids, so the range
-   * has to be text-formatted BEFORE the write or '2026-09-01' becomes a date serial that
-   * reads back in the spreadsheet's locale — which `rowToEntry` rejects and `loadAll`
-   * counts as `undatedRows`.
-   */
+  // `setValues` coerces like the forbidden `USER_ENTERED`, so the range must be text-formatted
+  // BEFORE the write or '2026-09-01' becomes a date serial that reads back in the spreadsheet's
+  // locale — which `rowToEntry` rejects and `loadAll` counts as `undatedRows`.
   it('sets the range to text before writing to it', () => {
     const append = source.slice(source.indexOf('function appendInstance'))
     expect(append.indexOf("setNumberFormat('@')")).toBeGreaterThan(-1)
@@ -810,9 +726,8 @@ describe('the recurring poster agrees about the column lists', () => {
 })
 
 describe('a tab is never guessed', () => {
-  // Answering `expenses_p1` for anything unrecognised would turn "we do not know
-  // which tab this row is in" into a write against the wrong person's ledger.
-  // Every caller either iterates DATA_TABS or holds a row's real payer.
+  // Answering `expenses_p1` for anything unrecognised turns "we do not know which tab" into a
+  // write against the wrong person's ledger.
   it('throws for anything that is not one of the two people', () => {
     expect(expenseTab(PERSON.P1).title).toBe('expenses_p1')
     expect(expenseTab(PERSON.P2).title).toBe('expenses_p2')
@@ -821,14 +736,8 @@ describe('a tab is never guessed', () => {
     }
   })
 
-  /**
-   * `tabOf` is the one home of "where does this entry live", used by the append and by
-   * the lookup that finds the row again — so the two cannot disagree about it.
-   *
-   * The settlement half is what makes an edit safe: `tabOf` answers the same tab
-   * whichever payer a settlement names, so changing that payer overwrites a cell rather
-   * than moving the row and leaving a tombstone behind.
-   */
+  // The settlement half is what makes an edit safe: one tab whichever payer it names, so changing
+  // that payer overwrites a cell rather than moving the row and leaving a tombstone.
   it('sends an entry to the tab its type and payer name', () => {
     expect(tabOf(expense({ payer: PERSON.P1 }))).toBe(expenseTab(PERSON.P1))
     expect(tabOf(expense({ payer: PERSON.P2 }))).toBe(expenseTab(PERSON.P2))

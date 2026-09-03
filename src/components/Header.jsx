@@ -3,16 +3,11 @@ import { usePeopleLabels, useT } from '../i18n/index.js'
 import { RefreshIcon, SettingsIcon } from './icons.jsx'
 
 /**
- * The figure, composed from Intl's own parts so the currency symbol can recede while the
- * integer carries the weight.
+ * The figure, from Intl's own parts so the currency symbol can recede. Parts come out in the order
+ * Intl returns them — never symbol-first by assumption: `fr-FR` puts it after ("1 250 ¥").
  *
- * Parts come out in the order Intl returns them — never symbol-first by assumption.
- * `en`/`ja` put it before ("¥1,250"), `fr-FR` after ("1 250 ¥"). The symbol is the only
- * part that recedes: the yen has no sub-unit, so Intl emits no decimal or fraction part.
- *
- * No `aria-hidden` on anything: the heading that holds this carries its own `aria-label`,
- * which outranks subtree content, so hiding the parts would only turn a terse heading into
- * an empty one.
+ * No `aria-hidden` on anything: the heading's own `aria-label` outranks subtree content, so hiding
+ * the parts would turn a terse heading into an empty one.
  */
 function figure(parts) {
   return parts.map((part, index) =>
@@ -27,32 +22,21 @@ function figure(parts) {
 }
 
 /**
- * The sticky band, and the app's one hero: the running balance, a refresh, and the way
- * into settings.
+ * The sticky band. The balance is deliberately NOT scoped to the month on screen — what one person
+ * owes the other does not reset in January — and carries no action, because settling happens by wire
+ * transfer and comes back as an ordinary entry.
  *
- * The balance is deliberately NOT scoped to the month on screen — what one person owes the
- * other does not reset in January — and it carries no action, because settling happens by
- * wire transfer outside the app and comes back in as an ordinary entry.
- *
- * No `role="status"`, though the figure does change without a page change. Every write that
- * moves it already announces itself through a toast, and a second live region would queue
- * behind that toast and delay the sentence naming what actually happened.
- *
- * `busy` rather than the ledger's status: the only state this cares about is "a refresh is
- * in flight", and by the time the header renders the gates have handled `idle`/`loading`.
+ * No `role="status"`, though the figure changes without a page change: every write that moves it
+ * already speaks through a toast, and a second region would queue behind it.
  */
 export function Header({ balance, config, me, busy, onRefresh, onOpenSettings }) {
   const { t, locale } = useT()
   const { name } = usePeopleLabels(config, me)
   const settled = balance.netYen === 0
   const owe = balance.debtor === me
-  // The figure twice over: Intl's parts for the eye, and the same amount as one flat
-  // string for the heading's name. One call each, from one amount, so the two cannot
-  // disagree about the number they describe.
+  // Parts for the eye, a flat string for the heading — one amount, so the two cannot disagree.
   const amount = settled ? null : formatYen(balance.amountYen, { locale })
   const parts = settled ? null : formatYenParts(balance.amountYen, { locale })
-  // The other person, whichever way the debt runs. Both sentences below need exactly
-  // this and the amount.
   const vars = settled ? null : { name: name(owe ? balance.creditor : balance.debtor), amount }
 
   return (
@@ -65,10 +49,8 @@ export function Header({ balance, config, me, busy, onRefresh, onOpenSettings })
           </h1>
         ) : (
           <>
-            {/* The whole fact in one sentence, because the visible composition is
-                digits: "¥12,500" alone says nothing in a heading list, and read
-                span by span a US amount announces as "dollar forty two point
-                five zero". */}
+            {/* One sentence: "¥12,500" says nothing in a heading list, and span by span a US
+                amount announces as "dollar forty two point five zero". */}
             <h1
               className="balance__amount"
               aria-label={owe ? t('balance.youOweAmount', vars) : t('balance.owesYouAmount', vars)}

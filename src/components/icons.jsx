@@ -38,13 +38,9 @@ export function ChevronRightIcon(props) {
 }
 
 /**
- * An eight-tooth cog, and the one icon here whose path is not hand-drawn.
- *
- * Every point is `(12 + r·cos θ, 12 + r·sin θ)` at `θ = 45k° ± 13°`, on `r = 9.2` at a
- * tooth's tip and `r = 6.5` at its root — so the eight teeth are centred on the 45°
- * steps and every shoulder is radial, symmetric by construction. A hand-transcribed
- * gear lands one tooth slightly off, which at 20px reads as an unfinished glyph.
- * Regenerate rather than retouch: the symmetry is in the arithmetic, not the digits.
+ * An eight-tooth cog, generated rather than drawn: every point is `(12 + r·cos θ, 12 + r·sin θ)` at
+ * `θ = 45k° ± 13°`, on `r = 9.2` at a tooth's tip and `r = 6.5` at its root. A hand-transcribed gear
+ * lands one tooth off and reads as an unfinished glyph at 20px. Regenerate rather than retouch.
  */
 export function SettingsIcon(props) {
   return (
@@ -80,10 +76,7 @@ export function CloseIcon(props) {
   )
 }
 
-/**
- * Retire / restore a recurring cost: a clock. Not a trash can — nothing is destroyed and the
- * same control brings it back, so a destructive glyph would promise the wrong thing.
- */
+/** Retire / restore: a clock, not a trash can — nothing is destroyed and this brings it back. */
 export function RetireIcon(props) {
   return (
     <svg {...base} {...props}>
@@ -102,10 +95,8 @@ export function SwapIcon(props) {
 }
 
 /**
- * The recurring marker, on the ledger's fixed-costs band. Two open arcs rather than the
- * closed ring `RefreshIcon` draws: that one already means "read the sheet again" in the
- * header, and one glyph cannot mean two things on one screen. It renders at 15px, so the
- * arrowheads sit at the ends of the arcs where they stay legible at that size.
+ * The recurring marker. Two open arcs rather than the closed ring `RefreshIcon` draws: that already
+ * means "read the sheet again". It renders at 15px, so the arrowheads sit at the ends of the arcs.
  */
 export function RepeatIcon(props) {
   return (

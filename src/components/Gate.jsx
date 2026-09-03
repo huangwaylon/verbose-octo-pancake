@@ -6,7 +6,6 @@ import { useTNodes } from '../i18n/nodes.jsx'
 import { Field, FieldError } from './Field.jsx'
 import { WalletIcon } from './icons.jsx'
 
-/** Full-screen screens shown before the app has what it needs to run. */
 function Panel({ title, children }) {
   return (
     <div className="gate">
@@ -38,30 +37,14 @@ export function UnconfiguredGate() {
   )
 }
 
-/**
- * Takes the app key once per device.
- *
- * This replaces a Google sign-in button, and the difference is the whole point of
- * the design: a key that works keeps working, so this screen is shown once and
- * then never again — no popup, no consent flow, nothing that expires.
- */
+/** Takes the app key once per device: a key that works keeps working, and nothing expires. */
 export function KeyGate({ onConnect, connecting, error, suspect }) {
   const { t } = useT()
   const [value, setValue] = useState('')
   const failureId = useId()
-  /**
-   * The only text field outside a sheet, and `.gate` is one viewport tall and centres
-   * its content — so there is nothing for iOS to scroll, and the keyboard covers
-   * Connect while the field above it stays visible. The same publisher the sheet uses;
-   * `.gate` spends the inset as bottom padding, which shrinks the box it centres in.
-   */
+  /** `.gate` is one viewport tall and centres its content, so the keyboard covers Connect. */
   useKeyboardInset()
-  /**
-   * The one message this screen can produce, whichever source it came from. Connect is
-   * what produced it, so Connect is what has to reach it — the same rule the entry
-   * form's save failure follows. Without it a failed mint on iOS speaks nothing at all:
-   * focus stays on the button and the sentence appears silently below it.
-   */
+  /** Connect produced it, so Connect has to reach it, or a failed mint on iOS speaks nothing. */
   const failure = suspect && !error ? t('error.badKey') : error
 
   return (
@@ -79,8 +62,7 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
             id="app-key"
             className="input"
             type="password"
-            // A password field so iOS offers to store it in the Keychain, which is
-            // what makes "typed once per device" true rather than aspirational.
+            // So iOS offers the Keychain, which is what makes "typed once per device" true.
             autoComplete="current-password"
             autoCapitalize="none"
             autoCorrect="off"
@@ -100,9 +82,7 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
           {t('gate.connect')}
         </button>
       </form>
-      {/* A stored key the endpoint has rejected shows `error.badKey` with no fresher
-          failure to show: the key was kept deliberately, so say why this screen came
-          back. */}
+      {/* A rejected key is KEPT, not deleted, so this screen has to say why it came back. */}
       {failure && <FieldError id={failureId}>{failure}</FieldError>}
       <p className="field__hint">{t('gate.keyFine')}</p>
     </Panel>

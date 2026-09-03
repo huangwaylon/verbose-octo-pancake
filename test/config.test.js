@@ -5,11 +5,8 @@ import { DEFAULT_CONFIG, mergeConfig } from '../src/config.js'
 import { nameOf } from '../src/lib/identity.js'
 import { PERSON } from '../src/schema.js'
 
-/**
- * The config tab is hand-edited by two non-programmers in a spreadsheet, so the
- * parser has to be forgiving about shape without ever producing a value that
- * would corrupt an entry — a NaN split silently moves money.
- */
+// The config tab is hand-edited in a spreadsheet, so the parser is forgiving about shape — but
+// must never produce a value that corrupts an entry: a NaN split silently moves money.
 
 describe('text and list keys', () => {
   it('reads names and categories', () => {
@@ -34,8 +31,7 @@ describe('text and list keys', () => {
   })
 
   it('omits a list that is only separators, rather than returning an empty list', () => {
-    // An empty array here would shadow the default categories and leave the
-    // category picker with nothing in it.
+    // An empty array would shadow the default categories and leave the picker empty.
     expect(parseConfigRows([['categories', ' , , ']])).toEqual({})
   })
 
@@ -46,8 +42,7 @@ describe('text and list keys', () => {
 
 describe('mergeConfig', () => {
   it('layers the sheet over the defaults, keeping unspecified keys', () => {
-    // A key the defaults actually HOLD, so this tests the override rather than
-    // merely spreading an unknown one past them.
+    // A key the defaults actually HOLD, so this tests the override rather than a spread.
     const merged = mergeConfig({ defaultSplitP1: 0.8 })
     expect(merged.defaultSplitP1).toBe(0.8)
     expect(merged.defaultSplitP2).toBe(DEFAULT_CONFIG.defaultSplitP2)
@@ -55,8 +50,7 @@ describe('mergeConfig', () => {
   })
 
   it('hands out array copies, so a caller cannot corrupt the shared defaults', () => {
-    // DEFAULT_CONFIG is a module singleton reused by every later merge, including
-    // the reset on disconnect. Mutation there would survive the rest of the session.
+    // DEFAULT_CONFIG is a module singleton, so a mutation survives the whole session.
     const merged = mergeConfig()
     merged.categories.push('Poisoned')
     merged.notePresets.push('Poisoned')
@@ -86,8 +80,7 @@ describe('note presets', () => {
 })
 
 describe('default split', () => {
-  // The parser reads each person's key independently, so the shared
-  // percentage-vs-fraction rules are pinned once against p1.
+  // Both keys are read independently, so the percentage-vs-fraction rules are pinned on p1.
   const p1 = (value) => parseConfigRows([['default_split_p1', value]]).defaultSplitP1
 
   it('reads a percentage, which is what people write in a spreadsheet', () => {
@@ -109,8 +102,7 @@ describe('default split', () => {
   })
 
   it('clamps above 100%', () => {
-    // The clamp itself, at an exact value. A property test over a range of inputs
-    // asserting only "within [0,1]" cannot fail for any input this one accepts.
+    // An exact value: a property test asserting only "within [0,1]" cannot fail here.
     expect(p1('150')).toBe(1)
   })
 
@@ -135,8 +127,8 @@ describe('default split', () => {
   })
 
   it('leaves the other person to the default when only one key is set', () => {
-    // Not mirrored to 1 - x: the two are independent settings, and inventing
-    // the other half would silently commit someone to a split they never wrote.
+    // Not mirrored to 1 - x: inventing the other half commits someone to a split they
+    // never wrote.
     expect(parseConfigRows([['default_split_p1', '80']])).toEqual({ defaultSplitP1: 0.8 })
   })
 
@@ -146,9 +138,8 @@ describe('default split', () => {
   })
 
   it('is frozen, arrays included, because every reader holds the shared object', () => {
-    // `mergeConfig`'s clone only covers a key the sheet left out; everything else reads
-    // these values directly, so one mutation would change what every later read defaults
-    // to — the categories a picker offers, and the split that moves money.
+    // `mergeConfig`'s clone only covers a key the sheet left out; every other read is of
+    // these values directly, so one mutation changes every later default.
     expect(() => {
       DEFAULT_CONFIG.defaultSplitP1 = 0.9
     }).toThrow(TypeError)
@@ -158,10 +149,8 @@ describe('default split', () => {
 })
 
 describe('the two people’s names', () => {
-  // The sheet is the only source of a name. A default here would shadow the
-  // localized fallback in `nameOf`, so a Japanese device reading a sheet with no
-  // names in its config tab would say "Person 1" rather than 「ひとり目」 — and
-  // nothing else in the suite would notice.
+  // A default name here shadows `nameOf`'s localized fallback, so a Japanese device reading
+  // an unnamed config tab would say "Person 1" — and nothing else in the suite would notice.
   it('is absent from the defaults, so the localized fallback stays reachable', () => {
     expect('person1Name' in DEFAULT_CONFIG).toBe(false)
     expect('person2Name' in DEFAULT_CONFIG).toBe(false)
@@ -170,8 +159,6 @@ describe('the two people’s names', () => {
   })
 
   it('refuses to name anybody with no fallbacks, rather than defaulting to English', () => {
-    // The fallbacks are the localized ones, so a default pair here would be two English
-    // words shown on a Japanese phone reading a sheet that never named anyone.
     expect(() => nameOf(mergeConfig(), PERSON.P1)).toThrow(TypeError)
   })
 
@@ -183,11 +170,8 @@ describe('the two people’s names', () => {
 })
 
 describe('comparing two reads of the tab', () => {
-  /**
-   * `useLedger` keeps the SAME merged config object when this answers true, because a
-   * fresh but equal one re-renders the whole ledger on a resume that changed nothing.
-   * So a false positive is a config change the screen never shows.
-   */
+  // `useLedger` keeps the SAME merged config object when this answers true, because a fresh
+  // but equal one re-renders the whole ledger — so a false positive hides a config change.
   it('answers true for two reads of an identical tab', () => {
     const pairs = [
       ['person1_name', 'Waylon'],
@@ -199,8 +183,7 @@ describe('comparing two reads of the tab', () => {
   })
 
   it('answers true for two empty tabs, however they are spelled', () => {
-    // The disconnect path leaves the remembered config `undefined` and the next read
-    // parses `{}`; both mean "the sheet said nothing", and both merge to the defaults.
+    // Disconnect leaves the remembered config `undefined`, the next read parses `{}`.
     expect(sameSheetConfig(undefined, {})).toBe(true)
     expect(sameSheetConfig({}, undefined)).toBe(true)
   })
@@ -231,8 +214,8 @@ describe('comparing two reads of the tab', () => {
   })
 
   it('compares lists by contents, not by reference', () => {
-    // Two parses of one tab are always different array objects, so a reference
-    // comparison would report every refresh as a change and buy nothing.
+    // Two parses of one tab are different array objects, so a reference comparison would
+    // report every refresh as a change.
     const a = parseConfigRows([['categories', 'Groceries, Dining']])
     const b = parseConfigRows([['categories', 'Groceries, Dining']])
     expect(a.categories).not.toBe(b.categories)

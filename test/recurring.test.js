@@ -16,7 +16,6 @@ import { expense, templateRow as row, tombstone } from './support/entries.js'
 
 /** What a month says about each recurring declaration, and what a form may refuse. */
 
-/** The rent template every case below varies. */
 const rent = (fields) =>
   row({
     id: 'rent',
@@ -63,10 +62,9 @@ describe('rowToTemplate', () => {
   })
 
   /**
-   * The rule that separates this tab from the config tab: a blank cell takes its
-   * documented default, a FILLED one that cannot be read refuses the whole row. Every
-   * default here either moves money or decides whether the cost is offered at all, so a
-   * typo has to be counted and said out loud instead of absorbed.
+   * The rule that separates this tab from the config tab: a blank cell takes its documented
+   * default, a FILLED one that cannot be read refuses the whole row — because every default here
+   * moves money or decides whether the cost is offered, so a typo is counted, not absorbed.
    */
   describe('a filled cell it cannot read refuses the row', () => {
     it.each([
@@ -91,9 +89,8 @@ describe('rowToTemplate', () => {
   })
 
   /**
-   * A blank share means "follow the PAYER's default". Read as EVEN_SHARE here — which is
-   * what `rowToEntry` correctly does for an already-written row — every rent would split
-   * 50/50 on a sheet running 80/20, on the one expense large enough for it to matter.
+   * A blank share means "follow the PAYER's default". Read as EVEN_SHARE — which is right for an
+   * already-written row — every rent splits 50/50 on a sheet running 80/20.
    */
   it('leaves a blank share null rather than defaulting it to an even split', () => {
     expect(rowToTemplate(rent({})).payerShare).toBeNull()
@@ -102,7 +99,6 @@ describe('rowToTemplate', () => {
   })
 
   it('leaves a blank amount null, meaning recurring but variable', () => {
-    // A utility bill: the page lists it with no figure and the form opens empty.
     expect(rowToTemplate(rent({ amount: '' })).amountYen).toBeNull()
   })
 
@@ -124,9 +120,8 @@ describe('entryFromTemplate', () => {
   const template = rowToTemplate(rent({ day_of_month: '27', payer_share: '80' }))
 
   it('derives the id from the template and the month, not from what a person can edit', () => {
-    // The literal, because this string IS the contract between the page, the Apps Script
-    // poster and the ledger. Category plus description would post a second rent the
-    // moment somebody renamed a note to 'Rent (Aug)'.
+    // The literal, because this string IS the contract between the page, the Apps Script poster
+    // and the ledger. Category plus description re-posts the moment a note is renamed.
     expect(entryFromTemplate(template, '2026-09').id).toBe('rent#2026-09')
   })
 
@@ -157,10 +152,7 @@ describe('entryFromTemplate', () => {
   })
 })
 
-/**
- * The inverse of the instance id, and the whole of how the ledger tells a fixed cost from an
- * ordinary one — no marker in the note, no column, and deliberately no look at the templates.
- */
+/** The inverse of the instance id: the ledger knows a fixed cost from the ENTRY alone. */
 describe('isRecurringInstance', () => {
   const template = rowToTemplate(rent({ day_of_month: '27' }))
 
@@ -168,14 +160,13 @@ describe('isRecurringInstance', () => {
     for (const monthKey of ['2026-09', '2019-01', '2099-12']) {
       expect(isRecurringInstance(entryFromTemplate(template, monthKey))).toBe(true)
     }
-    // The literal too: this join is a contract with `apps-script/Code.gs`, which cannot
-    // import it, so a change here has to fail against the string and not only the pair.
+    // The literal too: this join is a contract with `apps-script/Code.gs`, which cannot import
+    // it, so a change here has to fail against the string and not only the pair.
     expect(isRecurringInstance({ id: 'rent#2026-09' })).toBe(true)
   })
 
   it('refuses an id that is anything else', () => {
-    // A minted uuid, a bare template id, and every near miss of the month key — the last of
-    // which is what an entry dated by hand in the sheet would look like.
+    // A uuid, a bare template id, and every near miss — the last is a hand-dated row.
     for (const id of [
       'rent',
       '9f1c2b7e-4a5d-4c3e-8f10-2b6d5e7a9c11',
@@ -191,8 +182,7 @@ describe('isRecurringInstance', () => {
   })
 
   it('answers false for a row with no usable id rather than throwing', () => {
-    // It runs over the whole month on every render of the list, including a row a hand-edited
-    // sheet produced.
+    // It runs over the whole month on every render, including a row a hand-edited sheet produced.
     for (const entry of [undefined, null, {}, { id: null }, { id: 202609 }]) {
       expect(isRecurringInstance(entry)).toBe(false)
     }
@@ -227,14 +217,12 @@ describe('recurringRows', () => {
   })
 
   it('is empty only when there are no templates', () => {
-    // The pure layer trusts its callers for shape — `loadAll` always hands it two arrays — and
-    // says so by not guarding. What it does NOT trust is the month key, which comes from state.
+    // The pure layer trusts its callers for shape; what it does NOT trust is the month key.
     expect(recurringRows([], [], '2026-09', '2026-09-30')).toEqual([])
   })
 
   it('still lists every template for a month key that is not one', () => {
-    // The rows are what the sheet edits, so they must not vanish with a bad month —
-    // nothing is due, scheduled or recordable, which is the honest answer.
+    // Nothing is due, scheduled or recordable, but the rows are what the sheet edits.
     for (const monthKey of ['', '2026-13', '2026-09-01', undefined]) {
       const rows = rowsFor([], monthKey, '2026-09-30')
       expect(rows).toHaveLength(2)
@@ -249,15 +237,13 @@ describe('recurringRows', () => {
   })
 
   /**
-   * The day gate and the month being looked at are ONE comparison against the instance's own
-   * date. Offering the 27th's rent on the 1st as DUE would have the balance claiming 44,000
-   * owed for three weeks before the money moved.
+   * The day gate and the month on screen are ONE comparison against the instance's own date:
+   * calling the 27th's rent due on the 1st claims 44,000 owed three weeks before it moves.
    */
   it('does not call a cost due before its day has come, but still calls it scheduled', () => {
     const [rentRow] = rowsFor([], '2026-09', '2026-09-01')
     expect(rentRow.due).toBe(false)
-    // The distinction two states could not draw: not-yet-due reads identically to already-paid
-    // unless the row can tell them apart.
+    // The distinction two states could not draw: not-yet-due reads identically to already-paid.
     expect(rentRow.scheduled).toBe(true)
     expect(rentRow.recorded).toBe(false)
 
@@ -266,22 +252,19 @@ describe('recurringRows', () => {
   })
 
   /**
-   * Not due is not the same as not recordable. Rent paid on the 3rd has to be recordable on
-   * the 3rd, or the only way to enter it is to retype the whole cost by hand — and `draft` is
-   * what the page's one Record gate reads.
+   * Not due is not the same as not recordable: rent paid on the 3rd has to be recordable on the
+   * 3rd, or the only way in is to retype the cost by hand — and `draft` gates the Record control.
    */
   it('is recordable before its day, with the draft the form would open on', () => {
     const [rentRow] = rowsFor([], '2026-09', '2026-09-01')
     expect(rentRow.due).toBe(false)
-    // The instance's own date, not the day it was recorded: an early tap must not file rent
-    // under the 1st, or two people recording the same rent produce two different dates.
+    // The instance's own date, not the day of the tap: one rent must not get two dates.
     expect(rentRow.draft).toEqual(entryFromTemplate(templates[0], '2026-09'))
     expect(rentRow.draft.date).toBe('2026-09-27')
   })
 
   it('offers a future month for recording but never calls it due', () => {
-    // The month switcher reaches next month, and the poster must never run early — so the
-    // two answers deliberately differ here.
+    // The month switcher reaches next month, and the poster must never run early.
     expect(recordableIds([], '2026-10', '2026-09-30')).toEqual(['rent#2026-10', 'gym#2026-10'])
     expect(dueIds([], '2026-10', '2026-09-30')).toEqual([])
   })
@@ -300,9 +283,8 @@ describe('recurringRows', () => {
   })
 
   /**
-   * A tombstone means the month is RECORDED — the one place in this codebase where the
-   * deleted rows are the ones that count. Filtering them out instead offers the rent again
-   * for the rest of the month, every time it is deliberately removed.
+   * A tombstone means the month is RECORDED — the one place here where the deleted rows count.
+   * Filtering them out offers the rent again for the rest of the month, every time it is removed.
    */
   it('treats a recorded instance as recorded, tombstoned or not', () => {
     for (const recordedRow of [
@@ -312,7 +294,6 @@ describe('recurringRows', () => {
       const [rentRow] = rowsFor([recordedRow], '2026-09', '2026-09-30')
       expect(rentRow.recorded).toBe(true)
       expect(rentRow.due).toBe(false)
-      // And no draft, so the page cannot offer to record it a second time.
       expect(rentRow.draft).toBeNull()
     }
   })
@@ -328,8 +309,8 @@ describe('recurringRows', () => {
   })
 
   it('reports a retired template as not scheduled rather than dropping it', () => {
-    // Retiring is `active_to`, so the row stays in the sheet and stays on the page — which
-    // is what makes it restorable, and what keeps its posted months recorded.
+    // Retiring is `active_to`: the row stays, which is what makes it restorable and keeps its
+    // posted months recorded.
     const retired = [rowToTemplate(rent({ active_to: '2026-08' }))]
     const [state] = recurringRows(retired, [], '2026-09', '2026-09-30')
     expect(state.scheduled).toBe(false)
@@ -362,10 +343,9 @@ describe('retiring and restoring', () => {
   const template = rowToTemplate(rent({}))
 
   /**
-   * The whole reason there is no delete. The instance id is the only link between a
-   * declaration and the rows it has already posted, so a deleted row orphans them: re-create
-   * the cost under a new id and the month already paid reads as unrecorded, which is enough
-   * for the unattended poster to append a second rent that night.
+   * The whole reason there is no delete. The instance id is the only link between a declaration
+   * and the rows it posted, so deleting the row orphans them: re-created under a new id, a month
+   * already paid reads as unrecorded — enough for the poster to append it again.
    */
   it('ends the template as of last month, keeping its id', () => {
     const retired = retiredTemplate(template, '2026-09')
@@ -398,20 +378,16 @@ describe('templateToRow', () => {
   })
 
   it('writes one string per column, never a hole or the text "null"', () => {
-    // Ten is what the `A2:J` range spells. A hole leaves the cell UNTOUCHED on a RAW
-    // write, so a cleared amount would keep its old figure.
+    // Ten is what `A2:J` spells. A hole leaves the cell UNTOUCHED on a RAW write, so a cleared
+    // amount would keep its old figure.
     const row = templateToRow(makeTemplate({ id: 'x', payer: PERSON.P1 }))
     expect(row).toHaveLength(10)
     for (const cell of row) expect(typeof cell).toBe('string')
     expect(row.every((cell) => cell !== 'null' && cell !== 'undefined')).toBe(true)
   })
 
-  /**
-   * Blank is a VALUE in two columns and it has to survive the round trip: a blank amount
-   * means variable, a blank share means "follow the payer's default" — and a blank share
-   * is also what makes the Apps Script poster skip the row.
-   */
   it('writes a null amount and a null share as blank, not as zero', () => {
+    // Blank must survive the round trip, in both senses it carries above.
     const variable = makeTemplate({ id: 'x', payer: PERSON.P1, description: 'Gas' })
     const row = templateToRow(variable)
     expect(row[RECURRING.index('amount')]).toBe('')
@@ -420,16 +396,14 @@ describe('templateToRow', () => {
   })
 
   it('keeps a zero share, which is not the same as a blank one', () => {
-    // payer_share 0 means the other person owes all of it. Folded into blank it would
-    // become the payer's default instead — money, silently.
+    // 0 means the other person owes all of it; folded into blank it becomes the payer's default.
     const row = templateToRow(makeTemplate({ id: 'x', payer: PERSON.P1, payerShare: 0 }))
     expect(row[RECURRING.index('payer_share')]).toBe('0')
     expect(rowToTemplate(row).payerShare).toBe(0)
   })
 
   it('round-trips the three columns the form does not edit', () => {
-    // The form writes the whole row, so a quarterly template edited through it must come
-    // back quarterly rather than monthly.
+    // The form writes the whole row, so a quarterly template edited through it must not go monthly.
     const scheduled = rowToTemplate(
       rent({ payer_share: '50', months: '1,4,7,10', active_from: '2026-04', active_to: '2027-03' }),
     )
@@ -470,8 +444,7 @@ describe('makeTemplate', () => {
   })
 
   it('passes an unrecognised payer through so validation can refuse it', () => {
-    // Rewritten to p1 it would file this cost under the wrong person every month, and
-    // BAD_PAYER would be unreachable from the form.
+    // Rewritten to p1 it files the cost under the wrong person, and BAD_PAYER goes unreachable.
     const template = makeTemplate({ id: 'x', payer: 'nonsense' })
     expect(template.payer).toBe('nonsense')
     expect(validateTemplateCodes(template)).toContain(TEMPLATE_ERROR.BAD_PAYER)
@@ -506,8 +479,7 @@ describe('validateTemplateCodes', () => {
   })
 
   it('rejects a numeric STRING amount, which means makeTemplate was bypassed', () => {
-    // `makeTemplate` coerces all three numerics, so validation only sees a string when
-    // something skipped it — and a string amount reaching `yenToSheetString` throws.
+    // A string amount reaching `yenToSheetString` throws.
     expect(validateTemplateCodes({ ...valid(), amountYen: '220000' })).toEqual([
       TEMPLATE_ERROR.BAD_TEMPLATE_AMOUNT,
     ])
@@ -523,8 +495,7 @@ describe('validateTemplateCodes', () => {
   })
 
   it('rejects a numeric STRING share, which means makeTemplate was bypassed', () => {
-    // `makeTemplate` coerces, so validation only sees a string when something skipped it —
-    // and a string share reaching `splitYen` is the one shape that moves money silently.
+    // A string share reaching `splitYen` is the one shape that moves money silently.
     expect(validateTemplateCodes({ ...valid(), payerShare: '0.5' })).toEqual([
       TEMPLATE_ERROR.BAD_SHARE,
     ])
@@ -552,12 +523,9 @@ describe('validateTemplateCodes', () => {
 })
 
 /**
- * The refusal that stands between a typo and a silent money change.
- *
- * A blank amount is VALID — it means the figure varies — so `parseAmountToYen` answering null
- * cannot fall through to blank: a fumbled `22o000` would save an empty amount cell, the row
- * would read "Varies", and `postRecurring` would quietly stop posting rent, because it posts
- * only a template that spells out both its amount and its share.
+ * The refusal between a typo and a silent money change. A blank amount is VALID — the figure
+ * varies — so `parseAmountToYen` answering null must not fall through to blank: a fumbled
+ * `22o000` saves an empty amount, the row reads "Varies", and `postRecurring` stops posting rent.
  */
 describe('templateFormProblem', () => {
   const form = (over) => ({ description: 'Rent', amount: '220000', day: '27', ...over })
@@ -572,8 +540,7 @@ describe('templateFormProblem', () => {
   })
 
   it('refuses an amount somebody typed and this cannot read', () => {
-    // Each of these is what a thumb produces on a phone, and every one of them would
-    // otherwise be saved as "the amount varies".
+    // Each is what a thumb produces on a phone, and each would otherwise save as "varies".
     for (const amount of ['22o000', 'abc', '1..2', '12 34x', '-500', '¥¥', '0']) {
       expect(templateFormProblem(form({ amount })), amount).toBe('amount')
     }
@@ -590,8 +557,8 @@ describe('templateFormProblem', () => {
 
   it('refuses a blank name, and refuses it FIRST', () => {
     expect(templateFormProblem(form({ description: '   ' }))).toBe('description')
-    // Field order, because focus follows the answer: reporting the day while the name above
-    // it is also empty sends someone to the wrong control.
+    // Field order, because focus follows the answer: the day named while the name is also empty
+    // sends someone to the wrong control.
     expect(templateFormProblem({ description: '', amount: 'abc', day: '99' })).toBe('description')
     expect(templateFormProblem({ description: 'Rent', amount: 'abc', day: '99' })).toBe('amount')
   })

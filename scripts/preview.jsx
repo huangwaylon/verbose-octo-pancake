@@ -1,16 +1,8 @@
 /**
- * Visual harness: renders the signed-in app surface to static HTML with the real
- * stylesheets, so it can be screenshotted at phone and desktop widths. A green
- * test suite says nothing about whether the page looks right: a chart rendering
- * white-on-white passes every assertion in the suite.
- *
- * One file per locale, each accent as its own variant so a colour change can be
- * eyeballed across all five, and one page per overlay — the delete dialog, the entry
- * form, the settlement form, the settings sheet, the recurring page and its form —
- * because those are what a small phone has least room for.
- *
- * The surface is the app's own `LedgerScreen`, so this harness cannot drift from what
- * `App` renders.
+ * Visual harness: the signed-in surface rendered to static HTML with the real stylesheets, for
+ * screenshotting at phone and desktop widths. A green suite says nothing about whether the page
+ * looks right — a chart rendering white-on-white passes every assertion in it. The surface is
+ * the app's own `LedgerScreen`, so this cannot drift from what `App` renders.
  *
  *   npx vite-node scripts/preview.jsx
  */
@@ -53,12 +45,9 @@ const config = {
 }
 
 const raw = [
-  // Two recurring instances, at the ids the `templates` below mint — so the ledger's
-  // fixed-costs section is the app's own reading of an id rather than a flag, and the
-  // section holds two rows, which is what puts a hairline between them. Deliberately
-  // modest figures: rent's ¥220,000 would take 84% of the category ring and leave the
-  // palette — the whole reason these pages exist — five slivers. The big one is on the
-  // stress page, where geometry rather than colour is what is being read.
+  // Two recurring instances, at the ids the `templates` below mint — so the fixed-costs section
+  // is the app's own reading of an id, and two rows is what puts a hairline between them. Modest
+  // figures on purpose: rent's ¥220,000 takes 84% of the ring and leaves the palette slivers.
   ['gas#2026-08', '2026-08-10', PERSON.P2, 7200, '日用品', 'ガス・水道', EVEN_SHARE],
   ['gym#2026-08', '2026-08-01', PERSON.P2, 8000, '娯楽', 'ジムの会費', EVEN_SHARE],
   ['a', '2026-08-05', PERSON.P1, 4820, '食費', 'いつもの買い物', EVEN_SHARE],
@@ -104,10 +93,8 @@ const deleted = [
 const noop = () => {}
 
 /**
- * Four recurring costs covering every state the page's rows can be in: due now, already
- * recorded, not yet due, and retired. Built from `recurring` rows through the app's own
- * decoder, so the page is rendering what a real tab produces — including the ¥220,000 that
- * makes rent the widest thing on the row.
+ * Four recurring costs, one per row state, built from `recurring` rows through the app's own
+ * decoder so the page renders what a real tab produces.
  */
 const templates = [
   ['rent', '家賃', '220000', 'Rent', 'p1', '80', '27'],
@@ -125,12 +112,9 @@ const templates = [
   ),
 )
 
-/**
- * The same shape `useLedgerView` hands the screen. Built here rather than by calling
- * the hook, which needs a renderer — the figures still come from `balance.js`, so
- * they are the app's own arithmetic and not a fixture pretending to be it. One
- * builder, so a new page cannot forget a field.
- */
+// The same shape `useLedgerView` hands the screen, built here because the hook needs a renderer.
+// The figures come from `balance.js`, so they are the app's own arithmetic; one builder, so a new
+// page cannot forget a field.
 const viewOf = (list, tombstones = []) => ({
   balance: computeBalance(list),
   monthSpend: totalSpend(list),
@@ -143,11 +127,7 @@ const viewOf = (list, tombstones = []) => ({
 
 const baseView = viewOf(entries, deleted)
 
-/**
- * `overlay` puts one of the sheets over the surface, which is how each of them
- * ships. The surface itself is the real `LedgerScreen`, so this cannot drift from
- * what `App` renders.
- */
+/** `overlay` puts one of the sheets over the surface, which is how each of them ships. */
 function body(overlay, { view = baseView, config: pageConfig = config } = {}) {
   return renderToStaticMarkup(
     <div className="app">
@@ -171,11 +151,8 @@ function body(overlay, { view = baseView, config: pageConfig = config } = {}) {
   )
 }
 
-/**
- * Settled changes the header's whole shape: one line where there are normally two,
- * and no figure at all. Reached by settling exactly the outstanding balance, so the
- * zero is the app's own arithmetic rather than a hand-written fixture.
- */
+// Settled changes the header's whole shape: one line where there are normally two, and no figure.
+// Reached by settling exactly the outstanding balance, so the zero is the app's own arithmetic.
 const settledEntries = [
   ...entries,
   makeEntry({
@@ -191,14 +168,9 @@ const settledEntries = [
 
 const settledView = viewOf(settledEntries, deleted)
 
-/**
- * Everything a config tab and a note field can legitimately hold that a 320px phone
- * has no room for: names with no break opportunity, a category longer than the
- * control it sits in, an amount big enough that the header has to truncate the hero
- * figure, and a note that wraps three times. The layout has to absorb all of it
- * without a horizontal scrollbar or a clipped glyph, which is the one thing no
- * assertion in the suite can check.
- */
+// Everything a config tab and a note field can legitimately hold that a 320px phone has no room
+// for. The layout has to absorb it without a horizontal scrollbar or a clipped glyph, which is
+// the one thing no assertion in the suite can check.
 const stressConfig = {
   ...config,
   person1Name: 'Bartholomew',
@@ -227,8 +199,8 @@ const stressEntries = [
     category: '',
     payerShare: 0,
   }),
-  /* The fixed-costs band under the same stress: its title carries an icon, so it has less
-     room for a section total than a day label does. */
+  /* The fixed-costs band under the same stress: its title carries an icon, so it has less room
+     for a section total than a day label does. */
   makeEntry({
     id: 'monthly-standing-order#2026-08',
     type: ENTRY_TYPE.EXPENSE,
@@ -243,10 +215,7 @@ const stressEntries = [
 
 const stressView = viewOf(stressEntries)
 
-/**
- * One builder per sheet, so a stress page cannot drift from the page it stresses:
- * the props are written once and only the entry and the config vary.
- */
+/** One builder per sheet, so a stress page cannot drift from the page it stresses. */
 const entryForm = (entry, pageConfig) => (
   <EntryFormSheet
     draft={{ mode: 'edit', entry }}
@@ -271,12 +240,6 @@ const settingsSheet = (pageConfig) => (
   />
 )
 
-/**
- * The overlays, each the densest thing on a phone screen in its own way — plus the
- * settlement form, which is the sparsest: it drops the note, category and split
- * controls, which sit either side of the payer and date controls, so it is the one page
- * where getting the form's two conditional blocks wrong is visible.
- */
 const recurringSheet = (pageConfig, props) => (
   <RecurringSheet
     templates={templates}
@@ -329,34 +292,26 @@ const OVERLAYS = {
       notePresets: ['オーケー', 'Ozeki', 'Life'],
     },
   ),
+  /* The sparsest thing the entry form renders, and the only page where its two
+     `!isSettlement` blocks — which sit either side of the payer and date controls — show. */
   settlement: entryForm({ ...entries[0], type: ENTRY_TYPE.SETTLEMENT, payerShare: 0 }, config),
   settings: settingsSheet(config),
-  /* The page that manages the recurring tab, and its form — the two densest new surfaces,
-     and the only place the four row states are visible at once. */
+  /* The only page where the four recurring row states are visible at once. */
   recurring: recurringSheet(config),
   template: templateForm(templates[0], config),
 }
 
-/**
- * The two sheets under the same stress. The form is not covered by `OVERLAYS.form`,
- * which uses the short-named config — and the form holds config text in a place the
- * settings sheet does not: the split slider's label is the payer's own name in the
- * possessive, in a grid whose other track is sized to its content, where
- * `.sheet__body`'s `overflow-x: hidden` would CLIP an overflow rather than report it.
- * The settings sheet is where the config tab's own text has least room to fit.
- */
+// `OVERLAYS.form` uses the short-named config, and the form holds config text where the settings
+// sheet does not: the split slider's label is the payer's own name in the possessive, in a grid
+// whose other track is sized to its content, where `overflow-x: hidden` would CLIP the overflow.
 const STRESS_FORM = entryForm({ ...stressEntries[0], payerShare: 0.7 }, stressConfig)
 const STRESS_SETTINGS = settingsSheet(stressConfig)
-/**
- * The recurring page holding what a hand-authored tab can: a name with no break
- * opportunity and an eight-figure amount, in a row whose name is the one thing that must
- * stay readable in full. `.sheet__body`'s `overflow-x: hidden` CLIPS rather than reports,
- * so the harness measures that element's own scroll width.
- */
+// The recurring page holding what a hand-authored tab can: a name with no break opportunity and
+// an eight-figure amount, in a row whose name must stay readable in full. `.sheet__body`'s
+// `overflow-x: hidden` CLIPS rather than reports, so the harness measures its own scroll width.
 const STRESS_RECURRING = recurringSheet(stressConfig, {
   /* A month nobody has reached, so every row is recordable but not yet due — which puts the
-     WIDER of the two record labels next to the widest name the tab can hold. The page with
-     the four row states is `preview-*-recurring`; this one is about the geometry. */
+     WIDER of the two record labels next to the widest name the tab can hold. */
   monthKey: '2099-08',
   templates: [
     rowToTemplate(
@@ -395,8 +350,8 @@ function page(markup, lang, accent) {
 
 const written = []
 for (const [locale, accents] of [
-  // Every accent in English, since the palette is what is being checked; the
-  // Japanese pass is about wrapping and line height, so one accent is enough.
+  // Every accent in English, since the palette is what is checked; the Japanese pass is about
+  // wrapping and line height, so one accent is enough.
   ['en', ACCENTS],
   ['ja', [ACCENTS[0]]],
 ]) {
@@ -407,9 +362,7 @@ for (const [locale, accents] of [
     writeFileSync(new URL(`./${name}`, import.meta.url), page(body(), locale, accent))
     written.push(`scripts/${name}`)
   }
-  // Each overlay gets its own page in both languages: they cover the surface they
-  // sit on, they hold the longest sentences in either catalog, and the form and the
-  // settings sheet are the two screens most likely to overflow a small phone.
+  // Each overlay in both languages: they cover the surface and hold the longest sentences.
   for (const [variant, overlay] of Object.entries(OVERLAYS)) {
     const name = `preview-${locale}-${variant}.html`
     writeFileSync(new URL(`./${name}`, import.meta.url), page(body(overlay), locale, ACCENTS[0]))
@@ -417,8 +370,7 @@ for (const [locale, accents] of [
   }
 }
 
-// The widths nothing else exercises, in English only: what is being read here is the
-// geometry, not the copy.
+// The widths nothing else exercises, in English only: what is being read is the geometry.
 setLocale('en')
 const stress = { view: stressView, config: stressConfig }
 for (const [variant, overlay, options] of [
@@ -434,10 +386,8 @@ for (const [variant, overlay, options] of [
   writeFileSync(new URL(`./${name}`, import.meta.url), markup)
   written.push(`scripts/${name}`)
 }
-/**
- * The summary's other per-person view. A stored preference rather than component state, so the
- * harness can flip it — which is the whole reason it is one.
- */
+// A stored preference rather than component state, so the harness can flip the summary's other
+// per-person view — which is the whole reason it is one.
 summaryView.set('paid')
 for (const [variant, options] of [
   ['paid-view', {}],

@@ -25,7 +25,6 @@ import {
   UnconfiguredGate,
 } from './components/Gate.jsx'
 
-/** Which overlay is open, if any. One value, because `overlay` says why. */
 const NO_OVERLAY = null
 
 export default function App() {
@@ -35,18 +34,14 @@ export default function App() {
   const ledger = useLedger(connection.spreadsheetId)
   const { config, entries, templates, sheetExtras } = ledger
 
-  // Nothing can detect who is signed in — the token belongs to the account that owns
-  // the sheet, not to either person — so identity is this device's own choice.
+  // Nothing detects who is signed in — the token belongs to the account that owns the sheet — so
+  // identity is this device's own choice.
   const [me, setIdentityChoice] = useState(readStoredIdentity)
   const [monthKey, setMonthKey] = useState(currentMonthKey)
   /**
-   * Every sheet the app can put over the ledger, as ONE value: `null` or `{kind, …}`.
-   *
-   * Exactly one `BottomSheet` may be mounted, and that has to be structural rather than
-   * arbitrated by each handler remembering to close its own. Two at once means two document
-   * keydown handlers (Escape closes both), two focus traps fighting over Tab, and the inner
-   * one's cleanup clearing `--keyboard-inset` while the outer still has the keyboard up —
-   * putting Save behind a keypad that has no Done key. A single value cannot express "both".
+   * Every sheet the app can put over the ledger, as ONE value, so "exactly one `BottomSheet` is
+   * mounted" is structural. Two at once means two Escape handlers, two focus traps fighting over Tab,
+   * and the inner one's cleanup clearing `--keyboard-inset` with the outer's keyboard still up.
    */
   const [overlay, setOverlay] = useState(NO_OVERLAY)
   const closeOverlay = () => setOverlay(NO_OVERLAY)
@@ -60,10 +55,9 @@ export default function App() {
   }
 
   /**
-   * An update activates by RELOADING, so never through anything it would interrupt. What
-   * counts as one is `blocksReload`'s decision, in lib — including the writes no optimistic
-   * flag can see. The nudge is the other half: a worker refused while a sheet was open gets
-   * no `focus` event to ask again.
+   * An update activates by RELOADING, so never through anything it would interrupt (`blocksReload`'s
+   * decision, in lib). The nudge is the other half: a worker refused while a sheet was open gets no
+   * `focus` event to ask again.
    */
   useEffect(() => {
     setSafeToReload(() => !blocksReload({ overlay, entries, writing: ledger.writing }))
@@ -79,10 +73,7 @@ export default function App() {
   const openRecurring = () => setOverlay({ kind: 'recurring' })
   const openTemplate = (mode, template) => setOverlay({ kind: 'template', mode, template })
 
-  /**
-   * Every write that reports through a toast. `useLedger` has already reverted the optimistic
-   * change by the time the catch runs, so there is nothing to undo here.
-   */
+  /** `useLedger` has already reverted the optimistic change, so there is nothing to undo here. */
   const report = async (write, okKey, failKey) => {
     try {
       await write()
@@ -92,10 +83,7 @@ export default function App() {
     }
   }
 
-  /**
-   * The two form paths RETHROW, unlike the toast paths above: the form stays open on a failure
-   * and shows the reason against its own Save button, so the toast is the success half only.
-   */
+  /** The form paths RETHROW: the form stays open and shows the reason against its own Save. */
   const submitEntry = async (input) => {
     const editing = overlay.mode === 'edit'
     const entry = await (editing ? ledger.editEntry(input) : ledger.addEntry(input))
@@ -109,15 +97,14 @@ export default function App() {
   }
 
   /**
-   * Retiring is dated from TODAY, never from `monthKey`. The page is scoped to the month on
-   * screen so a missed month stays recordable, but "stop this cost" is a decision about now —
-   * dated from an August someone had navigated back to, it would retire four more months too.
+   * Retiring is dated from TODAY, never from `monthKey`: the page is scoped to the month on screen
+   * so a missed month stays recordable, but dated from a month navigated back to this would retire
+   * every month since.
    */
   const retire = (input) =>
     writeTemplate(retiredTemplate(input, currentMonthKey()), 'toast.retired')
   const restore = (input) => writeTemplate(restoredTemplate(input), 'toast.restored')
 
-  /** Recorded from the recurring page: an ordinary ADD, prefilled, in place of that sheet. */
   const recordTemplate = (entry) => setOverlay({ kind: 'entry', mode: 'add', entry })
 
   const deleteEntry = (entry) => {
@@ -128,7 +115,7 @@ export default function App() {
   const undeleteEntry = (entry) =>
     report(() => ledger.restoreEntry(entry.id), 'toast.restored', 'toast.restoreFailed')
 
-  /** Irreversible, so this is the one template path reported by toast: no form is left. */
+  /** Irreversible, and reported by toast because no form is left. */
   const deleteTemplate = (template) => {
     setOverlay({ kind: 'recurring' })
     return report(() => ledger.deleteTemplate(template), 'toast.deleted', 'toast.deleteFailed')
@@ -141,7 +128,6 @@ export default function App() {
 
   const connectionError = connection.error ? errorMessage(connection.error, 'error.offline') : null
 
-  /** Which screen stands in front of the ledger is `gateFor`'s decision, in lib. */
   const gate = gateFor({
     connectionStatus: connection.status,
     spreadsheetId: connection.spreadsheetId,
@@ -172,7 +158,6 @@ export default function App() {
   if (gate === 'loading') return <LoadingGate label={t('gate.loadingSheet')} />
   if (gate === 'identity') return <IdentityGate config={config} onPick={setMe} />
 
-  /** Which notices apply is `noticeKeys`' decision, in lib, where it is testable. */
   const notices = noticeKeys({
     status: ledger.status,
     error: ledger.error,
@@ -197,8 +182,7 @@ export default function App() {
         onAdd={openAdd}
       />
 
-      {/* One switch over one value: the invariant is that this expression can only ever
-          produce a single sheet. Every handler above SETS the overlay rather than adding one. */}
+      {/* Every handler SETS the overlay, so this can only ever produce a single sheet. */}
       {overlay?.kind === 'entry' && (
         <EntryFormSheet
           draft={overlay}
@@ -210,8 +194,7 @@ export default function App() {
         />
       )}
 
-      {/* The only path to an entry delete: nothing calls `removeEntry` without going through
-          it, whether it was opened from a row's trash control or the edit form's. */}
+      {/* The only path to an entry delete, from a row's trash control or the edit form's. */}
       {overlay?.kind === 'confirmEntry' && (
         <ConfirmDeleteSheet
           entry={overlay.entry}
@@ -262,8 +245,7 @@ export default function App() {
           }
           onRetire={retire}
           onRestore={restore}
-          /* The EDITED template, not the stored one, so the confirmation names what is on
-             screen and cancelling returns the form to the values someone had typed. */
+          /* The EDITED template, so the confirmation names what is on screen. */
           onDelete={(template) => setOverlay({ kind: 'confirmTemplate', template })}
           onClose={openRecurring}
         />
@@ -273,9 +255,7 @@ export default function App() {
         <ConfirmSheet
           title={t('confirm.deleteTemplateTitle')}
           body={t('confirm.deleteTemplateBody', {
-            /* The same fallback the row uses. The edited template is deliberately what
-               arrives here, so the name can be whatever is in the field — cleared, it left
-               the guard sentence naming nothing at all. */
+            /* The name can be whatever is in the field — cleared, the guard names nothing. */
             name: overlay.template.description || t('entry.expense'),
           })}
           confirmLabel={t('recurring.delete')}

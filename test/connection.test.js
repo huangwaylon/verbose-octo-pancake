@@ -1,15 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * The token endpoint's failure modes, which are the whole reliability story.
- *
- * Two mistakes are possible and both are silent. Reporting a network blip as a
- * bad key makes someone re-type 64 characters for a failure that was not theirs;
- * reporting a rotated key as transient hides it behind retries forever. The
- * endpoint always answers HTTP 200, so only the body can tell them apart.
- *
- * Every test imports the module fresh, because the token, the key and the
- * generation counter are module state by design.
+ * The token endpoint's failure modes. Both possible mistakes are silent: a network blip read
+ * as a bad key makes someone re-type 64 characters, and a rotated key read as transient hides
+ * behind retries forever. The endpoint always answers HTTP 200, so only the body tells them
+ * apart. Every test imports the module fresh — the token, key and counter are module state.
  */
 
 import { installStorage, removeStorage } from './support/storage.js'
@@ -25,10 +20,7 @@ const htmlReply = () => ({
 
 const ok = () => reply({ token: 'ya29.token', spreadsheetId: SHEET_ID })
 
-/**
- * The module, fresh, plus the fake `localStorage` behind it — `store` because what several
- * cases assert is what was PERSISTED, and a helper that hid it had them re-implementing it.
- */
+/** The module, fresh, plus the fake `localStorage` — several cases assert what was PERSISTED. */
 async function load(seed) {
   const store = installStorage(seed)
   vi.resetModules()
@@ -99,8 +91,8 @@ describe('telling a bad key from a bad connection', () => {
 
     const c = await load({ 'sf.appKey': 'wrong' })
     await expect(c.getAccessToken()).rejects.toMatchObject({ badKey: true })
-    // Kept deliberately: re-typing a 256-bit key on a phone is the worse outcome,
-    // and deleting it buys no safety against the threat that matters (XSS).
+    // Kept deliberately: re-typing a 256-bit key beats deleting it, which buys no safety
+    // against the threat that matters (XSS).
     expect(c.hasKey()).toBe(true)
     expect(c.keyIsSuspect()).toBe(true)
   })
@@ -152,37 +144,25 @@ describe('telling a bad key from a bad connection', () => {
     expect(c.keyIsSuspect()).toBe(false)
   })
 
-  /**
-   * The 7-day consent-screen expiry: the script's own authorization has lapsed, so it
-   * answers 200 with `{"error":"unavailable"}`. Retrying cannot fix it, so it must not
-   * be classified transient — reported as a blip it hides behind a 30-second retry
-   * loop and a "showing saved data" notice forever — and it is not a bad key either.
-   */
+  // The 7-day consent-screen expiry: 200 with `{"error":"unavailable"}`. Retrying cannot fix
+  // it, so classified transient it hides behind the retry loop forever — and it is no bad key.
   it('gives the script’s own lapsed authorization its own terminal message', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply({ error: 'unavailable' })))
 
     const c = await load({ 'sf.appKey': 'k' })
     await expect(c.getAccessToken()).rejects.toMatchObject({
-      // The literal, not `CONNECTION_ERROR.SCRIPT_UNAUTHORIZED` — deriving the
-      // expectation from the module under test would let the code and the catalog
-      // drift together. `i18n.test.js` separately proves every code has a translation.
+      // The literal, not `CONNECTION_ERROR.SCRIPT_UNAUTHORIZED`: deriving the expectation
+      // from the module under test would let the code and the catalog drift together.
       i18nKey: 'error.scriptUnauthorized',
     })
-    // Not the transient bucket a missing branch would fall through to, and not a key
-    // the person should be told to re-type.
     expect(c.keyIsSuspect()).toBe(false)
     expect(c.hasKey()).toBe(true)
   })
 
   it('rejects a reply with no usable sheet id rather than persisting one', async () => {
-    /**
-     * Asserted against the STORE, because `getSpreadsheetId()` answers null from the
-     * seed anyway — so on its own that assertion passes with the guard deleted. The
-     * non-string cases are what show why: unguarded, `writeStored` persists `123`
-     * happily, and every launch afterwards builds `/spreadsheets/123` out of it with
-     * no round trip to discover otherwise. A `null` id is removed rather than stored,
-     * which is why the reachable half of the guard needs the other three.
-     */
+    // Asserted against the STORE: `getSpreadsheetId()` answers null from the seed anyway, so
+    // that alone passes with the guard deleted. Unguarded, `writeStored` persists `123` and
+    // every launch afterwards builds `/spreadsheets/123` out of it.
     for (const spreadsheetId of [null, undefined, 123, {}]) {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(reply({ token: 'ya29.x', spreadsheetId })))
       const { store, ...c } = await load({ 'sf.appKey': 'k' })
@@ -191,8 +171,7 @@ describe('telling a bad key from a bad connection', () => {
         () => null,
         (error) => error,
       )
-      // The store first, so this is the assertion that reports the failure rather
-      // than the rejection swallowing it.
+      // The store first, so this reports the failure rather than the rejection swallowing it.
       expect(store.has('sf.spreadsheetId')).toBe(false)
       expect(c.getSpreadsheetId()).toBe(null)
       expect(cause).toMatchObject({ i18nKey: 'error.scriptMisconfigured' })
@@ -202,9 +181,8 @@ describe('telling a bad key from a bad connection', () => {
 
 describe('the 401 retry path', () => {
   it('does not hand the retry a token minted before the 401', async () => {
-    // The bug this pins: joining an in-flight mint that started BEFORE the 401
-    // returns the very token Google just rejected, and the retry runs with
-    // allowRetry:false, so a recoverable blip becomes a hard failure.
+    // The bug this pins: joining an in-flight mint that started BEFORE the 401 returns the
+    // token Google just rejected, and the retry runs with allowRetry:false.
     let release
     const first = new Promise((resolve) => {
       release = () => resolve(reply({ token: 'stale', spreadsheetId: SHEET_ID }))
@@ -227,11 +205,8 @@ describe('the 401 retry path', () => {
   })
 
   it('does not CACHE a token minted before the 401, so a failed retry cannot serve it', async () => {
-    // The returned value alone cannot see the guard — the later mint overwrites the
-    // cache either way. What the guard actually protects is what gets stored: cached,
-    // the rejected token is given a fresh hour of life, and once the retry mint fails
-    // the next caller is handed the very token Google refused with no network call to
-    // discover otherwise.
+    // The returned value cannot see the guard; what it protects is what gets STORED: cached,
+    // the rejected token gets a fresh hour of life and is handed out once the retry fails.
     let release
     const first = new Promise((resolve) => {
       release = () => resolve(reply({ token: 'stale', spreadsheetId: SHEET_ID }))
@@ -293,8 +268,6 @@ describe('the persisted token', () => {
 
     const c = await load({
       'sf.appKey': 'k',
-      // Four minutes left, inside the five-minute margin: a request starting now
-      // could still arrive after expiry.
       'sf.token': JSON.stringify({
         accessToken: 'nearly-dead',
         expiresAt: Date.now() + 4 * 60_000,
@@ -314,10 +287,9 @@ describe('the persisted token', () => {
 })
 
 /**
- * Which of the three states the UI is in. It lives here rather than in `useConnection` for
- * exactly this reason: as a ternary inside the hook, no test in the suite could reach it, and
- * the branch that matters is the quiet one — a key the endpoint REJECTED has to send the device
- * back to the key screen even though the key is still on it.
+ * Which of the three states the UI is in — here rather than as an unreachable ternary inside
+ * `useConnection`. The branch that matters is the quiet one: a key the endpoint REJECTED
+ * sends the device back to the key screen with the key still on it.
  */
 describe('connectionStatus', () => {
   it('answers unconfigured when the build has no endpoint, whatever is stored', async () => {
@@ -391,8 +363,7 @@ describe('connect and forget', () => {
 
     expect(c.hasKey()).toBe(false)
     expect(c.getSpreadsheetId()).toBe(null)
-    // The snapshot goes too: it would otherwise paint one person's cached ledger
-    // for whoever connects next.
+    // The snapshot goes too, or it paints one person's cached ledger for whoever is next.
     for (const key of ['sf.appKey', 'sf.token', 'sf.spreadsheetId', 'sf.snapshot']) {
       expect(store.has(key)).toBe(false)
     }
@@ -408,9 +379,8 @@ describe('connect and forget', () => {
     await c.connect('k')
     expect(seen).toHaveBeenCalled()
 
-    // The unsubscribe is what this exists to prove. Asserting a total call count
-    // instead passes on however many times `connect` happens to notify internally,
-    // and would break on a harmless refactor without ever checking `stop`.
+    // A total call count instead would pass on however many times `connect` notifies
+    // internally, without ever checking `stop`.
     seen.mockClear()
     stop()
     c.forgetKey()

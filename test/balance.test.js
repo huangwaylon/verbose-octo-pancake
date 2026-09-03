@@ -16,19 +16,7 @@ import {
 import { PERSON, ENTRY_TYPE, EVEN_SHARE } from '../src/schema.js'
 import { expense as anExpense, settlement as aSettlement } from './support/entries.js'
 
-/**
- * Deterministic entry factory: explicit id, no crypto.
- *
- * An entry reads no clock, so nothing has to be injected for these to be reproducible.
- * The ids ARE the within-a-day order now (`groupByDate` sorts by id), so a test about
- * that ordering has to choose them deliberately rather than incidentally.
- */
-
-/**
- * The shared fixtures at this file's own values. Almost everything here is about a
- * month, so the dates are March and stay visible in one place; the id and the amount
- * are positional because they are what nearly every assertion below turns on.
- */
+/** The ids ARE the within-a-day order (`groupByDate` sorts by id), so ordering tests pick them. */
 function expense(id, amountYen, overrides = {}) {
   return anExpense({ id, amountYen, date: '2026-03-10', ...overrides })
 }
@@ -58,8 +46,7 @@ describe('owedToPayerYen', () => {
   })
 
   it('tolerates a numeric-string share, which a form can hand to makeEntry', () => {
-    // A form input can hand '0.5' straight to makeEntry; the balance must not
-    // crash on it, but genuine junk must still be loud.
+    // Must not crash on '0.5', but genuine junk must still be loud.
     expect(owedToPayerYen(expense('str', 10000, { payerShare: '0.5' }))).toBe(5000)
     expect(computeBalance([expense('str', 10000, { payerShare: '0.25' })]).netYen).toBe(7500)
     expect(() => owedToPayerYen(expense('junk', 10000, { payerShare: 'half' }))).toThrow(TypeError)
@@ -125,13 +112,10 @@ describe('computeBalance', () => {
   // ── The most important test in the suite ────────────────────────────────
   it('drives the balance to exactly zero when a settlement pays off the outstanding amount', () => {
     const expenses = [
-      // p1 fronts the groceries, split evenly -> p2 owes 2166 (of 4331, an odd amount)
+      // Odd amounts throughout, so the rounding is genuinely exercised.
       expense('e1', 4331, { payer: PERSON.P1, payerShare: EVEN_SHARE }),
-      // p1 buys something entirely for p2 -> p2 owes all 1999
       expense('e2', 1999, { payer: PERSON.P1, payerShare: 0, category: 'Other' }),
-      // p2 pays for dinner, split evenly -> p1 owes 4025 (of 8049)
       expense('e3', 8049, { payer: PERSON.P2, payerShare: EVEN_SHARE, category: 'Dining' }),
-      // p1 pays for something only they use -> affects nobody
       expense('e4', 5000, { payer: PERSON.P1, payerShare: 1, category: 'Household' }),
     ]
 
@@ -146,7 +130,6 @@ describe('computeBalance', () => {
     expect(before.creditor).toBe(PERSON.P1)
     expect(before.amountYen).toBe(140)
 
-    // The debtor hands over exactly what is outstanding.
     const payoff = settlement('s1', before.amountYen, { payer: before.debtor })
     const after = computeBalance([...expenses, payoff])
 
@@ -182,8 +165,8 @@ describe('computeBalance', () => {
       expense('e2', 8049, { payer: PERSON.P2, payerShare: 0.7 }),
       settlement('s1', 111, { payer: PERSON.P1 }),
     ]
-    // Against a literal, not against itself: comparing the two directions alone is
-    // commutativity of integer addition, which holds however wrong the arithmetic is.
+    // Against a literal, not against itself: comparing the two directions alone is commutativity
+    // of integer addition, which holds however wrong the arithmetic is.
     // e1: p2 owes 4331 - round(4331/2) = 2165, in p1's favour.
     // e2: p1 owes 30% of 8049 = 8049 - round(8049 * 0.7) = 2415, in p2's favour.
     // s1: p1 hands over 111, which is 111 more owed back to p1.
@@ -260,8 +243,7 @@ describe('deletedEntries', () => {
   })
 
   it('scopes to the month on screen: it sits under the month switcher', () => {
-    // Deleted in March, but spent in January — it belongs to January's list, or
-    // it reads as a January expense that was deleted from March.
+    // Deleted in March but spent in January: it belongs to January's list.
     const january = expense('jan', 300, {
       date: '2026-01-15',
       deletedAt: '2026-03-03T00:00:00.000Z',
@@ -393,10 +375,8 @@ describe('spendByCategory', () => {
   })
 
   it('breaks a tie by codepoint, not by whoever is holding the phone', () => {
-    // `localeCompare` with no locale reads the RUNTIME's, which is neither the app's
-    // per-device locale nor the same on both phones: in English it sorts 'Ärzte' with the
-    // A's, and by codepoint every non-ASCII name sorts after every ASCII one. Two people
-    // looking at one sheet must see one order, so this pins the codepoint answer.
+    // `localeCompare` with no locale reads the RUNTIME's, which is neither the app's per-device
+    // locale nor the same on both phones. One sheet, one order, so this pins the codepoint answer.
     const entries = [
       expense('a', 500, { category: 'Zoo' }),
       expense('b', 500, { category: 'Ärzte' }),
@@ -454,10 +434,9 @@ describe('spendByPerson', () => {
 })
 
 /**
- * The other half of `spendByPerson`: not who handed over the cash, but who the cost belongs to
- * once every `payer_share` is applied. The invariant that matters is that the two add up to the
- * month exactly — a percentage taken per person independently would lose a yen on every odd
- * split, and the loss would land in a figure nobody could check against anything.
+ * The other half of `spendByPerson`: not who handed over the cash, but whose cost it is once
+ * every `payer_share` is applied. The two must add to the month exactly — a percentage taken per
+ * person independently loses a yen per odd split, in a figure nothing can be checked against.
  */
 describe('shareByPerson', () => {
   it('gives each person their own share of what either of them paid', () => {
@@ -479,7 +458,6 @@ describe('shareByPerson', () => {
   })
 
   it('charges the whole amount to the other person at a share of 0', () => {
-    // Bought FOR the other person: the payer's own share is nothing.
     expect(shareByPerson([expense('a', 900, { payer: PERSON.P1, payerShare: 0 })])).toEqual({
       p1: 0,
       p2: 900,
@@ -487,8 +465,8 @@ describe('shareByPerson', () => {
   })
 
   it('conserves every yen, at shares that do not divide evenly', () => {
-    // The rounding has to land somewhere, and `splitYen` puts it on the non-payer — so the two
-    // shares add to the month rather than to the month plus or minus a yen per entry.
+    // `splitYen` puts the rounding on the non-payer, so the two shares add to the month rather
+    // than to the month plus or minus a yen per entry.
     const entries = [
       expense('a', 1001, { payer: PERSON.P1, payerShare: 1 / 3 }),
       expense('b', 777, { payer: PERSON.P2, payerShare: 0.7 }),
@@ -499,8 +477,7 @@ describe('shareByPerson', () => {
   })
 
   it('counts no settlement and no tombstone', () => {
-    // A settlement moves cash to square these two figures up; counting one charges the same
-    // money twice. A tombstone is out of every total by definition.
+    // A settlement moves cash to square these two figures up; counting one charges it twice.
     expect(shareByPerson([settlement('s', 9999)])).toEqual({ p1: 0, p2: 0 })
     expect(shareByPerson([])).toEqual({ p1: 0, p2: 0 })
     const live = expense('a', 1000, { payer: PERSON.P1, payerShare: 0.25 })
@@ -509,9 +486,8 @@ describe('shareByPerson', () => {
   })
 
   /**
-   * The pair of figures is the point of showing both: paid minus share IS what that person is
-   * owed for the month, and it has to agree with `computeBalance` over the same rows or the card
-   * and the header would tell two different stories.
+   * Paid minus share IS what that person is owed for the month, and it has to agree with
+   * `computeBalance` over the same rows or the card and the header tell two different stories.
    */
   it('differs from what was paid by exactly the balance those rows produce', () => {
     const entries = [
@@ -620,9 +596,8 @@ describe('groupByDate', () => {
     ]
     const groups = groupByDate(entries)
     expect(groups.map((g) => g.date)).toEqual(['2026-03-09', '2026-03-05', '2026-03-01'])
-    // Within a day the order is by id, descending. Arbitrary, but it must not depend on
-    // which tab the rows arrived from — so it is asserted against the reversed input
-    // too, which is what pins the sort rather than the fixture's order.
+    // Within a day the order is by id, descending: arbitrary, but it must not depend on which
+    // tab the rows arrived from — hence the reversed input too.
     expect(groups[1].entries.map((e) => e.id)).toEqual(['mid', 'late'])
     expect(groupByDate([...entries].reverse())[1].entries.map((e) => e.id)).toEqual(['mid', 'late'])
     expect(groups[1].totalYen).toBe(500)
@@ -645,8 +620,8 @@ describe('groupByDate', () => {
       expense('aaa', 100, { date: '2026-03-05' }),
       expense('ccc', 100, { date: '2026-03-05' }),
     ]
-    // The literal order, not just "the same both ways": equal-but-arbitrary would pass
-    // a stability check while still depending on which tab the rows came from.
+    // The literal order: equal-but-arbitrary would pass a stability check while still
+    // depending on which tab the rows came from.
     expect(groupByDate(entries)[0].entries.map((e) => e.id)).toEqual(['ccc', 'bbb', 'aaa'])
     expect(groupByDate([...entries].reverse())[0].entries.map((e) => e.id)).toEqual([
       'ccc',
@@ -693,13 +668,10 @@ describe('groupByDate', () => {
 })
 
 /**
- * The month's list as its two sections. What matters here is that they PARTITION: a row in
- * both is a double charge of money that moved once, and a row in neither disappears off the
- * list while still counting in every figure above it.
- *
- * The ids are the whole input — a recurring instance is recognised from its own id, with no
- * template in sight, which is what lets the section survive a cold launch and a deleted
- * declaration.
+ * The month's two sections must PARTITION: a row in both is a double charge of money that moved
+ * once, and a row in neither disappears off the list while still counting in every figure above
+ * it. The ids are the whole input — an instance is recognised from its own id, so the section
+ * survives a cold launch.
  */
 describe('monthSections', () => {
   const instance = (id, amountYen, over) => expense(id, amountYen, { date: '2026-03-05', ...over })
@@ -823,9 +795,8 @@ describe('end-to-end: a month of shared life', () => {
 })
 
 /**
- * Which month the app opens on. A sheet whose last entry was months ago should not
- * open on an empty screen, but somebody who has been using the app this month must
- * not have it moved out from under them either.
+ * Which month the app opens on: a sheet whose last entry was months ago should not open on an
+ * empty screen, but somebody using the app this month must not have it moved under them either.
  */
 describe('initialMonthKey', () => {
   const march = expense('m', 1000, { date: '2026-03-10' })

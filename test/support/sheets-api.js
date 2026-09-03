@@ -1,11 +1,7 @@
 /**
- * A fake Sheets API for `src/lib/sheets.js`.
- *
- * Every request is recorded and answered from a small routing table, so a test can
- * assert on what was sent — the order of `deleteDimension` requests, the
- * `valueInputOption`, which tab a row was appended to — rather than only on what
- * came back. That is the half that matters here: this module's failures are
- * writes, and a write that goes to the wrong row or the wrong tab is silent.
+ * A fake Sheets API for `src/lib/sheets.js`. Every request is recorded, because this
+ * module's failures are WRITES: a row sent to the wrong tab or the wrong row is silent,
+ * so the assertions are about what was sent rather than what came back.
  */
 import { vi } from 'vitest'
 
@@ -16,11 +12,9 @@ const BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
 export const values = (rows) => ({ values: rows })
 
 /**
- * @param {(call: {method: string, url: string, path: string, body: object|null}) => object|undefined} handler
- *   returns the JSON payload for a call, or undefined to fall through to `{}`.
- *   Return `{ __status: 400 }` to answer with an error instead, optionally with
- *   `{ __reason: 'rateLimitExceeded' }` — the field that decides whether a 403 means
- *   "lost access" or "try again".
+ * `handler` returns the JSON payload for a call, or undefined for `{}`. `{ __status: 400 }`
+ * answers with an error instead, optionally with `{ __reason: 'rateLimitExceeded' }` — the
+ * field that decides whether a 403 means "lost access" or "try again".
  */
 export function installSheets(handler) {
   const calls = []

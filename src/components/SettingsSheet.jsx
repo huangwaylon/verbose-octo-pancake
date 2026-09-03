@@ -27,11 +27,7 @@ export function SettingsSheet({
   const { name } = usePeopleLabels(config, me)
   const accent = useAccent()
   const [busy, setBusy] = useState(false)
-  /**
-   * What the last compact did, not a sentence about it. This panel is where the
-   * language is chosen, so a stored message would sit there in the language it was
-   * built in while the control that changed it is three rows above.
-   */
+  /** The outcome, not a sentence: this panel is where the language is chosen. */
   const [outcome, setOutcome] = useState(null)
 
   async function handleCompact() {
@@ -46,8 +42,7 @@ export function SettingsSheet({
     }
   }
 
-  // A refusal is not a removal of zero rows: `compactRefusal` gives it `busy`, and it
-  // has a reason and a remedy where "Removed 0 rows" would be a plain lie.
+  // A refusal is not a removal of zero rows: "Removed 0 rows" would be a plain lie.
   const message = !outcome
     ? null
     : outcome.cause
@@ -62,11 +57,8 @@ export function SettingsSheet({
       onClose={onClose}
       footer={
         /**
-         * A close button, not the destructive one. The panel is 704px of an 852px phone
-         * and its body scrolls, so the footer is the only control reliably in reach —
-         * and it is the slot every other sheet fills with Save. "Forget key" there makes
-         * the biggest, lowest, easiest-to-hit target the one that destroys a
-         * 64-character key, with the X in the worst one-handed corner as the way out.
+         * A close button, not the destructive one: the footer is the only control reliably in
+         * reach, so "Forget key" there is the easiest target to hit by accident.
          */
         <button type="button" className="btn btn--primary btn--block" onClick={onClose}>
           {t('common.close')}
@@ -83,8 +75,7 @@ export function SettingsSheet({
           hint={t('settings.youAreHint')}
         />
 
-        {/* Each language named in itself, which is why these two are the
-            documented exceptions to the "ja must differ from en" test. */}
+        {/* Each language named in itself: the documented exceptions to the drift test. */}
         <Segmented
           name="locale"
           label={t('settings.language')}
@@ -105,9 +96,8 @@ export function SettingsSheet({
                   checked={accent === preset}
                   onChange={() => setAccent(preset)}
                 />
-                {/* The disc has to paint the color it selects, and a custom
-                    property cannot be indexed by an attribute value, so the
-                    preset's own accent is scoped here and read by the disc. */}
+                {/* A custom property cannot be indexed by an attribute value, so the preset's
+                    own accent is scoped here and read by the disc it paints. */}
                 <span className="swatch__disc" data-accent={preset} aria-hidden="true" />
                 <span className="visually-hidden">{t(`accent.${preset}`)}</span>
               </label>
@@ -121,8 +111,7 @@ export function SettingsSheet({
           </div>
         </Field>
 
-        {/* The one way into the recurring page. A count rather than a reminder: a reminder
-            over the balance is the thing that surface must not carry. */}
+        {/* A count rather than a reminder: a reminder is what the balance must not carry. */}
         <Field label={t('recurring.title')} description={t('settings.recurringHint')}>
           <div className="row">
             <button type="button" className="btn btn--ghost btn--sm" onClick={onOpenRecurring}>
@@ -147,8 +136,7 @@ export function SettingsSheet({
         </Field>
 
         <Field label={t('settings.defaultSplit')} hint={t('settings.defaultSplitHint')}>
-          {/* One line per person: the whole point of the setting is that the two
-              numbers can differ, so a single figure would hide half of it. */}
+          {/* One line per person: the two numbers can differ, so one figure hides half. */}
           {PEOPLE.map((person) => (
             <p className="settings__value" key={person}>
               {t('settings.defaultSplitValue', {
@@ -187,8 +175,7 @@ export function SettingsSheet({
               ? t('settings.removeRows', { count: tombstoneCount })
               : t('settings.nothingToRemove')}
           </button>
-          {/* The only irreversible action in the app, and its outcome is a number
-              nobody can infer from the screen — so it is spoken, not just shown. */}
+          {/* Its outcome is a number nobody can infer, so it is spoken, not just shown. */}
           {message && (
             <p className="field__hint" role="status">
               {message}
@@ -196,8 +183,7 @@ export function SettingsSheet({
           )}
         </Field>
 
-        {/* Last in the body, where the destructive thing belongs: reachable, explained,
-            and not the button a thumb lands on by default. */}
+        {/* Last in the body: reachable, explained, not where a thumb lands by default. */}
         <Field label={t('settings.forgetKeyTitle')} description={t('settings.forgetKeyHint')}>
           <div className="row">
             <button type="button" className="btn btn--danger btn--sm" onClick={onForget}>

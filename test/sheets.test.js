@@ -20,13 +20,10 @@ import {
 } from './support/sheets-api.js'
 
 /**
- * The Sheets layer. Three invariants live here and every one of them fails
- * silently: `compact` must delete bottom-up or it removes live expenses,
- * every write must be RAW or a note becomes a formula, and ids must be re-resolved to
- * rows immediately before writing or a write lands on somebody else's expense.
- *
- * The token is stubbed out: this file is about what gets sent to Google, not about
- * how the credential is obtained (`connection.test.js` owns that).
+ * The Sheets layer. Three invariants, silent when broken: `compact` must delete bottom-up or it
+ * removes live expenses, every write must be RAW or a note becomes a formula, and an id must be
+ * re-resolved to a row immediately before writing or the write lands on somebody else's expense.
+ * The assertions are about what was SENT. The token is stubbed; `connection.test.js` owns it.
  */
 
 vi.mock('../src/lib/connection.js', () => ({
@@ -53,10 +50,8 @@ const P2 = expenseTab(PERSON.P2)
 
 const GIDS = { expenses_p1: 111, expenses_p2: 222, settlements: 444, recurring: 555, config: 333 }
 
-/** Every tab a fully built ledger has, for the gid listing fixtures. */
 const ALL_TABS = [...SHEET_TABS.map((tab) => tab.title), 'config']
 
-/** The five value ranges a read asks for, in `loadAll`'s own order. */
 const FIVE_RANGES = [
   P1.dataRange,
   P2.dataRange,
@@ -65,24 +60,17 @@ const FIVE_RANGES = [
   'config!A:B',
 ]
 
-/**
- * A reply shaped for those five ranges: the three data tabs, recurring, then config.
- * Named per range rather than positional, because a positional literal goes on passing
- * while every range it holds lands one slot out.
- */
+// Named per range, not positional: a positional literal goes on passing while every range it
+// holds lands one slot out.
 const ranges5 = ({ p1 = {}, p2 = {}, settlements = {}, recurring = {}, config = {} } = {}) => ({
   valueRanges: [p1, p2, settlements, recurring, config],
 })
 
-/** Five empty ranges — what most of these cases want from a batchGet. */
 const EMPTY_RANGES = { valueRanges: [{}, {}, {}, {}, {}] }
 
 describe('every write is RAW', () => {
   it('never sends USER_ENTERED, on any path', async () => {
     const calls = installSheets((call) => {
-      // Checked before the row range: a batchGet's `ranges` never carry `!A2:G`
-      // (`ensureStructure` asks for header rows), but matching it first cannot go
-      // wrong either way.
       if (call.url.includes('values:batchGet')) return EMPTY_RANGES
       if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
       if (call.url.includes('fields=sheets')) {
@@ -104,17 +92,13 @@ describe('every write is RAW', () => {
     expect(mutating.length).toBeGreaterThan(3)
     for (const call of mutating) {
       expect(call.url).not.toContain('USER_ENTERED')
-      // Per endpoint, not "either shape": `values.update` and `:append` read the
-      // option from the QUERY and ignore a body copy entirely, while
-      // `values:batchUpdate` reads it from the BODY and ignores a query copy. An
-      // assertion that accepts both passes while the option is being dropped on
-      // the floor — and a dropped option defaults to USER_ENTERED.
+      // Per endpoint, not "either shape": the QUERY copy is what `values.update`/`:append` read
+      // and the BODY copy what `values:batchUpdate` reads. A dropped option is USER_ENTERED.
       if (call.url.includes('/values:batchUpdate')) {
         expect(call.body.valueInputOption).toBe('RAW')
       } else if (call.url.includes('/values/')) {
         expect(call.url).toContain('valueInputOption=RAW')
       } else {
-        // `:batchUpdate` on the spreadsheet itself writes structure, not values.
         expect(call.url).toContain(`/${SHEET}:batchUpdate`)
       }
     }
@@ -135,8 +119,7 @@ describe('resolving a row before writing to it', () => {
 
     const [read, write] = calls
     expect(read.method).toBe('GET')
-    // The full row range, not the id column alone: an id is not unique within a tab,
-    // so telling a live row from a tombstone needs `deleted_at` as well.
+    // The full row range: telling a live row from a duplicated id's tombstone needs `deleted_at`.
     expect(read.url).toContain('expenses_p1!A2:G')
     expect(write.method).toBe('PUT')
     expect(write.url).toContain('expenses_p1!A4:G4')
@@ -151,8 +134,7 @@ describe('resolving a row before writing to it', () => {
     await sheets.setDeletedAt(SHEET, P2, 'e1', '2026-08-06T00:00:00.000Z')
 
     const [, write] = calls
-    // The literal, not `P2.letter('deleted_at')` — deriving it from the module under
-    // test would only assert the module against a copy of its own arithmetic.
+    // The literal, not `P2.letter('deleted_at')`: deriving it asserts the module against itself.
     expect(write.url).toContain('expenses_p2!F2:F2')
     expect(write.body.values).toEqual([['2026-08-06T00:00:00.000Z']])
   })
@@ -177,12 +159,8 @@ describe('resolving a row before writing to it', () => {
     expect(writes(calls)).toHaveLength(0)
   })
 
-  /**
-   * An id is NOT unique within a tab: `updateEntry` tombstones the old row whenever the
-   * payer moves, so a payer that has gone p1 -> p2 -> p1 leaves the id in p1 twice.
-   * `resolveRow` says what resolving to the first match costs, and why every
-   * consequence of it is silent.
-   */
+  // An id is NOT unique within a tab — p1 -> p2 -> p1 leaves it in p1 twice — and every
+  // consequence of resolving to the wrong copy is silent.
   describe('when the same id appears twice in one tab', () => {
     const duplicated = (call) =>
       call.url.includes('!A2:G')
@@ -198,7 +176,6 @@ describe('resolving a row before writing to it', () => {
 
       await sheets.setDeletedAt(SHEET, P1, 'e1', '2026-08-06T00:00:00.000Z')
 
-      // Row 4, the live copy — not row 2, which is already tombstoned.
       expect(writes(calls)[0].url).toContain('expenses_p1!F4:F4')
     })
 
@@ -224,22 +201,16 @@ describe('resolving a row before writing to it', () => {
       expect(writes(calls)[0].url).toContain('expenses_p1!F2:F2')
     })
 
-    /**
-     * The fallback takes the LAST tombstone, not the first, and a restore is what
-     * makes the difference visible: `setDeletedAt` CLEARS the cell as well as
-     * stamping it, so clearing the oldest copy revives the values from before a
-     * payer ever moved while the newest row stays dead. `reconcileById` prefers
-     * the live row, so the stale one is what everybody then sees, and nothing
-     * counts it — `supersededRows` sees a tombstone either way.
-     */
+    // The fallback takes the LAST tombstone, and a restore makes that visible: `setDeletedAt`
+    // CLEARS as well as stamps, so clearing the oldest copy revives pre-move values while the
+    // newest stays dead. Nothing counts it: a tombstone either way.
     it('restores the LAST tombstone, not the first, when every copy is dead', async () => {
       const calls = installSheets((call) =>
         call.url.includes('!A2:G')
           ? values([
-              // The copy from before the payer moved away, carrying stale values.
+              // Pre-move copy, carrying stale values.
               row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
               row({ id: 'other' }),
-              // The copy the payer moved back to, tombstoned by the delete being undone.
               row({ id: 'e1', deleted_at: '2026-08-07T10:00:00.000Z' }),
             ])
           : {},
@@ -254,8 +225,7 @@ describe('resolving a row before writing to it', () => {
 
 describe('changing who paid moves the row between tabs', () => {
   it('appends to the new tab BEFORE tombstoning the old row', async () => {
-    // Ordering is the invariant: a failure between the two must leave the entry
-    // visible under its old payer rather than gone from both tabs.
+    // A failure between the two must leave the entry visible under its old payer, not gone.
     const calls = installSheets((call) => {
       if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
       return {}
@@ -267,22 +237,14 @@ describe('changing who paid moves the row between tabs', () => {
     expect(mutating[0].url).toContain('expenses_p2!A2:G:append')
     expect(mutating[1].method).toBe('PUT')
     expect(mutating[1].url).toContain('expenses_p1!F')
-    // A real ISO stamp, not merely something non-empty: `reconcileById` breaks a
-    // tombstone-vs-tombstone tie by comparing exactly this cell, so a marker like 'x'
-    // would silently make that comparison meaningless. Asserted as a shape because the
-    // value comes from the clock — an entry carries no timestamp to copy it from.
+    // A real ISO stamp, not merely non-empty: `reconcileById` breaks a tombstone-vs-tombstone
+    // tie on this cell, so a marker like 'x' makes that comparison meaningless.
     const [[stamp]] = mutating[1].body.values
     expect(stamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
   })
 
-  /**
-   * A settlement's payer is a CELL in the one settlements tab, so changing it must NOT
-   * move the row. Both tabs come from `tabOf`, which answers the same tab either way —
-   * so this is one PUT, with no append and no tombstone.
-   *
-   * The move branch here would append a duplicate settlement and tombstone the original,
-   * double-counting the transfer in the balance until a compact ran.
-   */
+  // A settlement's payer is a CELL, so changing it must not move the row: the move branch would
+  // append a duplicate and tombstone the original, double-counting the transfer until a compact.
   it('overwrites a settlement in place when its payer changes, without moving it', async () => {
     const calls = installSheets((call) =>
       call.url.includes(SETTLEMENTS.dataRange)
@@ -298,7 +260,6 @@ describe('changing who paid moves the row between tabs', () => {
     expect(mutating[0].method).toBe('PUT')
     expect(mutating[0].url).toContain('settlements!A2:F2')
     expect(mutating[0].url).not.toContain(':append')
-    // And the payer landed in its cell, which is the whole point of the column.
     expect(mutating[0].body.values[0][SETTLEMENTS.index('payer')]).toBe(PERSON.P2)
   })
 
@@ -316,8 +277,7 @@ describe('changing who paid moves the row between tabs', () => {
   })
 
   it('refuses a previousPayer that is not one of the two people', async () => {
-    // Without the guard, `undefined` means "append a duplicate, then look for the
-    // original in whichever tab `tabOf` guessed".
+    // Without the guard, `undefined` means "append a duplicate, then hunt for the original".
     const calls = installSheets(() => ({}))
     await expect(sheets.updateEntry(SHEET, entry(), undefined)).rejects.toThrow(TypeError)
     expect(writes(calls)).toHaveLength(0)
@@ -335,14 +295,10 @@ describe('appendEntry', () => {
   })
 
   /**
-   * The append range is A-ANCHORED, never the bare tab title. `values.append` treats its range
-   * as a range to SEARCH for a logical table, so a bare sheet name lets Google pick where that
-   * table starts — and a row written from column G puts every value six fields to the right,
-   * which `rowToEntry` then reports as an unreadable amount rather than as a misplaced row.
-   *
-   * Asserted per tab and against the literal ranges, because the two layouts are seven and six
-   * and ten columns wide: deriving them from `tab.dataRange` would only compare the module with
-   * a copy of its own arithmetic.
+   * `values.append` treats its range as one to SEARCH for a logical table, so a bare sheet name
+   * lets Google pick where the table starts — a row written from column G puts every value six
+   * fields right, reported as an unreadable amount. Literal ranges: deriving them from
+   * `tab.dataRange` would compare the module with its own arithmetic.
    */
   it.each([
     ['expenses_p1', 'expenses_p1!A2:G:append'],
@@ -374,10 +330,8 @@ describe('loadAll', () => {
   })
 
   it('parses the config from the LAST range, not a hardcoded index', async () => {
-    // The index is derived from `ranges.length`, so adding a data range cannot start
-    // feeding ledger rows to the config parser — where no key matches, every value
-    // silently falls back to a default, and `configMissing` stays false because the
-    // read succeeded.
+    // Derived from `ranges.length`, so adding a data range cannot start feeding ledger rows to
+    // the config parser, where every value defaults and `configMissing` stays false.
     installSheets(() =>
       ranges5({
         p1: values([row({ id: 'a', date: '2026-08-05', amount: '1250' })]),
@@ -393,21 +347,13 @@ describe('loadAll', () => {
   })
 
   /**
-   * An existing ledger predates the settlements tab, so its first read under this build
-   * asks for a range that does not exist and the whole batch 400s. That has to reach
-   * `useLedger`, where `looksUninitialized` turns it into an `ensureStructure` call that
-   * BUILDS the tab — so the retry here must not quietly succeed by dropping it.
-   *
-   * The retry slices from the END, which is why it drops only the config range. Sliced
-   * to a literal 2 it would drop the settlements range as well: the read would succeed,
-   * `configMissing` would be reported over a config tab that is perfectly fine, and the
-   * settlements tab would never be created — leaving every settlement out of the balance
-   * permanently, while the screen blamed the wrong thing.
+   * A missing DATA range must 400 out to `useLedger`, whose `looksUninitialized` builds the tab.
+   * Sliced to a literal 2 the retry drops the settlements range instead: the read succeeds,
+   * `configMissing` blames a config tab that is fine, and every settlement stays out of the
+   * balance permanently.
    */
   it('lets a missing DATA range fail, so the tab gets built rather than dropped', async () => {
-    // 400 for any batch that asks for the settlements range, and success for one that
-    // does not — so a retry which DROPPED that range would succeed here, and this test
-    // fails only if it does.
+    // Success for any batch NOT asking for that range, so this fails only if the retry drops it.
     const calls = installSheets((call) =>
       call.url.includes(SETTLEMENTS.dataRange) ? { __status: 400 } : ranges5(),
     )
@@ -418,13 +364,8 @@ describe('loadAll', () => {
     for (const call of calls) expect(call.url).toContain(SETTLEMENTS.dataRange)
   })
 
-  /**
-   * The same thing for the `recurring` range, which is the one every existing ledger is
-   * missing on its first read under this build. It sits BEFORE the config range for
-   * exactly this reason: dropped by the retry instead, the read would succeed and report
-   * `configMissing` over a config tab that is fine, while the tab nobody can author a
-   * template without would never be created.
-   */
+  // The recurring range sits BEFORE the config one for the same reason: dropped by the retry
+  // instead, the read succeeds, blames a healthy config tab, and the tab is never created.
   it('lets a missing recurring range fail too, rather than reporting a config problem', async () => {
     const calls = installSheets((call) =>
       call.url.includes(RECURRING.dataRange) ? { __status: 400 } : ranges5(),
@@ -448,8 +389,6 @@ describe('loadAll', () => {
     const { entries, unattributedRows } = await sheets.loadAll(SHEET)
 
     const settlement = entries.find((item) => item.id === 's1')
-    // Type from the tab, payer from the cell, share 0 by definition — none of which the
-    // row itself spells out beyond the payer.
     expect(settlement).toMatchObject({
       type: 'settlement',
       payer: PERSON.P2,
@@ -460,14 +399,8 @@ describe('loadAll', () => {
     expect(unattributedRows).toBe(0)
   })
 
-  /**
-   * The payer decides the SIGN of a settlement's contribution, so a cell naming nobody
-   * is a wrong balance rather than a missing row — and it is the ONE payer cell in the
-   * schema, since an expense takes its payer from the tab it sits in.
-   *
-   * Counted apart from `undecodedRows` because the cell to go and fix is a different
-   * one: the amount here reads perfectly well.
-   */
+  // The payer decides the SIGN of the contribution, so a cell naming nobody is a wrong balance
+  // rather than a missing row. Counted apart from `undecodedRows`: the cell to fix differs.
   it('counts a settlement whose payer names neither person, rather than guessing', async () => {
     installSheets(() =>
       ranges5({
@@ -475,7 +408,7 @@ describe('loadAll', () => {
           settlementRow({ id: 'ok', date: '2026-08-06', amount: '400', payer: 'p1' }),
           settlementRow({ id: 'who', date: '2026-08-06', amount: '900', payer: 'Waylon' }),
           settlementRow({ id: 'blank', date: '2026-08-06', amount: '900', payer: '' }),
-          // Tombstoned, so it is correctly out of the totals already and says nothing.
+          // Tombstoned, so already out of the totals and says nothing.
           settlementRow({ id: 'dead', amount: '900', payer: 'nope', deleted_at: 'x' }),
         ]),
       }),
@@ -533,10 +466,8 @@ describe('loadAll', () => {
 
     const { entries, config } = await sheets.loadAll(SHEET)
 
-    // Sliced from the END of the range list, so a data range added later still gets
-    // requested on the retry rather than silently dropping out of it.
+    // Sliced from the END, so a data range added later still gets requested on the retry.
     expect(rangesOf(calls[1])).toEqual(FIVE_RANGES.slice(0, -1))
-    // Defaults win for every config value.
     expect(config.categories).toEqual(DEFAULT_CONFIG.categories)
     expect(entries[0].amountYen).toBe(4210)
   })
@@ -558,8 +489,7 @@ describe('loadAll', () => {
   })
 
   it('tells "lost access" apart from "try again"', async () => {
-    // Losing access is not a blip: calling it transient hides it behind a 30-second
-    // retry loop and a "showing saved data" notice, forever.
+    // Losing access is not a blip: called transient it hides behind the 30s retry loop forever.
     for (const status of [403, 404]) {
       installSheets(() => ({ __status: status }))
       const cause = await sheets.loadAll(SHEET).catch((error) => error)
@@ -573,9 +503,8 @@ describe('loadAll', () => {
   })
 
   it('does not call a rate-limited 403 a lost share', async () => {
-    // Google answers 403 for a revoked share AND for a tripped quota. Two people both
-    // active is enough to trip one, and telling someone to go re-share a spreadsheet
-    // that is fine is the wrong instruction at the worst moment.
+    // Google answers 403 for a revoked share AND for a tripped quota, which two active people
+    // are enough to trip — and "go re-share the spreadsheet" is then the wrong instruction.
     for (const reason of ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded']) {
       installSheets(() => ({ __status: 403, __reason: reason }))
       const cause = await sheets.loadAll(SHEET).catch((error) => error)
@@ -587,9 +516,8 @@ describe('loadAll', () => {
   })
 
   it('keeps the live row when a payer change left a tombstone under the same id', async () => {
-    // Exactly what `updateEntry`'s move branch leaves behind: p1's row tombstoned,
-    // p2's row live, one id. Unreconciled, the tombstone is the copy every id
-    // lookup finds first, because p1's tab is read first.
+    // What a payer move leaves behind: p1 tombstoned, p2 live, one id. Unreconciled, the
+    // tombstone is the copy every lookup finds first, because p1's tab is read first.
     installSheets(() =>
       ranges5({
         p1: values([
@@ -604,14 +532,12 @@ describe('loadAll', () => {
     expect(entries).toHaveLength(1)
     expect(entries[0].payer).toBe(PERSON.P2)
     expect(entries[0].deletedAt).toBeNull()
-    // Still a real row in the sheet, and still something `compact` will remove, so
-    // the settings count has to add it back or the button offers nothing to do.
+    // Still a real row `compact` will remove, so the settings count has to add it back.
     expect(supersededRows).toBe(1)
   })
 
   it('reports rows whose amount cannot be read, rather than dropping them silently', async () => {
-    // A hand-typed amount that no rule can parse leaves the ledger short by that
-    // expense, with nothing on screen saying the balance is incomplete.
+    // Dropped silently, the ledger is short by that expense with nothing on screen saying so.
     installSheets(() =>
       ranges5({
         p1: values([
@@ -631,10 +557,8 @@ describe('loadAll', () => {
   })
 
   it('counts only tombstones as superseded, never a hidden live duplicate', async () => {
-    // Two LIVE rows with one id is what an interrupted payer move leaves behind:
-    // `updateEntry` appends before it tombstones, on purpose. `reconcileById` hides
-    // one, but `compact` removes tombstones only — so counting it would offer a
-    // removal that can never happen and a count that never clears.
+    // Two LIVE rows under one id is what an interrupted payer move leaves. `compact` removes
+    // tombstones only, so counting it offers a removal that can never happen.
     installSheets(() =>
       ranges5({
         p1: values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
@@ -649,8 +573,7 @@ describe('loadAll', () => {
   })
 
   it('does not report a tombstoned row as missing from the totals', async () => {
-    // It is correctly out of them already, so the notice would say the balance is
-    // short when it is not — and the row is not in `entries` to be cleared either.
+    // Already out of the totals, so the notice would claim a shortfall that is not there.
     installSheets(() =>
       ranges5({
         p1: values([
@@ -678,12 +601,9 @@ describe('loadAll', () => {
     })
   })
 
-  /**
-   * The five things `loadAll` reports about what the sheet holds and the app cannot
-   * show. `ledgerState.test.js` covers how `noticeKeys` turns each into a sentence;
-   * these cover that `loadAll` ever produces one, which nothing else did — every
-   * flag below could be deleted from `sheets.js` with a green suite.
-   */
+  // `ledgerState.test.js` covers how `noticeKeys` turns each count into a sentence; these are the
+  // only cases proving `loadAll` produces one — every flag below could be deleted from
+  // `sheets.js` with a green suite.
   describe('what it reports about the sheet', () => {
     it('flags a missing config tab, so its defaults are never silent', async () => {
       let attempt = 0
@@ -701,8 +621,7 @@ describe('loadAll', () => {
       installSheets(() =>
         ranges5({
           p1: values([
-            // What Sheets hands back for a hand-typed date it stored AS a date: reads
-            // are FORMATTED_VALUE, so it arrives in the spreadsheet's own locale.
+            // Reads are FORMATTED_VALUE, so a stored date arrives in the sheet's own locale.
             row({ id: 'a', date: '8/5/2026', amount: '100' }),
             row({ id: 'b', date: '2026-02-31', amount: '100' }),
             row({ id: 'ok', date: '2026-08-05', amount: '100' }),
@@ -710,8 +629,7 @@ describe('loadAll', () => {
         }),
       )
 
-      // They reach the balance but belong to no month, so they appear in no month's
-      // list and cannot be found and fixed from the app.
+      // They reach the balance but belong to no month, so no month's list can show them.
       expect(await sheets.loadAll(SHEET)).toMatchObject({ undatedRows: 2 })
     })
 
@@ -726,8 +644,8 @@ describe('loadAll', () => {
       installSheets(() => ranges5({ config: values([['default_split_p1', '80']]) }))
 
       const { sheetConfig, config } = await sheets.loadAll(SHEET)
-      // The snapshot stores this, and it must be the pre-merge copy: a merged one
-      // freezes the building build's defaults into every future cold launch.
+      // The snapshot stores this, and it must be the pre-merge copy: a merged one freezes the
+      // building build's defaults into every future cold launch.
       expect(sheetConfig).toEqual({ defaultSplitP1: 0.8 })
       expect(config.defaultSplitP1).toBe(0.8)
       expect(config.categories).toEqual(DEFAULT_CONFIG.categories)
@@ -736,7 +654,6 @@ describe('loadAll', () => {
     it('takes the FIRST usable value for a config key', async () => {
       installSheets(() =>
         ranges5({
-          // Somebody added a row at the top and forgot the old one lower down.
           config: values([
             ['default_split_p1', '80'],
             ['default_split_p1', '50'],
@@ -745,17 +662,13 @@ describe('loadAll', () => {
       )
 
       const { config } = await sheets.loadAll(SHEET)
-      // Last-wins would run the sheet at an even split, moving money on every expense
-      // this person paid for.
+      // Last-wins would run the sheet at an even split, moving money on this person's expenses.
       expect(config.defaultSplitP1).toBe(0.8)
     })
 
-    /**
-     * The `recurring` tab is read in the same batch and decoded by a different reader,
-     * so the two ways this can go wrong are the range landing in the wrong slot — which
-     * would silently hand ledger rows to `rowToTemplate` and answer no templates at all
-     * — and a refused row going uncounted.
-     */
+    // Decoded by a different reader from the same batch, so it goes wrong two ways: the range in
+    // the wrong slot, which hands ledger rows to `rowToTemplate` and answers no templates at
+    // all, and a refused row going uncounted.
     describe('the recurring tab', () => {
       it('decodes it from its own range, not from a ledger one', async () => {
         installSheets(() =>
@@ -791,7 +704,6 @@ describe('loadAll', () => {
             activeTo: null,
           },
         ])
-        // And the ledger row is still an entry rather than having been read as a template.
         expect(entries.map((item) => item.id)).toEqual(['e1'])
         expect(undecodedTemplates).toBe(0)
       })
@@ -801,7 +713,7 @@ describe('loadAll', () => {
           ranges5({
             recurring: values([
               recurringRow({ id: 'ok', amount: '8000', payer: 'p2' }),
-              // Every one of these is a cell a person typed and this cannot read.
+              // Each of these is a cell a person typed and this cannot read.
               recurringRow({ id: 'no-payer', amount: '8000' }),
               recurringRow({ description: 'Gym', amount: '8000', payer: 'p1' }),
               recurringRow({ id: 'bad-day', payer: 'p1', day_of_month: 'last' }),
@@ -818,12 +730,8 @@ describe('loadAll', () => {
         expect(undecodedTemplates).toBe(3)
       })
 
-      /**
-       * Two rows under one id, which a Sheets copy-paste produces. The FIRST wins, exactly as
-       * `parseConfigRows` takes the first usable value for a config key — the same
-       * hand-authored-tab problem. Unreconciled they would render two identical rows under one
-       * React key and `recurringRows` would emit two drafts nothing could tell apart.
-       */
+      // The FIRST wins, as `parseConfigRows` does for a config key. Unreconciled, two rows under
+      // one id share a React key and `recurringRows` emits two drafts nothing can tell apart.
       it('keeps the FIRST row per id and counts the rest', async () => {
         installSheets(() =>
           ranges5({
@@ -854,12 +762,8 @@ describe('loadAll', () => {
   })
 })
 
-/**
- * The `recurring` tab's writes. Everything here is a write into a tab a person authored by
- * hand, and the two failures that matter are silent: a blank that should have stayed blank —
- * a variable amount, or a share that means "follow the payer's default" — and a write landing
- * on the wrong row when two rows share an id.
- */
+// Writes into a tab a person authored by hand. Both failures are silent: a blank that should
+// have stayed blank, and a write landing on the wrong row when two rows share an id.
 describe('template writes', () => {
   const RENT = {
     id: 'rent',
@@ -874,7 +778,6 @@ describe('template writes', () => {
     activeTo: null,
   }
 
-  /** The appended or updated row as a field map, so an assertion names its column. */
   const sentRow = (call) => asFields(call.body.values[0], RECURRING.columns)
 
   it('appends when the tab has no row for that id, RAW, at the schema’s column order', async () => {
@@ -883,7 +786,6 @@ describe('template writes', () => {
     await sheets.saveTemplate(SHEET, RENT)
 
     const write = writes(calls)[0]
-    // A-anchored, like every other append: `appendRow` says what a bare tab title costs.
     expect(write.url).toContain('recurring!A2:J:append')
     expect(write.url).toContain('valueInputOption=RAW')
     expect(sentRow(write)).toEqual({
@@ -901,11 +803,10 @@ describe('template writes', () => {
   })
 
   /**
-   * The row a variable cost needs. A blank amount means "the figure changes every month" and
-   * a blank share means "follow whoever pays, at their configured default" — the second of
-   * which is ALSO what makes `postRecurring` leave the row for a human. Written as '0' both
-   * would be lies, and `rowToTemplate` refuses an amount of 0 outright, so the template
-   * would vanish from the page the app itself just wrote it to.
+   * Blank amount means "the figure changes every month", blank share "follow the payer's default"
+   * — which is also what makes `postRecurring` leave the row for a human. As '0' both are lies,
+   * and `rowToTemplate` refuses an amount of 0, so the template vanishes from the page the app
+   * just wrote it to.
    */
   it('writes a blank amount and a blank share, never a zero', async () => {
     const calls = installSheets(() => ({}))
@@ -935,23 +836,20 @@ describe('template writes', () => {
     expect(read.method).toBe('GET')
     expect(read.url).toContain('recurring!A2:J')
     expect(write.method).toBe('PUT')
-    // The literal range: ten columns is what `A4:J4` spells, and deriving it from the
-    // module under test would assert its arithmetic against a copy of itself.
+    // The literal range: ten columns is what `A4:J4` spells, and deriving it pins nothing.
     expect(write.url).toContain('recurring!A4:J4')
     expect(write.url).toContain('valueInputOption=RAW')
   })
 
   /**
-   * ONE function decides append-versus-overwrite, and that is what makes a retried add
-   * idempotent: a template's id is minted when the form opens, so an append whose response was
-   * lost gets retried under the SAME id. Two dedicated appends would leave two rows, and from
-   * then on every edit to that cost is refused — unmaintainable from the app for good.
+   * ONE function decides append-versus-overwrite, which is what makes a retried add idempotent:
+   * an id is minted when the form opens, so a lost response is retried under the SAME id. Two
+   * rows, and every later edit to that cost is refused — unmaintainable from the app.
    */
   it('overwrites rather than duplicating when the same add is retried', async () => {
     let appended = null
-    // `:append` is matched FIRST: the append range now CONTAINS the data range — that is the
-    // whole point of anchoring it — so a router that tested the read first would answer the
-    // append as though it were one.
+    // `:append` matched FIRST: the append range CONTAINS the data range, which is the whole
+    // point of anchoring it, so testing the read first answers the append as though it were one.
     const calls = installSheets((call) => {
       if (call.url.includes(':append')) {
         appended = call.body.values[0]
@@ -967,17 +865,12 @@ describe('template writes', () => {
     const mutating = writes(calls)
     expect(mutating).toHaveLength(2)
     expect(mutating[0].url).toContain(':append')
-    // The second lands on the row the first created, not beside it.
     expect(mutating[1].method).toBe('PUT')
     expect(mutating[1].url).toContain('recurring!A2:J2')
   })
 
-  /**
-   * Two rows under one id, which a Sheets-UI copy-paste and a retried append both produce.
-   * `loadAll` shows only the first, so writing to a GUESS would put one cost's values over
-   * another's — and the row on screen would be the one that did not change. Refused, and the
-   * message names the fix, because only the sheet can make it.
-   */
+  // `loadAll` shows only the first of two rows sharing an id, so writing to a GUESS puts one
+  // cost's values over another's — and the row on screen is the one that did not change.
   it('refuses a duplicate id rather than writing to one of them', async () => {
     const calls = installSheets((call) =>
       call.url.includes(RECURRING.dataRange)
@@ -994,7 +887,6 @@ describe('template writes', () => {
     expect(writes(calls)).toHaveLength(0)
   })
 
-  /** Retiring is an ordinary update with `active_to` set, and shifts no row. */
   it('retires through active_to, without touching a row position', async () => {
     const calls = installSheets((call) =>
       call.url.includes(RECURRING.dataRange)
@@ -1005,15 +897,12 @@ describe('template writes', () => {
     await sheets.saveTemplate(SHEET, { ...RENT, activeTo: '2026-08' })
 
     expect(sentRow(writes(calls)[0]).active_to).toBe('2026-08')
-    // No `deleteDimension`: retiring is what keeps the id, and the id is what keeps every
-    // month this cost has already posted recorded.
+    // No `deleteDimension`: the id is what keeps every month already posted recorded.
     expect(calls.some((call) => call.body?.requests)).toBe(false)
   })
 
-  /**
-   * The one hard delete outside `compact`, and the assertion that matters is the row INDEX:
-   * `deleteDimension` shifts every row below it, so being one out removes a different cost.
-   */
+  // The row INDEX is the assertion: `deleteDimension` shifts every row below it, so being one
+  // out removes a different cost.
   it('deletes the row the id sits on, and only that row', async () => {
     const calls = installSheets((call) =>
       call.url.includes(RECURRING.dataRange)
@@ -1038,13 +927,9 @@ describe('template writes', () => {
     })
   })
 
-  /**
-   * A missing gid is the failure that looks like nothing: `JSON.stringify` DROPS an
-   * undefined `sheetId`, and a `GridRange` without one reads as gid 0 — the first tab in the
-   * spreadsheet. So the request does not fail, it hard-deletes whatever row happens to sit at
-   * the recurring row's index in `expenses_p1`. Both hard deletes guard upstream through
-   * `missingGid`; this is the guard in the request builder they share.
-   */
+  // A missing gid looks like nothing: `JSON.stringify` DROPS an undefined `sheetId` and a
+  // `GridRange` without one reads as gid 0, so the request succeeds and hard-deletes whatever
+  // row sits at that index in `expenses_p1`.
   it('throws rather than sending a delete with no gid, which would hit the first tab', async () => {
     const calls = installSheets((call) =>
       call.url.includes(RECURRING.dataRange)
@@ -1059,8 +944,7 @@ describe('template writes', () => {
   })
 
   it('does nothing when the row is already gone, rather than failing', async () => {
-    // Deleted from the other phone, or in the Sheets UI. The outcome asked for is the outcome
-    // already in place, so interrupting somebody over it would be noise.
+    // Deleted from the other phone: the outcome asked for is already in place.
     const calls = installSheets((call) =>
       call.url.includes(RECURRING.dataRange)
         ? values([recurringRow({ id: 'gym', payer: 'p2' })])
@@ -1072,8 +956,7 @@ describe('template writes', () => {
   })
 
   it('refuses to delete when two rows share the id', async () => {
-    // The same reason a write refuses: nothing here can tell which of them was meant, and
-    // guessing removes a cost somebody still wanted.
+    // Nothing can tell which was meant, and guessing removes a cost somebody still wanted.
     const calls = installSheets((call) =>
       call.url.includes(RECURRING.dataRange)
         ? values([
@@ -1092,9 +975,8 @@ describe('template writes', () => {
 
 describe('compact', () => {
   it('deletes bottom-up within each tab', async () => {
-    // CRITICAL: deleteDimension shifts every row below it, so ascending order
-    // would make each request after the first target the wrong row — and the rows
-    // it would then delete are live expenses.
+    // CRITICAL: deleteDimension shifts every row below it, so ascending order makes each
+    // request after the first target the wrong row — and those rows are live expenses.
     const calls = installSheets((call) => {
       if (call.url.includes('expenses_p1!A2:G')) {
         return values([
@@ -1124,20 +1006,15 @@ describe('compact', () => {
     }
 
     expect(removed).toBe(4)
-    // Rows 3, 5 and 8 in p1 (0-based 2, 4, 7), newest first. The literal lists are the
-    // whole assertion: a "sorted descending" check over whatever came back passes on a
-    // single request, and on the wrong rows in the right order.
+    // Rows 3, 5 and 8 in p1 (0-based 2, 4, 7). The literal lists are the whole assertion: a
+    // "sorted descending" check passes on one request, and on the wrong rows in the right order.
     expect(perTab.get(GIDS.expenses_p1)).toEqual([7, 4, 2])
     expect(perTab.get(GIDS.expenses_p2)).toEqual([1])
   })
 
-  /**
-   * One read per tab, never a batchGet, and that is not an oversight worth tidying.
-   * Row numbers here come from POSITION in the reply (`FIRST_DATA_ROW + index`), so
-   * batching would mean re-deriving them from a positional `valueRanges` array — in
-   * the app's only hard delete, where being one row out removes somebody else's
-   * expense. One extra round trip on a rare manual action is the cheaper mistake.
-   */
+  // Not an oversight worth tidying: row numbers come from POSITION in the reply, so batching
+  // means re-deriving them from a positional array — in the app's only hard delete, where being
+  // one row out removes somebody else's expense.
   it('reads each tab on its own rather than batching them', async () => {
     const calls = installSheets((call) =>
       call.url.includes('!A2:') ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
@@ -1147,24 +1024,14 @@ describe('compact', () => {
 
     expect(calls.filter((call) => call.url.includes('values:batchGet'))).toHaveLength(0)
     const reads = calls.filter((call) => call.url.includes('!A2:'))
-    // One per data tab, in order, each at its own range.
-    // The harness records decoded URLs, so the range reads back as written — minus the
-    // query string, which is not part of what is being asserted.
     expect(reads.map((call) => call.url.split('/values/')[1].split('?')[0])).toEqual(
       DATA_TABS.map((tab) => tab.dataRange),
     )
   })
 
-  /**
-   * The settlements tab is compacted too, and its `deleted_at` is at a DIFFERENT index
-   * from the expenses one. This is the test that catches the whole reason the positional
-   * lookups hang off a tab: with one module-wide index, `compact` reads the settlements
-   * tab's `id` column instead — non-empty on every row — and hard-deletes every live
-   * settlement in the sheet.
-   *
-   * So the fixture gives the settlements tab one LIVE row and one tombstoned one, and
-   * asserts exactly one deletion, at the tombstone's position.
-   */
+  // The settlements tab's `deleted_at` is at a DIFFERENT index, so this catches the whole reason
+  // positional lookups hang off a tab: with one module-wide index `compact` reads the `id` column
+  // instead — non-empty on every row — and hard-deletes every live settlement.
   it('removes tombstoned settlements, and only those', async () => {
     const calls = installSheets((call) => {
       if (call.url.includes(SETTLEMENTS.dataRange)) {
@@ -1199,8 +1066,8 @@ describe('compact', () => {
 
     for (const { deleteDimension } of writes(calls)[0].body.requests) {
       expect(deleteDimension.range.endIndex - deleteDimension.range.startIndex).toBe(1)
-      // The nested shape specifically. `dimension` at the top level is not what
-      // the API reads, so accepting either would pass on a request it rejects.
+      // `dimension` at the top level is not what the API reads, so either-shape passes on a
+      // request the API rejects.
       expect(deleteDimension.range.dimension).toBe('ROWS')
     }
   })
@@ -1215,8 +1082,7 @@ describe('compact', () => {
   })
 
   it('skips a tab whose gid it was not given, rather than guessing one', async () => {
-    // `useLedger` throws before it gets here; this is the second line of defence,
-    // and the reason that throw must not be removed as redundant.
+    // The second line of defence, and why `useLedger`'s throw must not be dropped as redundant.
     const calls = installSheets((call) =>
       call.url.includes('!A2:') ? values([row({ id: 'a', deleted_at: 'x' })]) : {},
     )
@@ -1240,8 +1106,7 @@ describe('ensureStructure', () => {
       call.url.includes('fields=sheets') ? sheetList(['Budget 2024', 'Notes', 'Pivot']) : {},
     )
 
-    // Translated, and it must stay so: this is the one failure whose message a
-    // person has to act on, and the UI shows `i18nKey` rather than `.message`.
+    // The one failure whose message a person must act on, and the UI shows `i18nKey` only.
     await expect(sheets.ensureStructure(SHEET)).rejects.toMatchObject({
       i18nKey: 'error.notOurSheet',
     })
@@ -1295,11 +1160,8 @@ describe('ensureStructure', () => {
     expect(write.body.valueInputOption).toBe('RAW')
   })
 
-  /**
-   * The `recurring` tab gets a header like every other one, and it is the header that
-   * makes the tab usable at all: nothing in the app writes a template, so those ten
-   * words are the only thing telling whoever opens the sheet what to type where.
-   */
+  // Nothing in the app writes a template, so those ten words are the only instruction anyone
+  // opening the sheet gets.
   it('writes the recurring header when the tab has just been created', async () => {
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
@@ -1322,8 +1184,7 @@ describe('ensureStructure', () => {
 
     const write = writes(calls).find((call) => call.body?.data)
     expect(write.body.data).toHaveLength(1)
-    // The literal range, not `RECURRING.headerRange`: ten columns is what `A1:J1`
-    // spells, and deriving it would pin nothing.
+    // The literal range, not `RECURRING.headerRange`: ten columns is what `A1:J1` spells.
     expect(write.body.data[0].range).toBe('recurring!A1:J1')
     expect(write.body.data[0].values[0]).toContain('day_of_month')
   })
@@ -1366,17 +1227,12 @@ describe('ensureStructure', () => {
     expect(data.values[0]).toEqual(['key', 'value'])
     const asObject = Object.fromEntries(data.values.slice(1))
     expect(asObject.person1_name).toBe('Person 1')
-    // Unlocalized, and written as a fraction rather than a percentage.
     expect(asObject.default_split_p1).toBe('0.5')
   })
 
-  /**
-   * Which keys a fresh sheet gets is a decision, not a consequence: the locale, the
-   * accent and which of the two people this device is are per-DEVICE values, and a
-   * sheet that named any of them would let one person restyle the other's phone —
-   * or tell it who it is. The literal list is the only thing that can catch a new
-   * `CONFIG_FIELDS` entry being seeded by accident.
-   */
+  // The locale, the accent and which person this device is are per-DEVICE: a sheet naming any of
+  // them would let one person restyle the other's phone. The literal list is the only thing that
+  // catches a new `CONFIG_FIELDS` entry being seeded by accident.
   it('seeds these keys and no others', async () => {
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
@@ -1429,9 +1285,7 @@ describe('ensureStructure', () => {
   })
 
   it('takes a created tab’s gid from the reply that created it', async () => {
-    // The addSheet reply already names every tab it made, so asking the
-    // spreadsheet for the same gids again is a wasted round trip on the one path
-    // that runs on a phone with nothing cached.
+    // The addSheet reply already names every tab it made, so re-asking is a wasted round trip.
     const calls = installSheets((call) => {
       if (call.url.includes('fields=sheets')) return sheetList(['Sheet1'])
       if (call.url.includes('values:batchGet')) return EMPTY_RANGES
@@ -1455,9 +1309,8 @@ describe('ensureStructure', () => {
 })
 
 describe('readSheetGids', () => {
-  // `compact` needs gids and nothing else, and must never reach them through
-  // `ensureStructure`, which WRITES — `readSheetGids` says what that would cost. So the
-  // assertion that matters here is the absence of any write.
+  // `compact` must never reach gids through `ensureStructure`, which WRITES — so the absence of
+  // a write is the assertion.
   it('reads the gids and writes nothing at all', async () => {
     const calls = installSheets((call) =>
       call.url.includes('fields=sheets')

@@ -3,13 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { installStorage, removeStorage } from './support/storage.js'
 
 /**
- * The two per-device preferences: which of the two people this phone belongs to, and
- * the accent. Neither may ever reach the sheet — two people share one spreadsheet and
- * neither gets to restyle the other's phone.
- *
- * Both modules read storage at import time, so each case loads them fresh against a
- * seeded store rather than mutating one. The accent's current value is observed
- * through `syncDocumentAccent()` with no argument, which reflects exactly it.
+ * The two per-device preferences: which person this phone belongs to, and the accent. Neither
+ * may ever reach the sheet — two people share one spreadsheet. Both modules read storage at
+ * import time, so each case loads them fresh against a seeded store, and the accent's current
+ * value is observed through an argument-less `syncDocumentAccent()`.
  */
 
 afterEach(() => {
@@ -48,8 +45,8 @@ describe('the stored identity', () => {
   })
 
   it('answers null for anything else, so the gate asks instead of guessing', async () => {
-    // Nothing can detect which person this is — the token belongs to the sheet's
-    // owner — so a junk value must send someone back to the gate, not pick p1.
+    // Nothing can detect which person this is, so a junk value must send someone back to
+    // the gate rather than pick p1.
     for (const value of ['p3', 'P1', '', 'true', '{}']) {
       const { readStoredIdentity } = await loadIdentity({ 'sf.identity': value })
       expect(readStoredIdentity()).toBeNull()
@@ -72,8 +69,8 @@ describe('the accent preference', () => {
   })
 
   it('ignores a stored name that is not a preset', async () => {
-    // A renamed or hand-edited value must not reach `[data-accent]`, where it would
-    // match no rule and leave the app with no accent colour at all.
+    // A hand-edited value must not reach `[data-accent]`, where it matches no rule and
+    // leaves the app with no accent colour at all.
     const { currentAccent } = await loadTheme({ 'sf.accent': 'chartreuse' })
     expect(currentAccent()).toBeUndefined()
   })
@@ -93,8 +90,8 @@ describe('the accent preference', () => {
   })
 
   it('expresses the default by REMOVING the attribute, not by setting it', async () => {
-    // `:root` in tokens.css is the single definition of indigo; a `data-accent`
-    // attribute for it would be a second one to keep in sync.
+    // `:root` in tokens.css is the single definition of indigo; an attribute for it would
+    // be a second one to keep in sync.
     const { syncDocumentAccent, DEFAULT_ACCENT, element } = await loadTheme({})
     syncDocumentAccent('plum')
     expect(element.dataset.accent).toBe('plum')

@@ -1,13 +1,10 @@
 /**
- * The live region sits on each toast rather than on the stack, because the two tones need
- * different urgency: a write failure must interrupt, a "Deleted" confirmation must not.
- * Two wrapper regions inside the stack would each need their own layout and would break
- * the visual order the two tones share, while per-toast roles need no CSS at all.
+ * The live region sits on each toast rather than on the stack, because the two tones need different
+ * urgency: a write failure must interrupt, a "Deleted" confirmation must not.
  *
- * The cost of that choice: a region announces on INSERTION rather than on a change to one
- * already being watched. Safari does that reliably for `role="alert"`, which is the
- * failure — the half that must never be missed — and best-effort for the polite
- * confirmation. Keep the ordering if this is ever revisited.
+ * The cost: a region announces on INSERTION rather than on a change to one already watched. Safari
+ * does that reliably for `role="alert"` — the half that must never be missed — and best-effort for
+ * the polite confirmation. Keep the ordering if this is ever revisited.
  */
 export function Toasts({ toasts }) {
   if (!toasts.length) return null

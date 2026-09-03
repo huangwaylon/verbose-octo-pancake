@@ -9,30 +9,26 @@ Turn a bank export into rows you can paste into the ledger.
     uv run scripts/bank_to_ledger.py statement.tsv
     uv run scripts/bank_to_ledger.py statement.tsv -o rows.csv --payer p1
 
-Expenses go to the output file and paste straight into `expenses_p1!A2` (or p2) under
-the existing header. Settlements have their own tab and their own columns, so they get
-their own `.settlements.csv` beside it — written only when there are any.
-`test/schema.test.js` pins this copy of that list against the real one, because
-this file cannot import it and a silent disagreement writes every value under the
-wrong field. Amounts are whole yen exactly as `entryToRow` writes them.
+Expenses paste into `expenses_p1!A2` (or p2) under the existing header; settlements
+have their own tab and columns, so they get a `.settlements.csv` beside it, written
+only when there are any. `test/schema.test.js` pins both column lists against the real
+ones, because this file cannot import them and a silent disagreement writes every value
+under the wrong field. Amounts are whole yen exactly as `entryToRow` writes them.
 
-NOTHING IS EVER TRANSLATED. A description is the bank's own text — the merchant name
-as exported, plus your note when the note says something the name does not — so a row
-in the ledger can always be found in the statement by searching for what it says. A
-rule only chooses a category, a share, and whether the row is a purchase at all.
+NOTHING IS EVER TRANSLATED. A description is the bank's own text plus your note when
+the note adds something, so a ledger row can always be found in the statement by
+searching for what it says. A rule only chooses a category, a share, and whether the
+row is a purchase at all.
 
-Everything the script decides is decided by RULES below: first match wins, and
-whatever matches nothing becomes a shared "Other" expense AND is listed in the
-summary so you can add a rule for it. The summary also reconciles every yen in
-the file against every yen out of it — the point is that a row can be dropped
-only on purpose.
+RULES below decides everything: first match wins, and whatever matches nothing becomes
+a shared "Other" expense AND is listed in the summary so you can add a rule. The
+summary reconciles every yen in against every yen out — a row can be dropped only on
+purpose.
 
-Conventions that mirror the app:
-  * The categories are CATEGORIES and nothing else. A fresh sheet's config tab holds
-    the same short list, and a category it does not list renders as an empty picker.
-  * payer_share is the fraction the PAYER covers themselves. 1.0 = paid in
-    full by the payer (the other person owes nothing); 0 = a settlement.
-  * A settlement carries no category and is never spending.
+Conventions that mirror the app: CATEGORIES is the whole vocabulary (a category the
+config tab does not list renders as an empty picker); payer_share is the fraction the
+PAYER covers themselves, 1.0 = paid in full by the payer, 0 = a settlement; and a
+settlement carries no category and is never spending.
 """
 
 from __future__ import annotations
@@ -47,10 +43,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-# The whole vocabulary, pinned to the app's own default list by test/schema.test.js.
-# Kept this short deliberately: a category earns its place only if a month's spending
-# reads differently for having it, and every extra one is another choice to make on
-# every entry. Everything else is Other.
+# Pinned to the app's own default list by test/schema.test.js. Short deliberately: a
+# category earns its place only if a month's spending reads differently for having it.
 CATEGORIES = (
     "Groceries",
     "Dining",
@@ -73,29 +67,22 @@ CATEGORIES = (
 #       "settlement" -> a settlement row, no category
 #       "skip"       -> not a purchase; dropped and counted
 #
-# Prefer a pattern that names a KIND of place over one that names a shop: 薬局 and
-# ドラッグ classify every drugstore in the country, and the list stays short enough to
-# read in one screen. A shop earns its own line only when its name says nothing about
-# what it sells, or when it disagrees with the general rule below it. A one-off is not
-# worth a rule — Other is the honest answer, and the summary lists it either way.
+# Prefer a pattern naming a KIND of place over one naming a shop (薬局 and ドラッグ
+# classify every drugstore in the country), so the list stays readable in one screen. A
+# shop earns a line only when its name says nothing about what it sells or disagrees
+# with the general rule below it; a one-off is not worth a rule, since Other is honest
+# and the summary lists it anyway. Both spellings appear where the bank prints both
+# (ライフ and LIFE CORPORATION) — matching, not translating.
 #
-# Both spellings are patterns where the bank prints both: it renders one merchant as
-# ライフ and as LIFE CORPORATION. That is matching, not translating — the row keeps
-# whichever spelling the statement used.
+# Patterns match loosely: case, ASCII/full-width, hiragana/katakana, spaces,
+# punctuation and small kana are folded away, and every dash — the katakana long vowel
+# mark included — becomes one character (ラクテンカ－ドサ－ビス == ラクテンカードサービス). The
+# long vowel mark is FOLDED rather than dropped: dropping it leaves オーケー as a
+# two-character pattern that would match half the file.
 #
-# Patterns are matched loosely: case, ASCII/full-width, hiragana/katakana, spaces,
-# punctuation and small kana are all folded away first, and every kind of dash —
-# including the katakana long vowel mark — becomes one character, so one spelling
-# matches every way the bank renders a name (ラクテンカ－ドサ－ビス == ラクテンカードサービス).
-#
-# The long vowel mark is FOLDED rather than dropped, because dropping it leaves
-# オーケー as a two-character pattern that would match half the file by accident.
-#
-# A skip is tried against the merchant AND your note, because an exclusion is always
-# deliberate and is sometimes only identifiable from the note (a laptop bought for
-# someone who transferred the money straight back is an APPLE.COM row like any other).
-# Every other rule sees the merchant ALONE: notes are written loosely, and one reading
-# "ozeki groceries" against an OK Mart row must not be what classifies it.
+# A skip is tried against the merchant AND your note, because an exclusion is
+# deliberate and sometimes only identifiable from the note. Every other rule sees the
+# merchant ALONE: a note reading "ozeki groceries" must not classify an OK Mart row.
 # ---------------------------------------------------------------------------
 
 # prettier-ignore
@@ -254,9 +241,8 @@ EXPENSE_COLUMNS = [
     "id",
 ]
 
-# Settlements go in their own tab, which cannot say who paid the way an expenses tab
-# does — hence the `payer` column, and no `category` or `payer_share`. Both lists are
-# pinned against src/schema.js by test/schema.test.js.
+# Its own tab, which cannot say who paid the way an expenses tab does — hence `payer`,
+# and no `category` or `payer_share`.
 SETTLEMENT_COLUMNS = [
     "date",
     "description",
@@ -276,9 +262,8 @@ _KANA = {code: code + 0x60 for code in range(0x3041, 0x3097)}
 _FOLD = {
     # Small kana onto their full-size form: the bank writes both ッ and ツ.
     **{ord(small): big for small, big in zip("ァィゥェォャュョッヮヵヶ", "アイウエオヤユヨツワカケ")},
-    # Every dash-like character the bank uses, including the katakana long vowel
-    # mark, collapsed onto one. Folded rather than dropped: without the mark
-    # オーケー becomes the two-character オケ and matches names it has nothing to do with.
+    # Every dash-like character onto one, the katakana long vowel mark included. Folded
+    # rather than dropped: without it オーケー becomes オケ and matches unrelated names.
     **{ord(dash): "-" for dash in "‐‑–—−ー－-"},
     **{ord(drop): None for drop in " 　・･/,、。()＊*'’\"`&＆"},
 }
@@ -307,10 +292,9 @@ def split_columns(line: str) -> list[str]:
     """
     Columns, whether the export kept its tabs or had them expanded to spaces.
 
-    Empty cells are load-bearing here: which of the money-in / money-out
-    columns is filled is the only thing that says which direction a row went,
-    so a splitter that collapses runs of blanks would silently turn a refund
-    into a purchase.
+    Empty cells are load-bearing: which of the money-in / money-out columns is filled
+    is the only thing saying which direction a row went, so a splitter that collapsed
+    runs of blanks would silently turn a refund into a purchase.
     """
     if "\t" in line:
         return [cell.strip() for cell in line.split("\t")]
@@ -342,10 +326,8 @@ def parse_line(line: str, line_no: int) -> Txn | None:
     )
     description = VISA_PREFIX_RE.sub("", description).strip()
 
-    # The ledger is yen only, so a row in anything else cannot be written at all.
-    # Refused loudly here rather than converted or rounded: this is an offline
-    # script, so stopping costs a re-run, while guessing puts a 100x-wrong amount
-    # into a real ledger.
+    # Refused loudly rather than converted or rounded: this is an offline script, so
+    # stopping costs a re-run, while guessing puts a 100x-wrong amount into a real ledger.
     currency = cols[currency_at].upper()
     if currency != "JPY":
         raise ValueError(f"line {line_no}: {currency} is not JPY; this ledger is yen only")
@@ -354,10 +336,9 @@ def parse_line(line: str, line_no: int) -> Txn | None:
         """
         A statement amount as whole yen.
 
-        The yen has no sub-unit, so a decimal point here carries no value —
-        "1480" and "1480.000000" are both ¥1480, and the bank's own export writes
-        the second. A non-zero fraction means the column was misidentified, so it
-        is refused rather than rounded away.
+        The yen has no sub-unit, so a decimal point carries no value — the bank's own
+        export writes "1480.000000". A non-zero fraction means the column was
+        misidentified, so it is refused rather than rounded away.
         """
         if not cell:
             return 0
@@ -386,9 +367,9 @@ def classify(txn: Txn) -> tuple[str | None, str, bool]:
     """
     (category, mode, matched) for a transaction. Never guesses silently.
 
-    `matched` is returned rather than inferred from the values, because a rule is
-    allowed to answer exactly what the fallback answers — and "no rule matched" is
-    the line in the summary that tells you to write a new one.
+    `matched` is returned rather than inferred from the values, because a rule may
+    answer exactly what the fallback answers — and "no rule matched" is the line in the
+    summary telling you to write one.
     """
     merchant = loose(txn.description)
     with_note = loose(txn.description + " " + txn.note)
@@ -438,10 +419,9 @@ def main() -> int:
     if not 0 <= args.share <= 1:
         parser.error("--share must be between 0 and 1")
 
-    # Refused rather than repaired. A byte that is not UTF-8 means the export
-    # is in some other encoding, and `errors="replace"` would quietly turn a
-    # merchant name into question marks that then match no rule at all — which
-    # reads as "no rule yet" rather than "this file was never decoded".
+    # Refused rather than repaired. A byte that is not UTF-8 means some other encoding,
+    # and `errors="replace"` would quietly turn a merchant name into question marks that
+    # match no rule — which reads as "no rule yet" rather than "never decoded".
     try:
         text = args.input.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError as error:
@@ -476,9 +456,8 @@ def main() -> int:
         )
         return 1
 
-    # Soft cross-check. The statement is not always in balance order (reversals
-    # get inserted where they were posted, not where they belong), so a break
-    # here is reported and never acted on.
+    # Soft cross-check. The statement is not always in balance order (a reversal is
+    # inserted where it was posted), so a break here is reported and never acted on.
     chain_breaks = 0
     for previous, current in zip(txns, txns[1:]):
         if previous.balance is None or current.balance is None:
@@ -487,8 +466,8 @@ def main() -> int:
             chain_breaks += 1
 
     # The cells to be written, one list per tab. Named apart from the summary's
-    # `expense_rows`/`settlement_rows` further down, which hold Txn tuples rather than
-    # sheet rows — one name for two shapes in one function is how a count starts lying.
+    # `expense_rows`/`settlement_rows`, which hold Txn tuples rather than sheet rows —
+    # one name for two shapes in one function is how a count starts lying.
     expense_out: list[list[str]] = []
     settlement_out: list[list[str]] = []
     seen_ids: dict[str, int] = defaultdict(int)
@@ -522,15 +501,13 @@ def main() -> int:
         if txn.note and loose(txn.note) not in loose(description):
             description = f"{description} · {txn.note}"
 
-        # Deterministic, and unique even for two identical purchases on one day:
-        # the running balance differs, and the occurrence counter covers the
-        # case where the statement repeats a row verbatim.
+        # Deterministic, and unique even for two identical purchases on one day: the
+        # running balance differs, and the counter covers a row the statement repeats.
         seed = f"{txn.date}|{txn.description}|{txn.debit}|{txn.balance}"
         seen_ids[seed] += 1
         entry_id = str(uuid.uuid5(ID_NAMESPACE, f"{seed}|{seen_ids[seed]}"))
 
-        # One list per tab, because the two layouts differ: a settlement carries the
-        # payer it cannot get from its tab, and carries no category or share.
+        # One list per tab: the two layouts differ.
         if mode == "settlement":
             settlement_out.append(
                 [txn.date, description, str(txn.debit), args.payer, "", entry_id]
@@ -568,8 +545,7 @@ def main() -> int:
                 handle.close()
 
     write(destination, EXPENSE_COLUMNS, expense_out)
-    # Only when there are any: an empty file is one more thing to notice and discard,
-    # and a settlement is rare enough that most runs produce none.
+    # Only when there are any: an empty file is one more thing to notice and discard.
     settlements_at = None
     if settlement_out and str(destination) != "-":
         settlements_at = destination.with_suffix(".settlements.csv")
@@ -577,9 +553,8 @@ def main() -> int:
 
     # ---------------------------------------------------------------- summary
     #
-    # The reconciliation is the whole point of this section: a row may leave the
-    # file only on purpose, so excluded + settlements + expenses has to equal every
-    # debit in it. One integer per figure, because the ledger is yen only.
+    # The reconciliation is the point of this section: a row may leave the file only on
+    # purpose, so excluded + settlements + expenses has to equal every debit in it.
     out = sys.stderr
 
     def totals(items) -> int:

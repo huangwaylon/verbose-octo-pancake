@@ -2,12 +2,8 @@ import { useT } from '../i18n/index.js'
 import { Field } from './Field.jsx'
 
 /**
- * The free-text note, with the config tab's frequent shops offered two ways.
- *
- * A datalist keeps the field free text while giving a native dropdown, and the
- * chips exist because a datalist has no visual affordance at all on a phone —
- * where the whole point of the presets is to be faster than typing "OK Mart"
- * again. A browser without datalist support degrades to a plain input.
+ * The free-text note, with the config tab's frequent shops offered two ways: a datalist keeps the
+ * field free text, and the chips exist because a datalist has no visual affordance on a phone.
  */
 export function NoteField({ value, presets, onChange }) {
   const { t } = useT()
@@ -27,8 +23,8 @@ export function NoteField({ value, presets, onChange }) {
         className="input"
         type="text"
         autoComplete="off"
-        /* Shop names are exactly what iOS mangles: "Ozeki" capitalised and
-           autocorrected into an English word it recognises. */
+        /* Shop names are exactly what iOS mangles: "Ozeki" capitalised and autocorrected
+           into an English word it recognises. */
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck="false"
@@ -50,9 +46,8 @@ export function NoteField({ value, presets, onChange }) {
               <button
                 key={preset}
                 type="button"
-                /* The chip is a toggle, and its selected state is otherwise carried by
-                   colour alone — VoiceOver announces both states identically without
-                   this. */
+                /* The chip's selected state is otherwise carried by colour alone —
+                   VoiceOver announces both states identically without this. */
                 aria-pressed={value === preset}
                 className={`btn btn--sm ${value === preset ? 'btn--primary' : 'btn--ghost'}`}
                 onClick={() => onChange(value === preset ? '' : preset)}

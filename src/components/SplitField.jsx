@@ -6,23 +6,15 @@ import { useMoney, useT } from '../i18n/index.js'
 import { Segmented } from './Segmented.jsx'
 
 /**
- * The payer's own share of an entry or of a recurring declaration, as the form holds it.
+ * The payer's own share, as the form holds it. Every transition is in `lib/split.js`.
  *
- * For an ENTRY, `null` means "follow the payer's configured default", which is what a new
- * entry starts as: switching the payer control then re-derives the split, because the
- * default is a property of the person, not of the form.
+ * For a new ENTRY, `null` means "follow the payer's configured default", so switching payer
+ * re-derives the split. An entry being edited carries an explicit share and keeps it — and
+ * `payerShare` comes from `share`, not `percent / 100`, so a stored 0.333 is not quantized to 0.33
+ * by an edit that never touched it.
  *
- * An entry being edited carries an explicit share instead, so it opens on the number
- * actually stored and changing its payer leaves that number alone: a saved row records a
- * decision someone already made. `payerShare` comes from `share` rather than `percent /
- * 100` for the same reason — a stored 0.333 must not be quantized to 0.33 by an edit that
- * never touched it.
- *
- * For a TEMPLATE, `allowDefault` makes null a durable answer rather than an unfilled one: the
- * control opens on its own "Default" mode and keeps saving null, so the cost keeps FOLLOWING
- * `default_split_p*` instead of being pinned to whatever it happened to say on the day.
- *
- * Every transition is in `lib/split.js`; this holds only the one piece of state.
+ * For a TEMPLATE, `allowDefault` makes null a durable answer rather than an unfilled one: the cost
+ * keeps FOLLOWING `default_split_p*` instead of being pinned to whatever it said on the day.
  */
 export function useEntrySplit(entry, config, payer, { allowDefault = false } = {}) {
   const stored = Number.isFinite(entry.payerShare) ? entry.payerShare : null
@@ -37,11 +29,7 @@ export function useEntrySplit(entry, config, payer, { allowDefault = false } = {
     mode,
     percent,
     payerShare: mode === 'even' ? EVEN_SHARE : share,
-    /**
-     * The configured default as a whole percent, so the "Default" option's own label does not
-     * re-derive it. One number, one derivation: what the label promises and what the mode saves
-     * have to be the same figure.
-     */
+    /** One derivation: what the label promises and what the mode saves must be one figure. */
     configuredPercent: Math.round(configuredShare * 100),
     /** Dragging or hitting a preset pins the entry, so it survives a payer switch. */
     setPercent: (next) => setOverride(splitAtPercent(next)),
@@ -50,17 +38,9 @@ export function useEntrySplit(entry, config, payer, { allowDefault = false } = {
 }
 
 /**
- * Who covers how much. The presets are the three answers anyone actually wants;
- * the slider is for the rest.
- *
- * `defaultLabel` opts in the third mode, and it is a LABEL rather than a boolean because
- * the option has to name the person and the percentage it would follow — "Default" alone
- * says nothing about what would be saved.
- *
- * The breakdown is derived HERE, from the amount, rather than passed in as a sentence: both
- * forms wanted the same one, and two derivations of "who owes what" is the shape that lets a
- * template's figures and an entry's drift apart. A null amount or a null share — an empty
- * field, or the Default mode, which saves no share at all — means there is nothing to state.
+ * Who covers how much. `defaultLabel` opts in the third mode, and is a LABEL rather than a boolean
+ * because the option has to name the person and the percentage it would follow. The breakdown is
+ * derived HERE: two derivations of "who owes what" lets a template's and an entry's drift apart.
  */
 export function SplitField({
   split,
@@ -74,8 +54,6 @@ export function SplitField({
   const { t } = useT()
   const money = useMoney()
 
-  // Two integer operations and a lookup, so it is recomputed rather than memoised; every
-  // value it reads changes while the sheet is open anyway.
   const shares =
     amountYen == null || split.payerShare == null ? null : splitYen(amountYen, split.payerShare)
   const breakdown =
@@ -99,11 +77,10 @@ export function SplitField({
       ]}
       onChange={split.setMode}
     >
-      {/* What "Default" actually resolves to today, in words: the mode saves a BLANK cell,
-          so the number shown is the config tab's and will move if that does. */}
+      {/* What "Default" resolves to today: the mode saves a BLANK cell, so the number shown is
+          the config tab's and moves if that does. `role="status"` because it appears and its
+          percentage changes with the payer control, without a page change. */}
       {split.mode === 'default' ? (
-        /* `role="status"` for the same reason the breakdown below it has one: it appears and
-           its percentage changes with the payer control, without a page change. */
         <p className="field__hint" role="status">
           {defaultHint}
         </p>
@@ -135,26 +112,20 @@ export function SplitField({
               max="100"
               step="5"
               value={split.percent}
-              /* A range announces a bare "70"; say whose share it is. */
               aria-valuetext={t('form.splitValue', {
                 owner: payerPossessive,
                 percent: split.percent,
               })}
               onChange={(event) => split.setPercent(Number(event.target.value))}
             />
-            {/* Hidden from the accessibility tree, not because it says nothing but
-                because `aria-valuetext` above already says it: `<output>`'s implicit
-                role IS `status`, so leaving it exposed puts three live regions on one
-                drag — the valuetext, this, and the breakdown below — and the breakdown
-                is the one carrying the figures that cannot be read off the control. */}
+            {/* Hidden because `aria-valuetext` already says it, and `<output>`'s implicit role
+                IS `status` — exposed, it makes three live regions on one drag. */}
             <output aria-hidden="true">{t('summary.share', { percent: split.percent })}</output>
           </label>
         </div>
       )}
 
-      {/* The numbers change on every slider step, so they have to be spoken; the
-          region exists from the first keystroke in the amount field, well before
-          the split is ever adjusted. */}
+      {/* The numbers change on every slider step, so they have to be spoken. */}
       {breakdown && (
         <p className="field__hint" role="status">
           {breakdown}

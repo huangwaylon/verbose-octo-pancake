@@ -5,15 +5,11 @@ import { EntryLine } from './EntryLine.jsx'
 import { ChevronRightIcon, SwapIcon } from './icons.jsx'
 
 /**
- * The tombstones from the month on screen, most recently deleted first. Scoped to
- * that month because it sits under the month switcher, where a tombstone from
- * another month would read as belonging to this one; the sheet-wide count lives
- * in settings, next to `compact`, which is what acts on it.
+ * The tombstones from the month on screen, newest first. Scoped to that month because it sits under
+ * the month switcher; the sheet-wide count lives in settings, next to `compact`.
  *
- * A `<details>` rather than React state: the open/closed flag is the element's
- * own, so it starts closed by construction, needs no reset when the list changes
- * underneath it, and keyboard and screen-reader behaviour come from the
- * platform. This is a recovery surface, not a view — hence last on the page.
+ * A `<details>` rather than React state: the flag is the element's own, so it starts closed by
+ * construction and needs no reset when the list changes underneath it.
  */
 export function DeletedList({ entries, config, me, onRestore }) {
   const { t, locale } = useT()
@@ -46,15 +42,9 @@ export function DeletedList({ entries, config, me, onRestore }) {
 }
 
 /**
- * Its own component because it calls a hook per row: `useEntryTitle` needs the entry,
- * and the title is wanted twice — as the visible text and inside the restore button's
- * accessible name. The row's shape and its amount are `EntryLine`'s job.
- *
- * A settlement is marked here the way `EntryRow` marks one, and for the same reason: the
- * two rows are the same fact either side of a delete. Left to the expense treatment, a
- * tombstoned payback lost its icon, its `entry--settlement` styling and its direction, and
- * read as an expense the payer had bought something with — so the one control beside it
- * offered to restore something other than what it says.
+ * Its own component because it calls a hook per row, and the title is wanted twice — visible, and
+ * inside the restore button's name. A settlement is marked as `EntryRow` marks one: given the
+ * expense treatment, a tombstoned payback loses its direction and reads as an expense.
  */
 function DeletedRow({ entry, payerLabel, otherLabel, dateLabel, onRestore }) {
   const { t } = useT()
@@ -77,9 +67,8 @@ function DeletedRow({ entry, payerLabel, otherLabel, dateLabel, onRestore }) {
       settlement={isSettlement}
       icon={isSettlement ? <SwapIcon width={16} height={16} /> : null}
     >
-      {/* Text, not an icon: there is no conventional glyph for "undelete", and
-          several identical unlabelled buttons in a row say nothing about which
-          entry each one restores — hence the per-row accessible name too. */}
+      {/* Text: there is no glyph for "undelete". Identical unlabelled buttons say nothing about
+          which entry each restores, hence the per-row name too. */}
       <button
         type="button"
         className="btn btn--sm btn--ghost"

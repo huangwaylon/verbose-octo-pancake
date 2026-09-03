@@ -1,16 +1,9 @@
 /**
- * Japanese catalog. Same key set as `en.js` — enforced by `test/i18n.test.js`,
- * which also checks that the `{placeholder}` set matches per key and that no
- * value is left identical to the English one outside a small allowlist.
+ * Japanese catalog. Same key set as `en.js`, enforced by `test/i18n.test.js`, which also checks the
+ * `{placeholder}` set per key and that no value is left identical to the English one.
  *
- * Japanese has a single cardinal plural category, so plural entries carry only
- * `other`. That is correct rather than lazy: `Intl.PluralRules('ja')` reports
- * exactly `['other']`, and the test asserts the catalog matches it, so adding a
- * fake `one` here would fail.
- *
- * Style notes: 、and 。are used rather than commas and full stops; の is used for
- * possessives; the interpunct · already sits inside the English separator keys so
- * it is a translation decision here too.
+ * A single cardinal plural category, so plural entries carry only `other`, which is what
+ * `Intl.PluralRules('ja')` reports. Style: 、and 。rather than commas and full stops.
  */
 export default {
   // --- app chrome -----------------------------------------------------------
@@ -20,7 +13,6 @@ export default {
   'common.you': 'あなた',
   'common.person1': 'ひとり目',
   'common.person2': 'ふたり目',
-  // 助詞は同じなので、英語と違って形は一つで足りる。
   'common.yourPossessive': 'あなたの',
   'common.namePossessive': '{name}の',
   'common.cancel': 'キャンセル',

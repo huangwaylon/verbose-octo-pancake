@@ -6,15 +6,10 @@ import { asFields, columnRow } from './support/entries.js'
 import { loadPoster } from './support/apps-script.js'
 
 /**
- * `postRecurring` in `apps-script/Code.gs`: the writer that runs unattended.
- *
- * Everything here is a write into somebody's ledger with nobody watching, and every failure
- * mode is silent in a different way — a second rent row, a rent that never posts in February,
- * a date the client then cannot read. `test/schema.test.js` pins the column lists this file
- * builds rows from; this file is about what the rows ARE.
- *
- * The source is `new Function`'d, so a syntax error fails every case below rather than
- * surfacing at 3am in an execution log nobody is reading.
+ * `postRecurring` in `apps-script/Code.gs`: the writer that runs unattended, where every failure
+ * mode is silent in its own way — a second rent row, a rent that never posts in February, a date
+ * the client cannot read. `test/schema.test.js` pins the column lists; this file is about what the
+ * rows ARE, and the source is `new Function`'d so a syntax error fails every case here.
  */
 
 const P1 = expenseTab(PERSON.P1)
@@ -49,8 +44,7 @@ const poster = ({ recurring = [], p1 = [], p2 = [], config = null } = {}) =>
       expenses_p1: { header: EXPENSE_COLUMNS, rows: p1 },
       expenses_p2: { header: EXPENSE_COLUMNS, rows: p2 },
       recurring: { header: RECURRING_COLUMNS, rows: recurring },
-      // The config tab's header is data as far as `defaultShares` is concerned — it reads
-      // from row 1 and no key matches 'key', which is how `parseConfigRows` ignores it too.
+      // The config header is data to `defaultShares`: no key matches 'key', as `parseConfigRows`.
       ...(config ? { config: { header: ['key', 'value'], rows: config } } : {}),
     },
   })
@@ -87,10 +81,9 @@ describe('what it writes', () => {
   })
 
   /**
-   * `setValues` coerces like the `USER_ENTERED` the schema contract forbids: '2026-09-27'
-   * becomes a date serial that reads back in the spreadsheet's own locale as '9/27/2026',
-   * which `rowToEntry` rejects and `loadAll` reports as `undatedRows`. A description
-   * starting with '=' becomes a formula.
+   * `setValues` coerces like the `USER_ENTERED` the schema contract forbids: '2026-09-27' becomes
+   * a date serial that reads back in the spreadsheet's locale, which `rowToEntry` rejects and
+   * `loadAll` reports as `undatedRows`. A description starting with '=' becomes a formula.
    */
   it('formats the range as text before it writes, not after', () => {
     const app = poster({ recurring: [template({ ...RENT, description: '=SUM(A:A)' })] })
@@ -114,11 +107,8 @@ describe('what it writes', () => {
   })
 
   it('reads the amount and the share the way the app does, or refuses the row', () => {
-    // ONE table through BOTH readings, which is the only thing that can see them drift.
-    // The two used to disagree four ways, each silent: '42,10' posted ¥4210 where the app
-    // reads ¥42 (a decimal comma), '2,20,000' posted ¥220,000 where the app refuses the
-    // malformed grouping, and '¥220,000' and '80%' refused a whole row the app read fine —
-    // a cost the recurring page listed as due that the poster skipped every month forever.
+    // ONE table through BOTH readings, which is the only thing that can see them drift: a
+    // disagreement either posts a figure the app never read, or skips a cost the page calls due.
     const AMOUNTS = ['220,000', '8000.4', '¥220,000', '42,10', '1.234,56', '2,20,000', '1250.5']
 
     for (const amount of AMOUNTS) {
@@ -137,8 +127,6 @@ describe('what it writes', () => {
   })
 
   it('resolves a share the way the app does, or refuses the row', () => {
-    // A percentage and an out-of-range value both used to refuse the row here while the
-    // app read them, and a config cell the app read as 0.6 fell back to EVEN_SHARE here.
     const SHARES = ['80', '0.5', '80%', '150', '0,5', 'half', '60%']
 
     for (const payer_share of SHARES) {
@@ -158,8 +146,7 @@ describe('what it writes', () => {
   })
 
   it('reads a default_split config cell the way the app does', () => {
-    // Blank share, so the config tab is what decides. '60%' read as NaN here and fell
-    // through to EVEN_SHARE, so the same expense split 0.6 in the app and 0.5 in the sheet.
+    // Blank share, so the config tab decides — a reading unlike the app's splits one cost twice.
     const app = poster({
       recurring: [template({ ...RENT, payer_share: '' })],
       config: [['default_split_p1', '60%']],
@@ -173,9 +160,8 @@ describe('what it writes', () => {
 
 describe('what it refuses to write', () => {
   /**
-   * The ONE thing that cannot post itself: a blank amount is recurring-but-variable, a
-   * utility bill, and there is no figure to write. Everything else posts — including a blank
-   * share, which is what the form's own default state writes.
+   * The ONE thing that cannot post itself: a blank amount is recurring-but-variable, with no
+   * figure to write. Everything else posts — a blank share included, the form's default state.
    */
   it('skips a template with no amount, because there is nothing to write', () => {
     const app = poster({ recurring: [template({ ...RENT, amount: '' }), template(GYM)] })
@@ -186,8 +172,8 @@ describe('what it refuses to write', () => {
   })
 
   /**
-   * Skipped rather than thrown on, unlike an unexpected failure: one typo in a gym row must
-   * not stop rent posting for the month. The client counts and reports the same rows.
+   * Skipped rather than thrown on: one typo in a gym row must not stop rent posting for the
+   * month. The client counts and reports the same rows.
    */
   it('skips a row it cannot read without taking the good ones down with it', () => {
     const app = poster({
@@ -209,16 +195,13 @@ describe('what it refuses to write', () => {
   })
 
   /**
-   * A NON-INTEGER day is the cell that used to get through every gate: `Number` reads it, a
-   * `>= 1 && <= 31` bound accepts it, `clampDay` leaves it alone and `pad2` then writes the
-   * date `2026-09-27.5`. The client refuses that template row outright — `isDayOfMonth`
-   * requires an integer — so the two writers disagreed about whether the row was usable at
-   * all, and the one nobody watches was the one that wrote. What lands is an expense in the
-   * balance that belongs to no month, reported as `undatedRows` a screen away from the
-   * `undecodedTemplates` notice naming the row that caused it.
+   * A NON-INTEGER day gets through every gate: `Number` reads it, a `>= 1 && <= 31` bound accepts
+   * it, `clampDay` leaves it alone and `pad2` writes `2026-09-27.5`. The client refuses such a row
+   * outright, so what lands is an expense in the balance belonging to no month, reported as
+   * `undatedRows` a screen away from the `undecodedTemplates` notice naming its cause.
    *
-   * Asserted on day 28, not 27: at 27 the row is skipped by `day > dayOfMonth` for the wrong
-   * reason, so a case there passes whether the bug is fixed or not.
+   * Day 28, not 27: at 27 `day > dayOfMonth` skips the row for the wrong reason, so a case there
+   * passes whether the bug is fixed or not.
    */
   it('refuses a non-integer day rather than writing a date with a fraction in it', () => {
     const app = poster({ recurring: [template({ ...GYM, day_of_month: '27.5' })] })
@@ -235,9 +218,8 @@ describe('what it refuses to write', () => {
   })
 
   /**
-   * Trap 4, the half that is easy to miss: the day is CLAMPED before the comparison, not just
-   * before the date is stamped. Left unclamped, `31 > 28` is never satisfied in February and a
-   * monthly cost dated the 31st silently skips that month every single year.
+   * The day is CLAMPED before the comparison, not just before the date is stamped. Unclamped,
+   * `31 > 28` is never satisfied in February and a cost dated the 31st skips it every year.
    */
   it('posts a 31st on the last day of a short month, and dates it there', () => {
     const app = poster({ recurring: [template({ ...RENT, day_of_month: '31' })] })
@@ -270,8 +252,8 @@ describe('what it refuses to write', () => {
 
 /**
  * A blank `payer_share` means "follow that payer's `default_split`", and resolving it is the
- * poster's job — the Split control starts on Default, which writes a blank cell, so refusing
- * one would leave the most likely cost anyone sets up never posting.
+ * poster's job: the Split control starts on Default, so refusing a blank cell would leave the
+ * most likely cost anyone sets up never posting.
  */
 describe('a blank share follows the payer’s default', () => {
   const CONFIG = [
@@ -302,8 +284,7 @@ describe('a blank share follows the payer’s default', () => {
   })
 
   it('takes the FIRST usable value for a key, like the app does', () => {
-    // Somebody added a row at the top and forgot the old one lower down. Last-wins would run
-    // every posted rent at an even split.
+    // A row added at the top with the old one left below: last-wins runs every rent at 50/50.
     const app = poster({
       recurring: [template({ ...RENT, payer_share: '' })],
       config: [
@@ -347,10 +328,8 @@ describe('already recorded', () => {
   })
 
   /**
-   * TRAP 1, and the one every other consumer in this codebase gets the other way round:
-   * everything in the client filters through `isActive`. Soft-delete this month's rent
-   * because it was double-charged and a scan that skipped tombstones re-posts it tomorrow,
-   * and the day after, for the rest of the month.
+   * TRAP 1, which every other consumer here gets the other way round, filtering through
+   * `isActive`: skipping tombstones re-posts a deliberately deleted rent every day of the month.
    */
   it('treats a TOMBSTONED instance as handled', () => {
     const app = poster({
@@ -365,9 +344,8 @@ describe('already recorded', () => {
   })
 
   /**
-   * TRAP 2. Editing an instance's payer MOVES the row to the other tab, so a scan of the
-   * payer's own tab finds nothing and posts a second copy while the first sits under the
-   * other person — double-counting the cost in the balance until a compact runs.
+   * TRAP 2. Editing an instance's payer MOVES the row to the other tab, so a scan of the payer's
+   * own tab finds nothing and posts a second copy — double-counting the cost until a compact.
    */
   it('scans BOTH expense tabs, so a moved instance is still handled', () => {
     const app = poster({
@@ -379,12 +357,10 @@ describe('already recorded', () => {
   })
 
   /**
-   * TRAP 3, and the one that needs no history at all — both rows post in the SAME run.
-   * `readHandledIds` is read once before the loop, so the handled set has to grow as rows
-   * land or two templates sharing an id both write under `<id>#<month>`. That is the
-   * mistake CLAUDE.md names: copy the rent row to add parking and forget to change `id`.
-   * The client keeps the FIRST row per id, so the second one's money is invisible in the
-   * balance while sitting in the sheet, until a compact that will never remove it.
+   * TRAP 3, which needs no history at all — both rows post in the SAME run. `readHandledIds` is
+   * read once before the loop, so the handled set has to grow as rows land or two templates
+   * sharing an id both write `<id>#<month>`. The client keeps the FIRST row per id, so the
+   * second one's money sits in the sheet invisible to the balance, past every compact.
    */
   it('posts a duplicated id once, not once per row', () => {
     const app = poster({
@@ -407,8 +383,7 @@ describe('already recorded', () => {
   })
 
   it('reads the id from the column the schema puts it in', () => {
-    // Reading the first column instead would find the date on every row, match nothing, and
-    // post a duplicate every single day.
+    // The first column instead would find the date on every row, match nothing, and post daily.
     const app = poster({
       recurring: [template(RENT)],
       p1: [expenseRow({ id: 'rent#2026-09', date: '2026-09-27', amount: '220000' })],
@@ -419,10 +394,9 @@ describe('already recorded', () => {
 
 describe('whose month it is', () => {
   /**
-   * TRAP 3. `new Date()` is UTC underneath, so on a script defaulting to a US zone a 03:00
-   * JST run on the 1st computes the PREVIOUS month and files September's rent as August's.
-   * The date has to come from `Utilities.formatDate` in the script's own zone — which is what
-   * the fake here only answers for, so a `new Date().getMonth()` would produce `undefined`.
+   * TRAP 3. `new Date()` is UTC underneath, so on a script defaulting to a US zone a 03:00 JST run
+   * on the 1st computes the PREVIOUS month and files September's rent as August's. The date comes
+   * from `Utilities.formatDate` in the script's zone — the only thing the fake answers for.
    */
   it('derives the month and day from the script’s own formatted date', () => {
     const app = poster({ recurring: [template({ ...RENT, day_of_month: '1' })] })
@@ -466,18 +440,16 @@ describe('a ledger the poster cannot use', () => {
       },
     })
 
-    // GYM pays from p2, whose tab is gone, so there is nowhere to write. Counted as NOT
-    // posted: that number is the only signal a manual run from the editor gives, and the
-    // assertion has to name p2 — checking p1 would pass for a poster that wrote nowhere at
-    // all. Not thrown on: the next run will find the tab if somebody restores it.
+    // GYM pays from p2, whose tab is gone, so there is nowhere to write. Counted as NOT posted:
+    // that number is a manual run's only signal, and the assertion has to name p2 — checking p1
+    // would pass for a poster that wrote nowhere. Not thrown on: a restored tab works next run.
     expect(app.postRecurringFor('2026-09', 27)).toBe(0)
     expect(app.asked).toContain(P2.title)
     expect(app.sheets.expenses_p1.appended).toHaveLength(0)
   })
 
   it('asks for exactly the four tabs it needs, and nothing else', () => {
-    // The harness records the ASK, not the fixture: a `Object.keys(app.sheets)` check would be
-    // reading back the tabs the test itself supplied, and could not fail.
+    // The harness records the ASK: `Object.keys(app.sheets)` would read back the test's own tabs.
     const app = poster({ recurring: [template(RENT)], config: [['default_split_p1', '80']] })
     app.postRecurringFor('2026-09', 27)
     expect([...new Set(app.asked)].sort()).toEqual(
