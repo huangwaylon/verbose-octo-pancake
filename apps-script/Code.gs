@@ -150,6 +150,9 @@ var EXPENSE_TABS = { p1: 'expenses_p1', p2: 'expenses_p2' }
 /** Month lengths, so nothing here has to construct a Date at all. */
 var MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
+/** Largest integer part `readYen` will parse. Mirrors `MAX_INT_DIGITS` in `money.js`. */
+var MAX_INT_DIGITS = 13
+
 /**
  * The trigger's entry point. Runs daily rather than on the 1st: Google can delay
  * or skip a scheduled run, and this trigger's documented failure mode — the
@@ -206,7 +209,15 @@ function postRecurringFor(monthKey, dayOfMonth) {
 
     var share = template.payerShare
     if (share == null) share = shares[template.payer] != null ? shares[template.payer] : EVEN_SHARE
-    appendInstance(ss, template, id, monthKey + '-' + pad2(day), share)
+    if (!appendInstance(ss, template, id, monthKey + '-' + pad2(day), share)) continue
+
+    // Marked inside the loop, not just from `readHandledIds`: two rows sharing an id is
+    // the reachable mistake CLAUDE.md names — copy the rent row to add parking, forget to
+    // change `id` — and without this both post under `rent#2026-09`. The client keeps the
+    // FIRST row per id (`reconcileTemplates`) and the first of two live rows
+    // (`reconcileById`), so the second one's money would vanish from the balance while
+    // sitting in the sheet. First-wins here too, in both files, for one rule.
+    handled[id] = true
     posted += 1
   }
   return posted
@@ -288,9 +299,9 @@ function toTemplate(row) {
   var payer = cellAt(row, 'payer').toLowerCase()
   if (!id || !EXPENSE_TABS[payer]) return null
 
-  // Half-up to the yen, matching `parseAmountToYen`: the bank prints amounts as
-  // "1400.000000" and people type grouping separators.
-  var amount = Math.round(Number(cellAt(row, 'amount').replace(/[\s,]/g, '')))
+  // Half-up to the yen, through this file's own copy of `parseAmountToYen`: the bank
+  // prints amounts as "1400.000000" and people type grouping separators.
+  var amount = readYen(cellAt(row, 'amount'))
   if (!(amount > 0)) return null
 
   // null means "follow the payer's default", resolved at append time by `defaultShares`.
@@ -340,6 +351,63 @@ function toTemplate(row) {
 }
 
 /**
+ * Whole yen from a cell, or null — this file's own copy of `parseAmountToYen`.
+ *
+ * `Number(text.replace(/,/g, ''))` is the tempting one-liner and it is a 100x write: the
+ * app reads '42,10' as ¥42, a decimal comma with two digits of cents, where stripping
+ * every comma gives ¥4210. It runs the other way too — the app refuses the malformed
+ * grouping '2,20,000' and a strip-and-Number posts ¥220,000 — and a '¥' symbol the app
+ * strips makes `Number` refuse the row, so the cost silently never posts at all.
+ *
+ * So the separator rule and the grouping validation are ported here in full rather than
+ * approximated. `test/apps-script.test.js` runs this and `parseAmountToYen` over ONE table
+ * of inputs, which is the only thing that can see the two drift apart.
+ */
+function readYen(text) {
+  var cleaned = text.replace(/[\s\u00a0\u202f\u2009]/g, '').replace(/[¥￥]/g, '')
+  if (!cleaned) return null
+  // Amounts are positive magnitudes; the payer carries the direction.
+  if (cleaned.charAt(0) === '-' || cleaned.charAt(0) === '\u2212') return null
+  var body = cleaned.charAt(0) === '+' ? cleaned.slice(1) : cleaned
+  if (!/^[0-9.,]+$/.test(body)) return null
+
+  // Whichever separator comes last is the decimal point — unless it is the only kind
+  // present and exactly three digits follow, which reads as grouping.
+  var lastDot = body.lastIndexOf('.')
+  var lastComma = body.lastIndexOf(',')
+  var decIndex = -1
+  if (lastDot >= 0 || lastComma >= 0) {
+    var last = Math.max(lastDot, lastComma)
+    var sep = body.charAt(last)
+    var repeated = sep === '.' ? body.indexOf('.') !== lastDot : body.indexOf(',') !== lastComma
+    var bothKinds = lastDot >= 0 && lastComma >= 0
+    var groupingOnly = !bothKinds && body.length - last - 1 === 3 && (sep === ',' || repeated)
+    decIndex = groupingOnly ? -1 : last
+  }
+
+  var intPart = decIndex < 0 ? body : body.slice(0, decIndex)
+  var fracPart = decIndex < 0 ? '' : body.slice(decIndex + 1)
+  if (!/^\d*$/.test(fracPart)) return null
+
+  // First group free-form, every later one exactly three digits.
+  var groups = intPart.length ? intPart.split(/[.,]/) : []
+  if (groups.length > 1 && groups[0] === '') return null
+  for (var i = 0; i < groups.length; i += 1) {
+    var ok = i === 0 ? /^\d*$/.test(groups[i]) : /^\d{3}$/.test(groups[i])
+    if (!ok) return null
+  }
+
+  var digits = groups.join('')
+  if (!digits.length && !fracPart.length) return null
+  if (digits.replace(/^0+/, '').length > MAX_INT_DIGITS) return null
+
+  // Half-up on the first decimal digit, in digit arithmetic rather than floats.
+  var yen = Number(digits || '0')
+  if (Number(fracPart.charAt(0) || '0') >= 5) yen += 1
+  return yen
+}
+
+/**
  * A hand-typed share as a fraction, or null.
  *
  * Above 1 reads as a percentage, exactly as `parseShare` does in the app: a spreadsheet
@@ -347,12 +415,20 @@ function toTemplate(row) {
  * `payer_share` column and the two `default_split_p*` config rows — go through this one
  * rule here, for the same reason the app has one: with two readings, the same `50` would
  * mean "half" in one place and "the payer covers all of it" in the other.
+ *
+ * The WHOLE string has to be a number, and a value above 100 CLAMPS rather than refusing.
+ * Both halves are `parseShare`'s, and both used to differ: `Number('80%')` is NaN, which
+ * refused the whole template row, so a cost the recurring page listed as due was one the
+ * poster skipped every month forever — with no notice anywhere, because the client read
+ * the row fine.
  */
 function readShare(text) {
   if (!text) return null
-  var value = Number(text)
-  if (!(value >= 0 && value <= 100)) return null
-  return value > 1 ? value / 100 : value
+  var body = String(text).replace(/%$/, '')
+  if (!/^\d*\.?\d+$/.test(body)) return null
+  var value = Number(body)
+  if (!(value >= 0)) return null
+  return value > 1 ? Math.min(1, value / 100) : value
 }
 
 /**
@@ -431,10 +507,14 @@ function pad2(value) {
  * last-write-wins — the accepted design, and vanishingly unlikely at 3am.
  *
  * `share` arrives RESOLVED; only `defaultShares` can resolve a blank one.
+ *
+ * @returns {boolean} whether the row landed. A missing tab is the one false: the count
+ *   `postRecurringFor` returns is the only signal a manual run from the editor gives, so
+ *   counting a skip as posted would report a write that never happened.
  */
 function appendInstance(ss, template, id, date, share) {
   var sheet = ss.getSheetByName(EXPENSE_TABS[template.payer])
-  if (!sheet) return
+  if (!sheet) return false
 
   var byField = {
     date: date,
@@ -453,4 +533,5 @@ function appendInstance(ss, template, id, date, share) {
   var target = sheet.getRange(sheet.getLastRow() + 1, 1, 1, EXPENSE_COLUMNS.length)
   target.setNumberFormat('@')
   target.setValues([row])
+  return true
 }

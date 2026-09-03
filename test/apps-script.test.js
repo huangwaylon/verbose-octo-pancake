@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { EXPENSE_COLUMNS, RECURRING_COLUMNS, expenseTab, PERSON } from '../src/schema.js'
+import { isYenAmount, parseAmountToYen, parseShare } from '../src/lib/money.js'
 import { asFields, columnRow } from './support/entries.js'
 import { loadPoster } from './support/apps-script.js'
 
@@ -112,15 +113,61 @@ describe('what it writes', () => {
     expect(app.sheets.expenses_p1.appended[0].row).toBe(4)
   })
 
-  it('reads the amount the way the app does, commas and trailing decimals included', () => {
+  it('reads the amount and the share the way the app does, or refuses the row', () => {
+    // ONE table through BOTH readings, which is the only thing that can see them drift.
+    // The two used to disagree four ways, each silent: '42,10' posted ¥4210 where the app
+    // reads ¥42 (a decimal comma), '2,20,000' posted ¥220,000 where the app refuses the
+    // malformed grouping, and '¥220,000' and '80%' refused a whole row the app read fine —
+    // a cost the recurring page listed as due that the poster skipped every month forever.
+    const AMOUNTS = ['220,000', '8000.4', '¥220,000', '42,10', '1.234,56', '2,20,000', '1250.5']
+
+    for (const amount of AMOUNTS) {
+      const app = poster({ recurring: [template({ ...RENT, amount })] })
+      app.postRecurringFor('2026-09', 27)
+
+      const yen = parseAmountToYen(amount)
+      const appended = app.sheets.expenses_p1.appended
+      // The app refusing it is the poster skipping it: never a write of its own reading.
+      expect(
+        appended.map(() => 'wrote'),
+        amount,
+      ).toEqual(isYenAmount(yen) ? ['wrote'] : [])
+      if (isYenAmount(yen)) expect(appendedAt(app.sheets.expenses_p1).amount, amount).toBe(`${yen}`)
+    }
+  })
+
+  it('resolves a share the way the app does, or refuses the row', () => {
+    // A percentage and an out-of-range value both used to refuse the row here while the
+    // app read them, and a config cell the app read as 0.6 fell back to EVEN_SHARE here.
+    const SHARES = ['80', '0.5', '80%', '150', '0,5', 'half', '60%']
+
+    for (const payer_share of SHARES) {
+      const app = poster({ recurring: [template({ ...RENT, payer_share })] })
+      app.postRecurringFor('2026-09', 27)
+
+      const share = parseShare(payer_share)
+      const appended = app.sheets.expenses_p1.appended
+      expect(
+        appended.map(() => 'wrote'),
+        payer_share,
+      ).toEqual(share == null ? [] : ['wrote'])
+      if (share != null) {
+        expect(appendedAt(app.sheets.expenses_p1).payer_share, payer_share).toBe(`${share}`)
+      }
+    }
+  })
+
+  it('reads a default_split config cell the way the app does', () => {
+    // Blank share, so the config tab is what decides. '60%' read as NaN here and fell
+    // through to EVEN_SHARE, so the same expense split 0.6 in the app and 0.5 in the sheet.
     const app = poster({
-      recurring: [template({ ...RENT, amount: '220,000' }), template({ ...GYM, amount: '8000.4' })],
+      recurring: [template({ ...RENT, payer_share: '' })],
+      config: [['default_split_p1', '60%']],
     })
 
     app.postRecurringFor('2026-09', 27)
 
-    expect(appendedAt(app.sheets.expenses_p1).amount).toBe('220000')
-    expect(appendedAt(app.sheets.expenses_p2).amount).toBe('8000')
+    expect(appendedAt(app.sheets.expenses_p1).payer_share).toBe(`${parseShare('60%')}`)
   })
 })
 
@@ -331,6 +378,25 @@ describe('already recorded', () => {
     expect(app.postRecurringFor('2026-09', 27)).toBe(0)
   })
 
+  /**
+   * TRAP 3, and the one that needs no history at all — both rows post in the SAME run.
+   * `readHandledIds` is read once before the loop, so the handled set has to grow as rows
+   * land or two templates sharing an id both write under `<id>#<month>`. That is the
+   * mistake CLAUDE.md names: copy the rent row to add parking and forget to change `id`.
+   * The client keeps the FIRST row per id, so the second one's money is invisible in the
+   * balance while sitting in the sheet, until a compact that will never remove it.
+   */
+  it('posts a duplicated id once, not once per row', () => {
+    const app = poster({
+      recurring: [template(RENT), template({ ...RENT, description: 'Parking', amount: '15000' })],
+    })
+
+    expect(app.postRecurringFor('2026-09', 27)).toBe(1)
+    expect(app.sheets.expenses_p1.appended).toHaveLength(1)
+    // The FIRST row wins, exactly as `reconcileTemplates` keeps the first template.
+    expect(appendedAt(app.sheets.expenses_p1).description).toBe('Rent')
+  })
+
   it('does not confuse one month’s instance for another’s', () => {
     const app = poster({
       recurring: [template(RENT)],
@@ -400,9 +466,12 @@ describe('a ledger the poster cannot use', () => {
       },
     })
 
-    // p2's tab is gone, so there is nowhere to write. Reported as posted-and-skipped
-    // rather than throwing: the next run will find the tab if somebody restores it.
-    app.postRecurringFor('2026-09', 27)
+    // GYM pays from p2, whose tab is gone, so there is nowhere to write. Counted as NOT
+    // posted: that number is the only signal a manual run from the editor gives, and the
+    // assertion has to name p2 — checking p1 would pass for a poster that wrote nowhere at
+    // all. Not thrown on: the next run will find the tab if somebody restores it.
+    expect(app.postRecurringFor('2026-09', 27)).toBe(0)
+    expect(app.asked).toContain(P2.title)
     expect(app.sheets.expenses_p1.appended).toHaveLength(0)
   })
 

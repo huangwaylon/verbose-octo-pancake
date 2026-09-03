@@ -165,8 +165,18 @@ documents the columns.
 - **`postRecurring` posts anything with an AMOUNT, and resolves a blank share itself** through
   `defaultShares`/`readShare` — the one place outside the client that has to implement the
   above-1-is-a-percentage rule and first-usable-value-wins for itself, because it can import
-  neither, pinned by `test/apps-script.test.js`. A blank AMOUNT is the one thing
+  neither. `readYen` is the same problem for the amount, and both are ported in FULL rather
+  than approximated: `Number(text.replace(/,/g, ''))` is a 100x write, since `'42,10'` is ¥42
+  to `decimalSeparatorIndex` and ¥4210 to a comma strip. `test/apps-script.test.js` runs each
+  poster reading and its `money.js` twin over ONE table of inputs — the only thing that can
+  see them drift, since a divergence here is invisible on screen: the client reads the row
+  fine, so no notice fires, and the cost simply never posts. A blank AMOUNT is the one thing
   that cannot post, and those stay tap-to-record.
+- **The poster's handled set grows as rows land, not just before the loop.** Two recurring rows
+  under one id — copy the rent row to add parking, forget to change `id` — otherwise both post
+  under `<id>#<month>`, and the client keeps the FIRST of two live rows, so the second one's
+  money is invisible in the balance while sitting in the sheet. First-wins in both files, and
+  `appendInstance` returns whether the row landed so a missing tab is not counted as posted.
 - **`templateFormProblem` owns which field a submit refuses, and it is in `lib/` because a
   static-markup render cannot submit a form.** A blank amount is VALID, so a fumbled `22o000`
   falling through to blank is a silent money change.
@@ -220,7 +230,9 @@ documents the columns.
   three trailing digits is grouping, anything else is a decimal — `"1,234"` is 1234 and
   `"42,10"` is 42. `test/money.test.js` pins both, and the bank export's `"1400.000000"`.
 - **`parseShare` is the one reading of a share a human typed**; anything above 1 is a
-  percentage. Both `payer_share` and the `default_split_p*` rows go through it.
+  percentage, a trailing `%` is accepted, and the WHOLE string has to be a number. Not
+  `parseFloat`, which reads `'0,5'` as 0 — the payer covering nothing — and `'0.5x'` as 0.5.
+  Both `payer_share` and the `default_split_p*` rows go through it.
 - **`useEntrySplit`'s `allowDefault` exists so a blank `payer_share` stays blank.** An entry's
   null share is an unfilled draft the payer's default resolves; a template's is a durable
   declaration, and resolving it on save would pin the cost to today's `default_split_p*` instead

@@ -22,6 +22,8 @@ const NOISE = /[\s\u00a0\u202f\u2009]|\p{Sc}/gu
 const NUMERIC_ONLY = /^[0-9.,]+$/
 /** Largest integer part we will parse, to stay inside Number.MAX_SAFE_INTEGER. */
 const MAX_INT_DIGITS = 13
+/** A share, once a trailing '%' is off: digits with at most one dot, and nothing else. */
+const SHARE_TEXT = /^\d*\.?\d+$/
 
 function assertYen(yen, name = 'yen') {
   if (!Number.isInteger(yen)) {
@@ -203,13 +205,27 @@ export function isShare(value) {
  * Anything above 1 reads as a percentage, because a spreadsheet is where people write 50
  * rather than 0.5. Both places a human can type a share go through this one rule: with two
  * readings of it, the same `50` would mean "half" in the config tab and "the payer covers
- * all of it" in the `payer_share` column.
+ * all of it" in the `payer_share` column. A trailing `%` is accepted for the same reason.
+ *
+ * The WHOLE string has to be a number, which is why this does not use `parseFloat`: that
+ * reads `'0,5'` as 0 — the payer covering nothing, so the other person owes all of every
+ * expense they pay for — and `'0.5x'` as 0.5. A comma is read in exactly one place in this
+ * app, `decimalSeparatorIndex`, so here it is a refusal rather than a second reading.
  *
  * @returns {number|null} null for junk, so the caller's own default wins rather than NaN
  *   reaching `splitYen`
  */
 export function parseShare(value) {
-  const raw = typeof value === 'number' ? value : Number.parseFloat(value)
+  let raw
+  if (typeof value === 'number') {
+    raw = value
+  } else if (typeof value === 'string') {
+    const text = value.trim().replace(/%$/, '')
+    if (!SHARE_TEXT.test(text)) return null
+    raw = Number(text)
+  } else {
+    return null
+  }
   if (!Number.isFinite(raw) || raw < 0) return null
   const fraction = raw > 1 ? raw / 100 : raw
   return Math.min(1, Math.max(0, fraction))

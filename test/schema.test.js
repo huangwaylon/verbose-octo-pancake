@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   DATA_TABS,
+  CONFIG_TAB,
+  DEFAULT_DAY_OF_MONTH,
   EXPENSE_COLUMNS,
   RECURRING,
   RECURRING_COLUMNS,
@@ -720,6 +722,23 @@ describe('the recurring poster agrees about the column lists', () => {
     expect(declared, 'EXPENSE_TABS not found in Code.gs').toBeTruthy()
     const titles = [...declared[1].matchAll(/'([^']+)'/g)].map((found) => found[1])
     expect(titles).toEqual(PEOPLE.map((person) => expenseTab(person).title))
+  })
+
+  /**
+   * The tab TITLES and the two defaults, for the same reason as the column lists and with a
+   * quieter failure than any of them: rename the recurring tab here and `readTemplates`
+   * reads a tab that no longer exists, returns `[]`, and the poster posts nothing, forever.
+   * Nothing throws, no mail goes out, and the app itself looks perfect.
+   */
+  it('reads the same tab titles this module names', () => {
+    expect(source).toContain(`var RECURRING_TAB = '${RECURRING.title}'`)
+    expect(source).toContain(`var CONFIG_TAB = '${CONFIG_TAB}'`)
+  })
+
+  it('falls back to the same even split, and the same blank day', () => {
+    expect(source).toContain(`var EVEN_SHARE = ${EVEN_SHARE}`)
+    // The blank-day default is inline in `toTemplate`, so it is matched where it is used.
+    expect(source).toContain(`cellAt(row, 'day_of_month') || '${DEFAULT_DAY_OF_MONTH}'`)
   })
 
   /**
