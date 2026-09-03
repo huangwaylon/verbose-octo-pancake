@@ -5,6 +5,7 @@ import { expense, tombstone } from './support/entries.js'
 import {
   gateFor,
   acknowledge,
+  blocksReload,
   compactRefusal,
   entryById,
   entryFromInput,
@@ -641,6 +642,52 @@ describe('hasPendingWrite', () => {
   it('is false for a settled list and for an empty one', () => {
     expect(hasPendingWrite([{ id: 'a' }, { id: 'b', pending: false }])).toBe(false)
     expect(hasPendingWrite([])).toBe(false)
+  })
+})
+
+/**
+ * An update activates by RELOADING, so this decides whether one may. Every case here is
+ * something a reload destroys with nothing on screen to say it happened.
+ */
+describe('blocksReload', () => {
+  const settledList = [{ id: 'a' }]
+
+  it('blocks while a form is open, because a reload throws away what is half-typed', () => {
+    for (const kind of ['entry', 'template']) {
+      expect(blocksReload({ overlay: { kind }, entries: settledList, writing: false }), kind).toBe(
+        true,
+      )
+    }
+  })
+
+  it('blocks while an optimistic entry write is unacknowledged', () => {
+    const pending = [{ id: 'a' }, { id: 'b', pending: true }]
+    expect(blocksReload({ overlay: null, entries: pending, writing: false })).toBe(true)
+  })
+
+  /**
+   * The case neither of the two above can see, and the one that costs the most: a template
+   * write and a compact carry no `pending` flag — templates are deliberately outside
+   * `mergeLoaded` and `hasPendingWrite` — and the overlay cannot stand in for either, because
+   * `deleteTemplate` switches it to the recurring page and `compact` runs from settings, both
+   * before awaiting. Those two are the app's only irreversible writes.
+   */
+  it('blocks a write no optimistic flag can see, whichever sheet is open', () => {
+    for (const kind of ['recurring', 'settings', 'confirmEntry']) {
+      expect(blocksReload({ overlay: { kind }, entries: settledList, writing: true }), kind).toBe(
+        true,
+      )
+    }
+    expect(blocksReload({ overlay: null, entries: settledList, writing: true })).toBe(true)
+  })
+
+  it('allows a reload with nothing open and nothing in flight', () => {
+    expect(blocksReload({ overlay: null, entries: settledList, writing: false })).toBe(false)
+    expect(blocksReload({ overlay: { kind: 'settings' }, entries: [], writing: false })).toBe(false)
+    // A sheet that cannot hold a half-typed anything is not a form.
+    expect(
+      blocksReload({ overlay: { kind: 'recurring' }, entries: settledList, writing: false }),
+    ).toBe(false)
   })
 })
 

@@ -193,6 +193,28 @@ export function hasPendingWrite(entries) {
 }
 
 /**
+ * Whether activating a service-worker update — which RELOADS the page — would interrupt
+ * something. Here rather than in `App` because it is a decision, and a decision in a
+ * component is one no test can reach.
+ *
+ * Three inputs, because `pending` cannot cover them all:
+ *
+ * - An open FORM, since a reload throws away what is half-typed.
+ * - An unacknowledged optimistic entry write (`hasPendingWrite`).
+ * - A write carrying no optimistic flag at all: `saveTemplate`, `deleteTemplate` and
+ *   `compact`, which write and then `refresh()`. Templates are deliberately outside
+ *   `mergeLoaded` and `hasPendingWrite`, so nothing in the entry list can see one — and the
+ *   overlay cannot stand in for it either, since `deleteTemplate` switches the overlay to the
+ *   recurring page and `compact` runs from settings, both BEFORE awaiting. Those two are the
+ *   app's only irreversible writes: reloading mid-`batchUpdate` kills the follow-up read and
+ *   the toast, leaving a hard delete half-reported with nothing on screen to say so.
+ */
+export function blocksReload({ overlay, entries, writing }) {
+  const editing = overlay?.kind === 'entry' || overlay?.kind === 'template'
+  return editing || Boolean(writing) || hasPendingWrite(entries)
+}
+
+/**
  * Why `compact` will not run, or null if it can.
  *
  * Never while a write is in flight: `compact` deletes rows, which shifts every row below

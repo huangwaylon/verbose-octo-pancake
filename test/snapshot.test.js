@@ -63,11 +63,32 @@ describe('round trip', () => {
   })
 
   it('does not write twice for an unchanged ledger', async () => {
-    const { store, snapshot } = await load()
+    const { snapshot } = await load()
     snapshot.writeSnapshot(SHEET, [entry()], {})
-    const first = store.get('sf.snapshot')
+    // Spied, not compared: the two calls build the SAME string, so reading the stored value
+    // back is satisfied by a second write of identical bytes and the guard could be deleted
+    // without this failing. What is being asserted is that the write did not happen.
+    const writes = vi.spyOn(globalThis.localStorage, 'setItem')
     snapshot.writeSnapshot(SHEET, [entry()], {})
-    expect(store.get('sf.snapshot')).toBe(first)
+    expect(writes).not.toHaveBeenCalled()
+  })
+
+  /**
+   * The reference guard has to name the SHEET as well as the two references, or a switch from
+   * one spreadsheet to another — reachable without a `forgetKey`, since a rejected key leaves
+   * the old id in storage while the gate asks for a new one — caches the first sheet's ledger
+   * under the second one's id. `lastPayload` already carried the id; `lastSource` did not.
+   */
+  it('writes again for the same list under a different spreadsheet', async () => {
+    const { snapshot } = await load()
+    const entries = [entry()]
+    const config = { person1Name: 'Waylon' }
+    snapshot.writeSnapshot(SHEET, entries, config)
+
+    snapshot.writeSnapshot('another-sheet', entries, config)
+
+    expect(snapshot.readSnapshot('another-sheet')).not.toBeNull()
+    expect(snapshot.readSnapshot(SHEET)).toBeNull()
   })
 
   it('does not rewrite what it just restored, which is every cached launch', async () => {

@@ -150,14 +150,26 @@ describe('the rules an installed iOS web app depends on', () => {
   it('gives every hover-styled control an :active state too', () => {
     // The platform tap highlight is cleared in base.css, so :active is the only
     // press feedback a finger gets.
-    const hovered = new Set()
-    for (const rule of all.matchAll(/([^{}]+):hover(?::not\(\[disabled\]\))?\s*\{/g)) {
-      hovered.add(rule[1].trim().split('\n').pop().trim())
+    //
+    // EVERY selector in a list, not merely the last one: merging two byte-identical
+    // blocks into a selector list is a routine tidy-up, and a check that read the tail
+    // alone would quietly stop covering everything above it.
+    const styledBy = (pseudo) => {
+      const found = new Set()
+      const attached = new RegExp(`^(.*):${pseudo}(?::not\\(\\[disabled\\]\\))?$`)
+      for (const rule of all.matchAll(/([^{}]+)\{/g)) {
+        // An at-rule prelude is not a selector list, and `@media (hover:hover)` would
+        // read as one.
+        if (rule[1].trim().startsWith('@')) continue
+        for (const part of rule[1].split(',')) {
+          const match = part.trim().match(attached)
+          if (match) found.add(match[1].trim())
+        }
+      }
+      return found
     }
-    const active = new Set()
-    for (const rule of all.matchAll(/([^{}]+):active(?::not\(\[disabled\]\))?\s*\{/g)) {
-      active.add(rule[1].trim().split('\n').pop().trim())
-    }
+    const hovered = styledBy('hover')
+    const active = styledBy('active')
     // Links and native scrollbars are the exceptions: neither has a press state.
     const missing = [...hovered].filter(
       (selector) => !active.has(selector) && !['a', '::-webkit-scrollbar-thumb'].includes(selector),
@@ -316,6 +328,9 @@ describe('the rules an installed iOS web app depends on', () => {
       ['app', 'button.entry__main'],
       // The same affordance in a sheet. Only ever a button, so no element qualifier.
       ['app', '.recurring__main'],
+      // A wrapping `<label>`: its hint and its output forward a tap to the range inside
+      // it, so the pair of them is 300ms of nothing on the split control.
+      ['app', '.split-control__slider'],
     ]) {
       expect(declares(FILES[file], selector, 'touch-action')).toBe(true)
     }
@@ -342,8 +357,23 @@ describe('the rules an installed iOS web app depends on', () => {
     }
     // The recurring page holds the same hand-authored text, and WRAPS it rather than
     // truncating — inside a sheet there is nothing to scroll a truncation into view.
+    // These two need no `min-width` of their own: they are flex items on the CROSS axis
+    // of a column, which `.recurring__main`'s own guard already lets shrink.
     for (const selector of ['.recurring__name', '.recurring__meta']) {
       expect(declares(FILES.app, selector, 'overflow-wrap')).toBe(true)
+    }
+    // Every other holder of it carries the PAIR: a flex or grid item's automatic minimum
+    // is its min-content WIDTH, and `body`'s `overflow-wrap` does not reduce that, so
+    // either one alone leaves a long name sizing the box it sits in. `.summary__person-name`
+    // is the one on the PAGE rather than in a sheet, where nothing clips the overflow and
+    // it is the whole screen that scrolls sideways at 320px.
+    for (const selector of [
+      '.summary__person-name',
+      '.chart__name',
+      '.split-control__slider .field__hint',
+    ]) {
+      expect(declares(FILES.app, selector, 'overflow-wrap')).toBe(true)
+      expect(declares(FILES.app, selector, 'min-width')).toBe(true)
     }
     expect(declares(FILES.primitives, '.segmented__option', 'min-width')).toBe(true)
     expect(declares(FILES.primitives, '.pill', 'max-width')).toBe(true)
@@ -357,5 +387,35 @@ describe('the rules an installed iOS web app depends on', () => {
     for (const selector of ['.layout__aside', '.layout__main']) {
       expect(declares(FILES.app, selector, 'min-width')).toBe(true)
     }
+  })
+})
+
+/**
+ * The two colours a custom property cannot reach. `theme-color` and the install manifest
+ * are both read before any stylesheet exists, and the favicon is a data URI, so all three
+ * restate a token's literal and no CSS fix is possible. Drift shows up only as a band of
+ * the wrong colour around the installed app, or a tile in last season's accent — nothing
+ * in the suite and no preview page renders either.
+ */
+describe('the copies of a token that live outside tokens.css', () => {
+  const tokens = strip(readFileSync('src/styles/tokens.css', 'utf8'))
+  const html = readFileSync('index.html', 'utf8')
+  const manifest = JSON.parse(readFileSync('public/manifest.webmanifest', 'utf8'))
+
+  /** The FIRST definition, which is `:root`'s — `[data-accent]` redefines --accent below. */
+  const token = (name) => tokens.match(new RegExp(`${name}:\\s*(#[0-9a-f]{3,8})`))[1]
+
+  it('states the page ground as --bg in all three places that cannot read it', () => {
+    const bg = token('--bg')
+    expect(html).toContain(`<meta name="theme-color" content="${bg}" />`)
+    expect(manifest.background_color).toBe(bg)
+    expect(manifest.theme_color).toBe(bg)
+  })
+
+  it('draws the favicon in the DEFAULT accent', () => {
+    // The tile cannot follow the per-device preset, so it carries the one every install
+    // starts on. Percent-encoded in the data URI, `#` and all.
+    const icon = html.match(/href="(data:image\/svg\+xml,[^"]*)"/)[1]
+    expect(decodeURIComponent(icon)).toContain(`fill='${token('--accent')}'`)
   })
 })

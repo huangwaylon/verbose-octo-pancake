@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useConnection } from './state/useConnection.js'
 import { useLedger } from './state/useLedger.js'
-import { gateFor, hasPendingWrite, newDraftEntry, noticeKeys } from './lib/ledgerState.js'
+import { blocksReload, gateFor, newDraftEntry, noticeKeys } from './lib/ledgerState.js'
 import { useLedgerView, useInitialMonth } from './state/useLedgerView.js'
 import { useToasts } from './state/useToasts.js'
 import { currentMonthKey } from './lib/dates.js'
@@ -60,16 +60,15 @@ export default function App() {
   }
 
   /**
-   * An update activates by RELOADING, so never while a form is open or a write is
-   * unacknowledged. A template write is invisible to `hasPendingWrite` — templates carry no
-   * optimistic flag — so an open form covers it. The nudge is the other half: a worker refused
-   * while a sheet was open gets no `focus` event to ask again.
+   * An update activates by RELOADING, so never through anything it would interrupt. What
+   * counts as one is `blocksReload`'s decision, in lib — including the writes no optimistic
+   * flag can see. The nudge is the other half: a worker refused while a sheet was open gets
+   * no `focus` event to ask again.
    */
   useEffect(() => {
-    const editing = overlay?.kind === 'entry' || overlay?.kind === 'template'
-    setSafeToReload(() => !editing && !hasPendingWrite(entries))
+    setSafeToReload(() => !blocksReload({ overlay, entries, writing: ledger.writing }))
     reconsiderUpdate()
-  }, [overlay, entries])
+  }, [overlay, entries, ledger.writing])
 
   /** Both stable, or `EntryList`'s memo dies on every toast. */
   const openEntry = useCallback((entry) => setOverlay({ kind: 'entry', mode: 'edit', entry }), [])

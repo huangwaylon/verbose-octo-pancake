@@ -98,7 +98,7 @@ export function readSnapshot(spreadsheetId) {
     // plus a synchronous `setItem` of bytes already there, on the one frame the person is
     // waiting for. The reference pair skips the serialize; the string is the backstop.
     lastPayload = raw
-    lastSource = { entries: saved.entries, config: saved.config }
+    lastSource = { spreadsheetId, entries: saved.entries, config: saved.config }
     return { entries: saved.entries, config: saved.config }
   } catch {
     return null
@@ -113,8 +113,17 @@ export function readSnapshot(spreadsheetId) {
  */
 export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
   if (!spreadsheetId) return
-  // The same list and config as last time, unchanged since: nothing to serialize.
-  if (lastSource && entries === lastSource.entries && sheetConfig === lastSource.config) return
+  // The same list and config as last time, for the same SHEET: the id belongs in this guard
+  // as much as in the payload below, or a switch from one spreadsheet to another while both
+  // references are still the first sheet's caches its ledger under the second one's id.
+  if (
+    lastSource &&
+    lastSource.spreadsheetId === spreadsheetId &&
+    entries === lastSource.entries &&
+    sheetConfig === lastSource.config
+  ) {
+    return
+  }
   const payload = JSON.stringify({
     v: VERSION,
     spreadsheetId,
@@ -126,7 +135,7 @@ export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
   // Remembered before the two refusals below, not after: whether the bytes turned out
   // to be already stored or too large to store, this exact list has been considered
   // and the answer will not change until one of the two references does.
-  lastSource = { entries, config: sheetConfig }
+  lastSource = { spreadsheetId, entries, config: sheetConfig }
   if (payload === lastPayload) return
   if (payload.length > MAX_CHARS) return
   lastPayload = payload

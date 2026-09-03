@@ -76,6 +76,14 @@ export function registerServiceWorker() {
       lastCheck = Date.now()
       reconsiderUpdate()
 
+      // `register()` runs its own update check, so a new worker can already be INSTALLING
+      // by the time this promise resolves — before the listener below exists. That one gets
+      // no `statechange` hook, and `reconsiderUpdate` only looks at `waiting`, so nothing
+      // asks again until the next foreground event: for somebody who stays in the app,
+      // never. Hooking it here as well is idempotent, since `reconsiderUpdate` re-reads
+      // the registration rather than trusting the event.
+      registered.installing?.addEventListener('statechange', reconsiderUpdate)
+
       registered.addEventListener('updatefound', () => {
         // The new worker installs and then waits; take over when it is safe.
         registered.installing?.addEventListener('statechange', reconsiderUpdate)

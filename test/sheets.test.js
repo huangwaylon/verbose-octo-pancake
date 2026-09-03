@@ -1038,6 +1038,26 @@ describe('template writes', () => {
     })
   })
 
+  /**
+   * A missing gid is the failure that looks like nothing: `JSON.stringify` DROPS an
+   * undefined `sheetId`, and a `GridRange` without one reads as gid 0 — the first tab in the
+   * spreadsheet. So the request does not fail, it hard-deletes whatever row happens to sit at
+   * the recurring row's index in `expenses_p1`. Both hard deletes guard upstream through
+   * `missingGid`; this is the guard in the request builder they share.
+   */
+  it('throws rather than sending a delete with no gid, which would hit the first tab', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes(RECURRING.dataRange)
+        ? values([recurringRow({ id: 'rent', payer: 'p1' })])
+        : {},
+    )
+
+    for (const gid of [undefined, null, '555']) {
+      await expect(sheets.deleteTemplate(SHEET, gid, 'rent')).rejects.toThrow(TypeError)
+    }
+    expect(writes(calls)).toHaveLength(0)
+  })
+
   it('does nothing when the row is already gone, rather than failing', async () => {
     // Deleted from the other phone, or in the Sheets UI. The outcome asked for is the outcome
     // already in place, so interrupting somebody over it would be noise.

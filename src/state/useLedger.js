@@ -84,6 +84,26 @@ export function useLedger(spreadsheetId) {
   const everLoaded = useRef(Boolean(seed))
 
   /**
+   * How many writes that carry no optimistic flag are in flight — `saveTemplate`,
+   * `deleteTemplate` and `compact`.
+   *
+   * A COUNT rather than a boolean, so two overlapping writes cannot have the first to
+   * finish declare the second one done. It exists for `blocksReload`: templates are
+   * deliberately absent from `mergeLoaded` and `hasPendingWrite`, so nothing in the entry
+   * list can see one, and the two hard deletes are exactly the writes a mid-flight reload
+   * must not interrupt.
+   */
+  const [writesInFlight, setWritesInFlight] = useState(0)
+  const tracked = useCallback(async (write) => {
+    setWritesInFlight((count) => count + 1)
+    try {
+      return await write()
+    } finally {
+      setWritesInFlight((count) => count - 1)
+    }
+  }, [])
+
+  /**
    * `entries` as of the last render, so a write can read the entry it is about to replace
    * WITHOUT side-effecting inside a `setEntries` updater. An updater only runs
    * synchronously while React's eager-state bailout applies, which any other pending
@@ -143,12 +163,21 @@ export function useLedger(spreadsheetId) {
    * would put a deleted expense back into the next cold launch's balance. Waiting for
    * `pending` to clear is also what keeps the rule — an unacknowledged optimistic row
    * must never reach the cache — true by construction.
+   *
+   * `config` is in the deps although the ref is what gets written, and it has to be: a read
+   * where only the CONFIG tab changed leaves `entries` at the same reference — `mergeLoaded`
+   * returns the array already on screen — so keyed on the list alone this effect never runs
+   * and the cache keeps the old config until some entry happens to change. That is a cold
+   * launch painting a stale name, a stale category list whose first entry the add form
+   * pre-selects, and a stale `default_split_p*`, which is the one config value that moves
+   * money. `applyLoad` gives `config` a new identity exactly when the sheet's own config
+   * changed, which is precisely the condition wanted here.
    */
   useEffect(() => {
     if (!spreadsheetId || !everLoaded.current) return
     if (hasPendingWrite(entries)) return
     persist(spreadsheetId, entries, sheetConfigRef.current)
-  }, [spreadsheetId, entries, persist])
+  }, [spreadsheetId, entries, config, persist])
 
   /**
    * Counts every read started, so a reply that is not the newest can be dropped.
@@ -209,11 +238,18 @@ export function useLedger(spreadsheetId) {
   )
 
   useEffect(() => {
-    if (!spreadsheetId) {
-      // Disconnected: drop everything, and clear `loadedFor` so reconnecting to
-      // the same sheet still triggers a read rather than short-circuiting. Bumping
-      // the generation is what stops a read already in flight from repopulating
-      // state — and rewriting the snapshot — for the sheet just left behind.
+    // Nothing to show for this id yet: a disconnect, or a switch to a DIFFERENT sheet.
+    // The second is reachable without a `forgetKey` — a rejected key leaves the old id in
+    // storage while the gate asks for a new one, and a key for another deployment mints
+    // another id — and it must reset as thoroughly as the first, or sheet B's screen paints
+    // sheet A's entries and balance. Worse if B's own read then fails: `everLoaded` is
+    // already true, so the status is `stale` and A's ledger sits there under a "showing
+    // saved data" notice indefinitely.
+    if (!spreadsheetId || (loadedFor.current && loadedFor.current !== spreadsheetId)) {
+      // Clear `loadedFor` so reconnecting to the same sheet still triggers a read rather
+      // than short-circuiting. Bumping the generation is what stops a read already in
+      // flight from repopulating state — and rewriting the snapshot — for the sheet just
+      // left behind.
       loadGeneration.current += 1
       loadedFor.current = null
       everLoaded.current = false
@@ -224,7 +260,7 @@ export function useLedger(spreadsheetId) {
       setSheetExtras(NO_SHEET_EXTRAS)
       setStatus('idle')
       setError(null)
-      return
+      if (!spreadsheetId) return
     }
     if (loadedFor.current === spreadsheetId) return
     loadedFor.current = spreadsheetId
@@ -347,10 +383,12 @@ export function useLedger(spreadsheetId) {
    */
   const saveTemplate = useCallback(
     async (input) => {
-      await sheets.saveTemplate(spreadsheetId, templateFromInput(input))
-      await refresh()
+      await tracked(async () => {
+        await sheets.saveTemplate(spreadsheetId, templateFromInput(input))
+        await refresh()
+      })
     },
-    [spreadsheetId, refresh],
+    [spreadsheetId, refresh, tracked],
   )
 
   /**
@@ -363,12 +401,14 @@ export function useLedger(spreadsheetId) {
    */
   const deleteTemplate = useCallback(
     async (template) => {
-      const gids = await sheets.readSheetGids(spreadsheetId)
-      if (missingGid(gids, [RECURRING])) throw i18nError('error.missingTabs')
-      await sheets.deleteTemplate(spreadsheetId, gids[RECURRING.title], template.id)
-      await refresh()
+      await tracked(async () => {
+        const gids = await sheets.readSheetGids(spreadsheetId)
+        if (missingGid(gids, [RECURRING])) throw i18nError('error.missingTabs')
+        await sheets.deleteTemplate(spreadsheetId, gids[RECURRING.title], template.id)
+        await refresh()
+      })
     },
-    [spreadsheetId, refresh],
+    [spreadsheetId, refresh, tracked],
   )
 
   /** Hard-delete tombstoned rows. Deliberate and manual — never in the hot path. */
@@ -378,18 +418,20 @@ export function useLedger(spreadsheetId) {
     const refusal = compactRefusal(entriesRef.current, sheetExtras.supersededRows)
     if (refusal) return refusal
 
-    // Read the gids, never `ensureStructure`: that path writes, and it would re-seed a
-    // deleted config tab with this build's defaults. `values.batchGet` cannot carry a
-    // gid, so this read is unavoidable and happens every time.
-    const gids = await sheets.readSheetGids(spreadsheetId)
-    // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab it
-    // cannot name, which is right for it and wrong to leave unsaid here.
-    if (missingGid(gids, DATA_TABS)) throw i18nError('error.missingTabs')
+    return tracked(async () => {
+      // Read the gids, never `ensureStructure`: that path writes, and it would re-seed a
+      // deleted config tab with this build's defaults. `values.batchGet` cannot carry a
+      // gid, so this read is unavoidable and happens every time.
+      const gids = await sheets.readSheetGids(spreadsheetId)
+      // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab it
+      // cannot name, which is right for it and wrong to leave unsaid here.
+      if (missingGid(gids, DATA_TABS)) throw i18nError('error.missingTabs')
 
-    const result = await sheets.compact(spreadsheetId, gids)
-    await refresh()
-    return result
-  }, [sheetExtras.supersededRows, spreadsheetId, refresh])
+      const result = await sheets.compact(spreadsheetId, gids)
+      await refresh()
+      return result
+    })
+  }, [sheetExtras.supersededRows, spreadsheetId, refresh, tracked])
 
   /**
    * What `compact` would remove, which is every tombstone in the sheet — so the ones
@@ -413,6 +455,11 @@ export function useLedger(spreadsheetId) {
     tombstoneCount: tombstones,
     /** What the last read could not show, whole: `noticeKeys` reads exactly this. */
     sheetExtras,
+    /**
+     * Whether a write with no optimistic flag is in flight. The one consumer is
+     * `blocksReload`: nothing in `entries` can see a template write or a compact.
+     */
+    writing: writesInFlight > 0,
     refresh,
     addEntry,
     editEntry,

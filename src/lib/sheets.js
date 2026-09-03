@@ -172,8 +172,20 @@ function appendRow(spreadsheetId, tab, cells) {
   )
 }
 
-/** 0-based and half-open: sheet row N is index N-1. The one home of that arithmetic. */
+/**
+ * 0-based and half-open: sheet row N is index N-1. The one home of that arithmetic.
+ *
+ * The gid is asserted here rather than at each caller because this is where losing it stops
+ * being visible: `JSON.stringify` DROPS an undefined `sheetId`, and a `GridRange` with no
+ * `sheetId` reads as gid 0 — the first tab in the spreadsheet. So a missing gid does not
+ * fail, it hard-deletes whatever row sits at that index in `expenses_p1`. Both hard deletes
+ * guard upstream too (`missingGid`, and `compact` skipping a tab it cannot name); this is the
+ * line a third one cannot forget.
+ */
 function deleteRowRequest(sheetGid, rowNumber) {
+  if (!Number.isInteger(sheetGid)) {
+    throw new TypeError(`deleteRowRequest needs a numeric sheet gid, got ${String(sheetGid)}`)
+  }
   return {
     deleteDimension: {
       range: {

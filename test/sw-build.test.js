@@ -110,6 +110,40 @@ describe('the generated worker', () => {
     expect(source).not.toContain('clients.claim')
     expect(source).toContain("event.data.type === 'SKIP_WAITING'")
   })
+
+  /**
+   * RUN rather than grepped, because the interesting half is which keys survive and a
+   * substring check cannot see that.
+   *
+   * `caches.keys()` is scoped to the ORIGIN, not to this worker's scope, and every project
+   * Pages site under one account shares `<user>.github.io` — so a sweep of "everything that
+   * is not this build" deletes the precache of every other app published from that account.
+   * Silent both ways: this app looks perfect, and the other one is merely never fast again.
+   */
+  it('deletes only its own superseded caches, not everything on the origin', async () => {
+    const deleted = []
+    const listeners = {}
+    const self = {
+      addEventListener: (type, handler) => {
+        listeners[type] = handler
+      },
+      location: { origin: 'https://example.github.io' },
+    }
+    const caches = {
+      keys: () => Promise.resolve(['sf-oldbuild', 'sf-older', 'other-app-v3', 'workbox-precache']),
+      delete: (key) => {
+        deleted.push(key)
+        return Promise.resolve(true)
+      },
+    }
+
+    let waited
+    new Function('self', 'caches', source)(self, caches)
+    listeners.activate({ waitUntil: (promise) => (waited = promise) })
+    await waited
+
+    expect(deleted.sort()).toEqual(['sf-oldbuild', 'sf-older'])
+  })
 })
 
 describe('the build wiring', () => {

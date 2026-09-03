@@ -94,6 +94,11 @@ Desktop is a convenience. Every layout decision is made at 320px first.
   `deleted_at` column, serializes its tab reads rather than batching them, and deletes in
   **descending** row order within each tab. All three protect row numbers derived from
   position.
+- **A delete request without a gid is a delete against the WRONG TAB, so `deleteRowRequest`
+  asserts one.** `JSON.stringify` drops an undefined `sheetId` and a `GridRange` without one
+  reads as gid 0 — the first tab in the spreadsheet — so the request does not fail, it removes
+  whatever row sits at that index in `expenses_p1`. Both hard deletes also guard upstream
+  through `missingGid`; the assert is the line a third one cannot forget.
 - **`compact` covers `DATA_TABS`, not just the expenses tabs** — and never the recurring tab,
   which holds no tombstones and no row it could recognise. `missingGid` is the shared gid check
   both hard deletes make, over whichever tabs each is about.
@@ -357,19 +362,40 @@ documents the columns.
 - **Templates are deliberately NOT in the snapshot.** It is the one input never decoded through
   a schema reader and it is restored in a `useState` initializer, so a bad cached row
   white-screens the first render; a reminder loses nothing by arriving one round trip late.
-- **The cache is written from the screen, only once nothing is pending.** An effect in
-  `useLedger` owns that.
+- **The cache is written from the screen, only once nothing is pending — and the persist effect
+  watches the CONFIG as well as the list.** `mergeLoaded` returns the array already on screen
+  for a read that changed nothing, so a read where only the config tab changed leaves `entries`
+  at the same reference: keyed on the list alone the effect never runs and the cache keeps the
+  old config until some entry happens to change. That is a cold launch painting a stale name, a
+  stale `categories[0]` the add form pre-selects, and a stale `default_split_p*`, which moves
+  money. An effect in `useLedger` owns that.
+- **`writeSnapshot`'s reference guard names the SHEET, not just the two references.** A switch
+  from one spreadsheet to another is reachable without a `forgetKey` — a rejected key leaves the
+  old id in storage while the gate asks for a new one — and `useLedger` resets on an id CHANGE
+  for the same reason, or sheet B's screen paints sheet A's ledger under a "showing saved data"
+  notice indefinitely.
 - **`setSafeToReload` must stay wired, and `reconsiderUpdate` with it.** Without the predicate
   an update reloads mid-entry; without the nudge a worker refused while the form was open is
   never asked again, because nobody who stays in the app produces a `focus` event. Its one-hour
   floor comes from the same `shouldRefresh` the sheet read uses.
+- **`blocksReload` is that predicate, and it lives in `lib/` because it is a decision.** Three
+  inputs, because `pending` cannot cover them all: an open form, an unacknowledged optimistic
+  write, and `useLedger`'s `writing` count — `saveTemplate`, `deleteTemplate` and `compact` carry
+  no optimistic flag, and the overlay cannot stand in for them since `deleteTemplate` switches to
+  the recurring page and `compact` runs from settings, both before awaiting. Those two are the
+  app's only irreversible writes: a reload mid-`batchUpdate` kills the follow-up read and the
+  toast. Never solve it by adding overlay kinds or a second "which sheet is open" value.
 - **Precache from a `dist/` walk, derive the cache name from file CONTENTS, match with
-  `ignoreVary: true`, and never intercept a cross-origin request.** All four fail silently;
-  `scripts/build-sw.js` says why at each and `test/sw-build.test.js` pins the first three. The
-  cross-origin `return` is the first statement of the `fetch` handler, because scope decides
-  which *clients* are controlled and not which *requests* are seen. **The base path lives in
-  `base.js` and both builds read it from there** — two copies that disagree means no worker
-  ever activates, with nothing on screen looking wrong.
+  `ignoreVary: true`, never intercept a cross-origin request, and sweep only this app's own
+  caches.** All five fail silently; `scripts/build-sw.js` says why at each and
+  `test/sw-build.test.js` pins them — the sweep by RUNNING the generated `activate` handler,
+  since which keys survive is the whole point and no substring can see it. `caches.keys()` is
+  scoped to the ORIGIN and every project Pages site on an account shares one, so an unfiltered
+  sweep deletes another app's precache with nothing here looking wrong; `CACHE_PREFIX` is what
+  makes the two tellable apart. The cross-origin `return` is the first statement of the `fetch`
+  handler, because scope decides which *clients* are controlled and not which *requests* are
+  seen. **The base path lives in `base.js` and both builds read it from there** — two copies that
+  disagree means no worker ever activates, with nothing on screen looking wrong.
 
 ## Conventions
 

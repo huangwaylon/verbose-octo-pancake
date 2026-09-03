@@ -283,14 +283,14 @@
   user-select: none;
 }
 
-.recurring__main:active {
-  background-color: var(--sunken);
-}
-
 @media (hover: hover) {
   .recurring__main:hover {
     background-color: var(--sunken);
   }
+}
+
+.recurring__main:active {
+  background-color: var(--sunken);
 }
 
 /* `overflow-wrap` rather than an ellipsis, for the reason at the top of this block.
@@ -366,8 +366,9 @@
 }
 
 /* The wash is 1.04:1 against the track, i.e. invisible, so the hairline is what carries
-   the boundary — without it the bar reads as "p1 paid everything". Same treatment as
-   the legend swatch below. */
+   the boundary — without it the bar reads as "p1 paid everything". The legend swatch below
+   marks the same person with the same two values, this wash and a --line-input hairline;
+   only the mechanism differs, an inset shadow here and a border there. */
 .summary__meter-fill--other {
   background-color: var(--accent-wash);
   box-shadow: inset 0 0 0 1px var(--line-input);
@@ -386,8 +387,14 @@
   font-size: var(--fs-caption);
 }
 
+/* Config-tab text — a person's own name — and the one holder of it that sits OUTSIDE a
+   sheet, so an overflow here is not clipped: it scrolls the whole page sideways at 320px.
+   A flex item's automatic minimum is its min-content width, and `body`'s
+   `overflow-wrap: break-word` does not reduce that — hence both of these. */
 .summary__person-name {
+  min-width: 0;
   color: var(--ink-3);
+  overflow-wrap: anywhere;
 }
 
 .summary__person-amount {
@@ -466,7 +473,6 @@
   font-size: var(--fs-caption);
   line-height: var(--lh-tight);
 }
-
 
 .chart__name {
   /* Wraps rather than truncating. `title` is the only recourse an ellipsis leaves and
@@ -754,6 +760,11 @@ button.entry__main:active {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2) var(--space-3);
+  /* A wrapping `<label>`, so a tap on the hint or the output forwards to the range and
+     waits the same 300ms for a double-tap `.field__label` opts out of. `manipulation` is
+     an alias for `pan-x pan-y pinch-zoom`, so it drops only that gesture: the thumb's own
+     drag is not a behaviour this property governs. */
+  touch-action: manipulation;
 }
 
 /* Config-tab text — the payer's own name, in the possessive — so it needs the pair
