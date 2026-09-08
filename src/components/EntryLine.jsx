@@ -1,4 +1,5 @@
 import { useMoney } from '../i18n/index.js'
+import { SwapIcon } from './icons.jsx'
 
 /**
  * One line in an entry list. Both lists render this, and what they disagree about is whether the
@@ -6,15 +7,7 @@ import { useMoney } from '../i18n/index.js'
  * same classes are inert text where a press state would promise a tap that does nothing. So `onOpen`
  * decides the element, and `app.css` carries the touch rules on `button.entry__main` alone.
  */
-export function EntryLine({
-  entry,
-  description,
-  meta,
-  icon = null,
-  settlement = false,
-  onOpen,
-  children,
-}) {
+export function EntryLine({ entry, description, meta, settlement = false, onOpen, children }) {
   const money = useMoney()
   const className = `entry${settlement ? ' entry--settlement' : ''}${
     entry.pending ? ' entry--pending' : ''
@@ -23,7 +16,8 @@ export function EntryLine({
   const body = (
     <>
       <span className="entry__desc">
-        {icon}
+        {/* The glyph belongs with the class it goes with, not composed identically by both lists. */}
+        {settlement && <SwapIcon width={16} height={16} />}
         {description}
       </span>
       <span className="entry__meta">{meta}</span>

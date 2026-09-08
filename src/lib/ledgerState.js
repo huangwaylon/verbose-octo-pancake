@@ -112,15 +112,24 @@ export function withPendingDeletedAt(entries, id, deletedAt) {
 }
 
 /**
- * The write landed. `acknowledge` swaps in the canonical entry, for an append; `settled` only
- * clears the flag, leaving fields an edit did not touch alone.
+ * The write landed. `acknowledge` swaps in the canonical entry, for an append; `settled` only drops
+ * the flag, leaving fields an edit did not touch alone.
+ *
+ * DROPS it rather than setting it false, because `sameEntry` compares key COUNTS: a row carrying a
+ * tenth key can never equal the sheet's copy, so `mergeLoaded` stops recognising a read that
+ * changed nothing and every later read re-runs every memo and re-serialises the snapshot.
  */
 export function acknowledge(entries, entry) {
   return replace(entries, entry.id, () => entry)
 }
 
 export function settled(entries, id) {
-  return replace(entries, id, (item) => ({ ...item, pending: false }))
+  return replace(entries, id, (item) => withoutPending(item))
+}
+
+/** @returns {object} the entry without its `pending` key, never with it set false. */
+function withoutPending({ pending: _pending, ...rest }) {
+  return rest
 }
 
 /** The append failed: the row was never in the sheet, so it leaves the screen. */
@@ -138,7 +147,7 @@ export function without(entries, id) {
  */
 export function reverted(entries, id, previous) {
   if (!previous) return entries
-  const restored = previous.pending ? { ...previous, pending: false } : previous
+  const restored = previous.pending ? withoutPending(previous) : previous
   return replace(entries, id, () => restored)
 }
 
@@ -215,6 +224,20 @@ export function statusOnLoadStart(current) {
   return current === 'idle' ? 'loading' : 'refreshing'
 }
 
+/** Whether a read is in flight with something already on screen — the header's spinner. */
+export function isRefreshing(status) {
+  return status === 'refreshing'
+}
+
+/**
+ * Whether the sheet has actually been read this session, which is NOT "not loading": `stale` is a
+ * cached launch, where the recurring page must say so rather than offer a Record for a month it
+ * cannot see, and posting a cost twice is what that would cost.
+ */
+export function hasLoaded(status) {
+  return status === 'ready' || isRefreshing(status)
+}
+
 /**
  * A failed read with something already on screen is `stale`, not `error`: the sheet has not
  * changed just because we cannot reach it. This is the offline launch.
@@ -243,12 +266,21 @@ export function missingGid(sheetGids, tabs) {
 }
 
 /**
- * Whether a failed read means "this spreadsheet has no tabs yet" rather than "the read failed": a
- * missing tab or range is a 400, a missing spreadsheet a 404. Anything else must not lead there —
- * `ensureStructure` is the only path that writes tabs into somebody's spreadsheet.
+ * Whether a status means "the range or the spreadsheet is not there": a missing tab or range is a
+ * 400, a missing spreadsheet a 404. Two decisions turn on those two numbers — `loadAll` retrying
+ * without the config range, and this one — so they are written down once.
+ */
+export function missingRangeOrSheet(status) {
+  return status === 400 || status === 404
+}
+
+/**
+ * Whether a failed read means "this spreadsheet has no tabs yet" rather than "the read failed".
+ * Anything else must not lead there — `ensureStructure` is the only path that writes tabs into
+ * somebody's spreadsheet.
  */
 export function looksUninitialized(cause) {
-  return cause?.status === 400 || cause?.status === 404
+  return missingRangeOrSheet(cause?.status)
 }
 
 /**
@@ -272,8 +304,8 @@ export const templateFromInput = fromInput(makeTemplate, validateTemplateCodes)
  * the only one where nothing on screen is wrong. A notice, never a gate — and `staleData` needs an
  * `error`, since `stale` alone is where a cached launch starts.
  *
- * @param {{status: string, error: unknown, configMissing: boolean, undecodedRows: number,
- *   undatedRows: number, unattributedRows: number, undecodedTemplates: number}} state
+ * Takes a `status`, an `error` and the counts of `NO_SHEET_EXTRAS`.
+ *
  * @returns {{key: string, vars?: object}[]}
  */
 export function noticeKeys(state = {}) {
@@ -282,6 +314,10 @@ export function noticeKeys(state = {}) {
   if (state.configMissing) notices.push({ key: 'warning.configMissing' })
   if (state.undecodedRows > 0) {
     notices.push({ key: 'warning.undecodedRows', vars: { count: state.undecodedRows } })
+  }
+  // Beside the unreadable rows: both are an amount the sheet holds and no total carries.
+  if (state.duplicateRows > 0) {
+    notices.push({ key: 'warning.duplicateRows', vars: { count: state.duplicateRows } })
   }
   if (state.undatedRows > 0) {
     notices.push({ key: 'warning.undatedRows', vars: { count: state.undatedRows } })
@@ -330,6 +366,7 @@ export function gateFor(state = {}) {
  */
 export const NO_SHEET_EXTRAS = Object.freeze({
   supersededRows: 0,
+  duplicateRows: 0,
   undecodedRows: 0,
   undatedRows: 0,
   unattributedRows: 0,

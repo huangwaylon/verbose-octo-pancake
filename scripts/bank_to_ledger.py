@@ -9,11 +9,14 @@ Turn a bank export into rows you can paste into the ledger.
     uv run scripts/bank_to_ledger.py statement.tsv
     uv run scripts/bank_to_ledger.py statement.tsv -o rows.csv --payer p1
 
-Expenses paste into `expenses_p1!A2` (or p2) under the existing header; settlements
-have their own tab and columns, so they get a `.settlements.csv` beside it, written
-only when there are any. `test/schema.test.js` pins both column lists against the real
-ones, because this file cannot import them and a silent disagreement writes every value
-under the wrong field. Amounts are whole yen exactly as `entryToRow` writes them.
+Expenses paste into `expenses_p1!A2` (or p2) under the existing header, so paste the rows
+and not the file's first line — or pass `--no-header` and paste the lot. Settlements have
+their own tab and columns, so they get a `.settlements.csv` beside it, written only when
+there are any. Paste at column A: the app reads a row's fields by position, so a row
+starting one column across puts every value under the neighbouring heading. `loadAll`
+counts such a row, and `test/schema.test.js` pins both column lists against the real ones,
+because this file cannot import them. Amounts are whole yen exactly as `entryToRow` writes
+them.
 
 NOTHING IS EVER TRANSLATED. A description is the bank's own text plus your note when
 the note adds something, so a ledger row can always be found in the statement by
@@ -507,23 +510,25 @@ def main() -> int:
         seen_ids[seed] += 1
         entry_id = str(uuid.uuid5(ID_NAMESPACE, f"{seed}|{seen_ids[seed]}"))
 
-        # One list per tab: the two layouts differ.
+        # One list per tab: the two layouts differ. Built from the column list by NAME rather
+        # than written out in order, because that is what makes the pin in
+        # `test/schema.test.js` load-bearing: it compares these DECLARATIONS with the app's, so
+        # a positional literal would keep the old order after a column moved — header saying one
+        # thing, every value under its neighbour, and no test able to see it.
+        fields = {
+            "date": txn.date,
+            "description": description,
+            "amount": str(txn.debit),
+            "category": category_out,
+            "payer_share": str(share),
+            "payer": args.payer,
+            "deleted_at": "",
+            "id": entry_id,
+        }
         if mode == "settlement":
-            settlement_out.append(
-                [txn.date, description, str(txn.debit), args.payer, "", entry_id]
-            )
+            settlement_out.append([fields[column] for column in SETTLEMENT_COLUMNS])
         else:
-            expense_out.append(
-                [
-                    txn.date,
-                    description,
-                    str(txn.debit),
-                    category_out,
-                    str(share),
-                    "",
-                    entry_id,
-                ]
-            )
+            expense_out.append([fields[column] for column in EXPENSE_COLUMNS])
             by_category[category_out].append(txn)
         emitted.append((txn, mode, share, category_out))
 

@@ -440,7 +440,11 @@ describe('confirm dialog', () => {
     )
 
   it('puts Cancel before the destructive button in the DOM', () => {
+    // Both present FIRST: `indexOf` answers -1 for a string that is not there, which satisfies
+    // "comes before" for a button that was deleted outright.
     const markup = render()
+    expect(markup).toContain('Cancel')
+    expect(markup).toContain('btn--danger')
     expect(markup.indexOf('Cancel')).toBeLessThan(markup.indexOf('btn--danger'))
   })
 
@@ -490,7 +494,6 @@ describe('deleted entries list', () => {
       removed('a', { description: 'Ozeki' }),
       removed('b', { description: 'Life' }),
     ])
-    expect(markup.match(/Restore/g).length).toBeGreaterThanOrEqual(2)
     expect(markup).toContain('aria-label="Restore Ozeki"')
     expect(markup).toContain('aria-label="Restore Life"')
   })

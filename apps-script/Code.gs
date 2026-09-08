@@ -32,6 +32,7 @@ function doPost(e) {
   if (!e || !e.postData || !e.postData.contents) return unauthorized()
   if (e.postData.contents.length > MAX_BODY_CHARS) return unauthorized()
 
+
   var body = null
   try {
     body = JSON.parse(e.postData.contents)
@@ -349,9 +350,13 @@ function toTemplate(row) {
  * So the separator rule and the grouping validation are ported in full rather than
  * approximated. `test/apps-script.test.js` runs this and `parseAmountToYen` over ONE
  * table of inputs, which is the only thing that can see the two drift apart.
+ *
+ * `\p{Sc}` is EVERY currency symbol, as `money.js` strips: '¥' alone left '$100' — a
+ * figure the app reads fine — refusing the whole row, so a cost the recurring page
+ * listed as due was one this skipped every month, with nothing anywhere reporting it.
  */
 function readYen(text) {
-  var cleaned = text.replace(/[\s\u00a0\u202f\u2009]/g, '').replace(/[¥￥]/g, '')
+  var cleaned = text.replace(/[\s\u00a0\u202f\u2009]/g, '').replace(/\p{Sc}/gu, '')
   if (!cleaned) return null
   // Amounts are positive magnitudes; the payer carries the direction.
   if (cleaned.charAt(0) === '-' || cleaned.charAt(0) === '\u2212') return null

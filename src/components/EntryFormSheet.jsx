@@ -1,14 +1,14 @@
 import { useId, useRef, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { parseAmountToYen, yenToSheetString } from '../lib/money.js'
-import { ENTRY_TYPE, PEOPLE, PERSON, otherPerson } from '../schema.js'
-import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
+import { PERSON, isSettlement as isTransfer, otherPerson } from '../schema.js'
+import { usePeopleLabels, useT } from '../i18n/index.js'
 import { Field, FieldError } from './Field.jsx'
 import { AmountField } from './AmountField.jsx'
 import { CategoryField } from './CategoryField.jsx'
 import { NoteField } from './NoteField.jsx'
-import { Segmented } from './Segmented.jsx'
-import { SheetFormFooter } from './SheetFormFooter.jsx'
+import { PayerField } from './PayerField.jsx'
+import { SheetFormFooter, useSheetSave } from './SheetFormFooter.jsx'
 import { SplitField, useEntrySplit } from './SplitField.jsx'
 import { TrashIcon } from './icons.jsx'
 
@@ -24,16 +24,17 @@ import { TrashIcon } from './icons.jsx'
 export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose }) {
   const { t } = useT()
   const { mode, entry } = draft
-  const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
+  const isSettlement = isTransfer(entry)
 
   const [amount, setAmount] = useState(entry.amountYen ? yenToSheetString(entry.amountYen) : '')
-  const [payer, setPayer] = useState(entry.payer ?? me ?? PERSON.P1)
+  // `||`, not `??`: `makeEntry` writes '' for an unset payer, and `??` would keep it — no path
+  // reaches here with one today, so this is the guard and not a fix.
+  const [payer, setPayer] = useState(entry.payer || me || PERSON.P1)
   const [date, setDate] = useState(entry.date)
   const [category, setCategory] = useState(entry.category || config.categories[0] || '')
   const [description, setDescription] = useState(entry.description ?? '')
   const [rejected, setRejected] = useState(null)
-  const [saveError, setSaveError] = useState(null)
-  const [busy, setBusy] = useState(false)
+  const { busy, saveError, clearError, save } = useSheetSave(onClose)
   const amountErrorId = useId()
   const saveErrorId = useId()
   const amountInput = useRef(null)
@@ -57,7 +58,7 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
   async function handleSubmit(event) {
     event.preventDefault()
     // Before the amount is judged, or two errors sit on screen — one about a write never attempted.
-    setSaveError(null)
+    clearError()
     if (yen == null) {
       setRejected(amount)
       // The error is a newly INSERTED `role="status"`, which iOS announces unreliably, so without
@@ -65,9 +66,8 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
       amountInput.current?.focus()
       return
     }
-    setBusy(true)
-    try {
-      await onSubmit({
+    await save(() =>
+      onSubmit({
         ...entry,
         date,
         payer,
@@ -75,12 +75,8 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
         category: isSettlement ? '' : category,
         description: description.trim(),
         payerShare,
-      })
-      onClose()
-    } catch (cause) {
-      setBusy(false)
-      setSaveError(errorMessage(cause, 'form.saveError'))
-    }
+      }),
+    )
   }
 
   /** Keyed on the type too: a settlement under "Edit expense" contradicts the sentence below it. */
@@ -144,11 +140,10 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
           </>
         )}
 
-        <Segmented
+        <PayerField
           name="payer"
-          label={t('common.whoPaid')}
           value={payer}
-          options={PEOPLE.map((person) => [person, label(person)])}
+          label={label}
           onChange={setPayer}
           hint={
             isSettlement ? t('form.settlementHint', { payer: payerLabel, other: otherLabel }) : null

@@ -10,14 +10,7 @@ export function NoteField({ value, presets, onChange }) {
   const listId = presets.length ? 'note-presets' : undefined
 
   return (
-    <Field
-      htmlFor="entry-note"
-      label={
-        <>
-          {t('form.note')} <span className="field__hint">{t('common.optional')}</span>
-        </>
-      }
-    >
+    <Field htmlFor="entry-note" label={t('form.note')} optional={t('common.optional')}>
       <input
         id="entry-note"
         className="input"

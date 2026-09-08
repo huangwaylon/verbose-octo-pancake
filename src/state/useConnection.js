@@ -6,13 +6,13 @@ import {
   getAccessToken,
   getSpreadsheetId,
   hasKey,
-  keyIsSuspect,
+  isKeySuspect,
   onConnectionChange,
 } from '../lib/connection.js'
 
 /** One primitive, so the store snapshot is referentially stable and cannot loop. */
 function snapshot() {
-  return `${hasKey() ? 1 : 0}${keyIsSuspect() ? 1 : 0}:${getSpreadsheetId() ?? ''}`
+  return `${hasKey() ? 1 : 0}${isKeySuspect() ? 1 : 0}:${getSpreadsheetId() ?? ''}`
 }
 
 /**
@@ -72,7 +72,7 @@ export function useConnection() {
     status: connectionStatus(),
     connecting,
     error,
-    suspect: keyIsSuspect(),
+    suspect: isKeySuspect(),
     spreadsheetId: getSpreadsheetId(),
     connect: start,
     retry: bootstrap,

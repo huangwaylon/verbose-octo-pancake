@@ -1,8 +1,8 @@
 import { dayLabel } from '../lib/dates.js'
-import { ENTRY_TYPE, otherPerson } from '../schema.js'
+import { isSettlement as isTransfer, otherPerson } from '../schema.js'
 import { useDayLabels, useEntryTitle, usePeopleLabels, useT } from '../i18n/index.js'
 import { EntryLine } from './EntryLine.jsx'
-import { ChevronRightIcon, SwapIcon } from './icons.jsx'
+import { ChevronRightIcon } from './icons.jsx'
 
 /**
  * The tombstones from the month on screen, newest first. Scoped to that month because it sits under
@@ -49,7 +49,7 @@ export function DeletedList({ entries, config, me, onRestore }) {
 function DeletedRow({ entry, payerLabel, otherLabel, dateLabel, onRestore }) {
   const { t } = useT()
   const description = useEntryTitle(entry)
-  const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
+  const isSettlement = isTransfer(entry)
 
   return (
     <EntryLine
@@ -65,7 +65,6 @@ function DeletedRow({ entry, payerLabel, otherLabel, dateLabel, onRestore }) {
           : t('deleted.meta', { date: dateLabel, name: payerLabel })
       }
       settlement={isSettlement}
-      icon={isSettlement ? <SwapIcon width={16} height={16} /> : null}
     >
       {/* Text: there is no glyph for "undelete". Identical unlabelled buttons say nothing about
           which entry each restores, hence the per-row name too. */}

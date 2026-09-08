@@ -31,15 +31,8 @@ export function AmountField({
   return (
     <Field
       htmlFor={id}
-      label={
-        optional ? (
-          <>
-            {t('form.amount')} <span className="field__hint">{t('common.optional')}</span>
-          </>
-        ) : (
-          t('form.amount')
-        )
-      }
+      label={t('form.amount')}
+      optional={optional ? t('common.optional') : undefined}
       hint={hint}
     >
       <input

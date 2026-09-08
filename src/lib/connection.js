@@ -251,7 +251,7 @@ export function hasKey() {
   return Boolean(appKey)
 }
 
-export function keyIsSuspect() {
+export function isKeySuspect() {
   return keySuspect
 }
 

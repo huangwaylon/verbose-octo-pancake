@@ -218,7 +218,7 @@ export const CONFIG_RANGE = `${CONFIG_TAB}!A:B`
  * moves a row.
  */
 export function tabOf(entry) {
-  return entry?.type === ENTRY_TYPE.SETTLEMENT ? SETTLEMENTS : expenseTab(entry?.payer)
+  return isSettlement(entry) ? SETTLEMENTS : expenseTab(entry?.payer)
 }
 
 /** A cell as trimmed text. Sheets returns numbers as numbers and gaps as holes. */
@@ -474,4 +474,13 @@ export function validateEntryCodes(entry) {
 
 export function isActive(entry) {
   return Boolean(entry) && !entry.deletedAt
+}
+
+/**
+ * Whether an entry is a transfer rather than spending. `tabOf`, four components and the title reader
+ * ask, so the comparison has one home — and none of them is arithmetic, which must never branch on
+ * the type.
+ */
+export function isSettlement(entry) {
+  return entry?.type === ENTRY_TYPE.SETTLEMENT
 }

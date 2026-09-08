@@ -161,6 +161,15 @@ export function isRetired(template) {
 }
 
 /**
+ * What to call a cost on screen. Pure, taking the fallback wording, so the row and the delete
+ * confirmation cannot name the same template differently — `useEntryTitle` does this job for an
+ * entry, and a hook cannot be called from `App`'s confirmation branch.
+ */
+export function templateTitle(template, fallback) {
+  return template?.description || fallback
+}
+
+/**
  * Build a complete template from partial form input, minting an id if there is none. Reads no
  * clock and guesses nothing, like `makeEntry`. The three scheduling fields ride through untouched,
  * which is what lets the form edit six columns of ten without turning a quarterly cost monthly.

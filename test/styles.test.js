@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 
+import { MAX_SLICES } from '../src/components/DonutChart.jsx'
+
 /**
  * Merging two identical rules into a selector list is a routine tidy-up that can silently attach
  * a selector to the WRONG block: merge `.sheet__title` with `.empty__title` and land it on
@@ -31,6 +33,22 @@ function blocksFor(css, selector) {
 function declares(css, selector, property) {
   return blocksFor(css, selector).some((body) => new RegExp(`(^|;|\\s)${property}\\s*:`).test(body))
 }
+
+/**
+ * The `--series-N` order is a validated colourblind-safe set, so the ring may never cycle past the
+ * last slot: a 7th slice would paint `var(--series-7)`, which resolves to nothing — an invisible
+ * slice on a chart that still adds up. `DonutChart` counts in JS and the palette lives in CSS, so
+ * only this comparison can see them disagree.
+ */
+describe('the chart cannot ask for a colour that is not there', () => {
+  it('has one --series token per slice DonutChart will draw', () => {
+    const tokens = strip(readFileSync('src/styles/tokens.css', 'utf8'))
+    const slots = [...tokens.matchAll(/--series-(\d+)\s*:/g)].map(([, index]) => Number(index))
+
+    expect(slots.sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6])
+    expect(MAX_SLICES).toBe(slots.length)
+  })
+})
 
 describe('shared rules keep the declarations of the rules they replaced', () => {
   const headings = [
@@ -185,20 +203,26 @@ describe('the rules an installed iOS web app depends on', () => {
   it('keeps the sheet clear of the keyboard at DIALOG widths too', () => {
     // PER BLOCK, not against the join: the >=48rem block sets `padding` as a shorthand, so
     // it discards the phone rule's `padding-bottom`, and a joined check cannot see that.
-    for (const body of blocksFor(FILES.primitives, '.sheet')) {
-      if (!/(^|;|\s)padding(-bottom)?\s*:/.test(body)) continue
-      expect(body).toContain('--keyboard-inset')
-    }
+    // COUNTED as well as checked: skipping a block with no padding at all means deleting the
+    // declaration satisfies the loop, and the sheet sits under the keyboard on the one platform.
+    const padded = blocksFor(FILES.primitives, '.sheet').filter((body) =>
+      /(^|;|\s)padding(-bottom)?\s*:/.test(body),
+    )
+    expect(padded).toHaveLength(2)
+    for (const body of padded) expect(body).toContain('--keyboard-inset')
 
     // And a cap has to be relative to the box padding just shrank — `100%` is that box, since
     // `.sheet` is `fixed; inset: 0`. Against `dvh` a tall dialog overflows it and pushes its
     // footer back under the keyboard. `max-height: none` is the full-screen phone exception.
-    for (const selector of ['.sheet__panel', '.sheet__panel--full']) {
-      for (const body of blocksFor(FILES.primitives, selector)) {
-        const capped = body.match(/(?:^|;|\s)max-height\s*:([^;]*)/)
-        if (!capped || capped[1].trim() === 'none') continue
-        expect(capped[1]).toContain('100%')
-      }
+    const caps = ['.sheet__panel', '.sheet__panel--full']
+      .flatMap((selector) => blocksFor(FILES.primitives, selector))
+      .map((body) => body.match(/(?:^|;|\s)max-height\s*:([^;]*)/))
+      .filter(Boolean)
+      .map(([, value]) => value.trim())
+    // Every panel is capped, and every cap that is a length is against the padded box.
+    expect(caps.length).toBeGreaterThanOrEqual(2)
+    for (const value of caps) {
+      if (value !== 'none') expect(value).toContain('100%')
     }
   })
 

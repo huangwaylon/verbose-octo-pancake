@@ -253,7 +253,8 @@ export default {
   'error.notOurSheet':
     'That spreadsheet already has other tabs and none of this app’s, so it is probably not the ledger. Check the SHEET_ID script property.',
   'error.entryGone': 'That entry is no longer in the sheet. Refresh to see the latest data.',
-  'error.missingTabs': 'Could not find the expenses tabs in the sheet.',
+  // Thrown for whichever tab a write needed, not the expenses ones alone, so it names none.
+  'error.missingTabs': 'Could not find that tab in the sheet.',
   'error.badKey': 'That app key was rejected. Check it, or ask for the current one.',
   'error.keyRequired': 'Enter your app key.',
   'error.offline': 'Could not reach the sheet. Check your connection and try again.',
@@ -282,10 +283,19 @@ export default {
     one: '{count} row in the sheet has a date that cannot be read, so it appears in no month.',
     other: '{count} rows in the sheet have dates that cannot be read, so they appear in no month.',
   },
+  // Says the ROW rather than the amount: it also covers a row with nothing in the id column,
+  // which is what a row shifted out of column A looks like, and no cell in that one is at fault.
   'warning.undecodedRows': {
-    one: '{count} row in the sheet has an amount that cannot be read, so it is left out of the totals.',
+    one: '{count} row in the sheet cannot be read, so it is left out of the totals. Check that it starts in column A.',
     other:
-      '{count} rows in the sheet have amounts that cannot be read, so they are left out of the totals.',
+      '{count} rows in the sheet cannot be read, so they are left out of the totals. Check that they start in column A.',
+  },
+  // Names the sheet as the only place it can be fixed: `compact` takes a stamped `deleted_at`
+  // alone, so there is no button for this one and saying nothing leaves the balance short.
+  'warning.duplicateRows': {
+    one: '{count} row repeats the id of another row that is still live, so only one of the two is counted. Delete one in the sheet.',
+    other:
+      '{count} rows repeat ids of other rows that are still live, so only one of each is counted. Delete them in the sheet.',
   },
   'warning.unattributedRows': {
     one: '{count} settlement names nobody who paid, so it is left out of the balance.',

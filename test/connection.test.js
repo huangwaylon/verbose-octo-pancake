@@ -94,7 +94,7 @@ describe('telling a bad key from a bad connection', () => {
     // Kept deliberately: re-typing a 256-bit key beats deleting it, which buys no safety
     // against the threat that matters (XSS).
     expect(c.hasKey()).toBe(true)
-    expect(c.keyIsSuspect()).toBe(true)
+    expect(c.isKeySuspect()).toBe(true)
   })
 
   it('treats an HTML error page as transient, not as a bad key', async () => {
@@ -107,7 +107,7 @@ describe('telling a bad key from a bad connection', () => {
     )
     expect(error.badKey).toBeUndefined()
     expect(error.i18nKey).toBe('error.scriptUnavailable')
-    expect(c.keyIsSuspect()).toBe(false)
+    expect(c.isKeySuspect()).toBe(false)
   })
 
   it('treats a rejected fetch as transient', async () => {
@@ -115,7 +115,7 @@ describe('telling a bad key from a bad connection', () => {
 
     const c = await load({ 'sf.appKey': 'k' })
     await expect(c.getAccessToken()).rejects.toMatchObject({ i18nKey: 'error.offline' })
-    expect(c.keyIsSuspect()).toBe(false)
+    expect(c.isKeySuspect()).toBe(false)
   })
 
   it('treats the abort timeout as transient', async () => {
@@ -141,7 +141,7 @@ describe('telling a bad key from a bad connection', () => {
     await vi.advanceTimersByTimeAsync(15_000)
     const error = await settled
     expect(error.i18nKey).toBe('error.offline')
-    expect(c.keyIsSuspect()).toBe(false)
+    expect(c.isKeySuspect()).toBe(false)
   })
 
   // The 7-day consent-screen expiry: 200 with `{"error":"unavailable"}`. Retrying cannot fix
@@ -155,7 +155,7 @@ describe('telling a bad key from a bad connection', () => {
       // from the module under test would let the code and the catalog drift together.
       i18nKey: 'error.scriptUnauthorized',
     })
-    expect(c.keyIsSuspect()).toBe(false)
+    expect(c.isKeySuspect()).toBe(false)
     expect(c.hasKey()).toBe(true)
   })
 
@@ -312,7 +312,7 @@ describe('connectionStatus', () => {
 
     await c.getAccessToken().catch(() => {})
 
-    expect(c.keyIsSuspect()).toBe(true)
+    expect(c.isKeySuspect()).toBe(true)
     expect(c.connectionStatus()).toBe('no-key')
     // Flagged, not deleted — the gate shows why, and a typo'd key is still there to fix.
     expect(store.has('sf.appKey')).toBe(true)

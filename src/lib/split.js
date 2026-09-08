@@ -20,6 +20,14 @@ export function defaultSplitFor(config, person) {
 }
 
 /**
+ * A share as a whole percent, for display. The one home of that rounding: three components used to
+ * repeat it, so a change of rule had to be found in files nothing points at.
+ */
+export function percentOf(share) {
+  return Math.round(share * 100)
+}
+
+/**
  * A share as the two split controls see it. An even share drives the segmented control to "Even"
  * and hides the slider; anything else opens Custom on that number. A NULL share is the recurring
  * tab's blank `payer_share` — a durable "follow whoever pays, at their default" rather than an
@@ -34,11 +42,11 @@ export function defaultSplitFor(config, person) {
  */
 export function toSplit(share, configuredShare = EVEN_SHARE) {
   if (share == null) {
-    return { mode: 'default', percent: Math.round(configuredShare * 100), share: null }
+    return { mode: 'default', percent: percentOf(configuredShare), share: null }
   }
   return {
     mode: share === EVEN_SHARE ? 'even' : 'custom',
-    percent: Math.round(share * 100),
+    percent: percentOf(share),
     share,
   }
 }
@@ -53,7 +61,7 @@ export function nextSplit(mode, configuredShare) {
   if (mode === 'even') return toSplit(EVEN_SHARE)
   // Custom on exactly the even share still has to read as Custom, so this cannot route through
   // `toSplit`, which would answer 'even' for it.
-  return { mode: 'custom', percent: Math.round(configuredShare * 100), share: configuredShare }
+  return { mode: 'custom', percent: percentOf(configuredShare), share: configuredShare }
 }
 
 /** Dragging or tapping a preset: whole percents, and the share follows exactly. */

@@ -1,14 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useConnection } from './state/useConnection.js'
 import { useLedger } from './state/useLedger.js'
-import { blocksReload, gateFor, newDraftEntry, noticeKeys } from './lib/ledgerState.js'
+import {
+  blocksReload,
+  gateFor,
+  hasLoaded,
+  isRefreshing,
+  newDraftEntry,
+  noticeKeys,
+} from './lib/ledgerState.js'
 import { useLedgerView, useInitialMonth } from './state/useLedgerView.js'
 import { useToasts } from './state/useToasts.js'
 import { currentMonthKey } from './lib/dates.js'
 import { useT, errorMessage } from './i18n/index.js'
 import { readStoredIdentity, storeIdentity } from './lib/identity.js'
 import { reconsiderUpdate, setSafeToReload } from './lib/serviceWorker.js'
-import { newTemplate, restoredTemplate, retiredTemplate } from './lib/recurring.js'
+import { newTemplate, restoredTemplate, retiredTemplate, templateTitle } from './lib/recurring.js'
 import { LedgerScreen } from './components/LedgerScreen.jsx'
 import { EntryFormSheet } from './components/EntryFormSheet.jsx'
 import { ConfirmDeleteSheet } from './components/ConfirmDeleteSheet.jsx'
@@ -24,8 +31,6 @@ import {
   LoadingGate,
   UnconfiguredGate,
 } from './components/Gate.jsx'
-
-const NO_OVERLAY = null
 
 export default function App() {
   const { t } = useT()
@@ -43,8 +48,8 @@ export default function App() {
    * mounted" is structural. Two at once means two Escape handlers, two focus traps fighting over Tab,
    * and the inner one's cleanup clearing `--keyboard-inset` with the outer's keyboard still up.
    */
-  const [overlay, setOverlay] = useState(NO_OVERLAY)
-  const closeOverlay = () => setOverlay(NO_OVERLAY)
+  const [overlay, setOverlay] = useState(null)
+  const closeOverlay = () => setOverlay(null)
 
   const view = useLedgerView(entries, monthKey)
   useInitialMonth(ledger.status, view.active, setMonthKey)
@@ -117,7 +122,7 @@ export default function App() {
 
   /** Irreversible, and reported by toast because no form is left. */
   const deleteTemplate = (template) => {
-    setOverlay({ kind: 'recurring' })
+    openRecurring()
     return report(() => ledger.deleteTemplate(template), 'toast.deleted', 'toast.deleteFailed')
   }
 
@@ -172,7 +177,7 @@ export default function App() {
         view={view}
         monthKey={monthKey}
         notices={notices}
-        refreshing={ledger.status === 'refreshing'}
+        refreshing={isRefreshing(ledger.status)}
         onRefresh={ledger.refresh}
         onOpenSettings={openSettings}
         onMonthChange={setMonthKey}
@@ -225,7 +230,7 @@ export default function App() {
           config={config}
           me={me}
           monthKey={monthKey}
-          loaded={ledger.status === 'ready' || ledger.status === 'refreshing'}
+          loaded={hasLoaded(ledger.status)}
           undecodedTemplates={sheetExtras.undecodedTemplates}
           spreadsheetId={connection.spreadsheetId}
           onAdd={() => openTemplate('add', newTemplate(me))}
@@ -256,7 +261,7 @@ export default function App() {
           title={t('confirm.deleteTemplateTitle')}
           body={t('confirm.deleteTemplateBody', {
             /* The name can be whatever is in the field — cleared, the guard names nothing. */
-            name: overlay.template.description || t('entry.expense'),
+            name: templateTitle(overlay.template, t('entry.expense')),
           })}
           confirmLabel={t('recurring.delete')}
           onConfirm={() => deleteTemplate(overlay.template)}

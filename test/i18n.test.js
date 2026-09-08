@@ -293,7 +293,6 @@ describe('errorMessage', () => {
     // No error key carries a placeholder today; this stops the first one rendering '{count}'.
     const cause = i18nError('settings.removedRows', { count: 3 })
     expect(errorMessage(cause, 'error.readSheet')).toBe('Removed 3 deleted rows.')
-    expect(errorMessage(cause, 'error.readSheet')).not.toContain('{count}')
   })
 
   it('translates into the active locale, not the one the error was thrown in', () => {

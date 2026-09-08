@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { EVEN_SHARE, PERSON } from '../src/schema.js'
-import { defaultSplitFor, nextSplit, splitAtPercent, toSplit } from '../src/lib/split.js'
+import { defaultSplitFor, nextSplit, percentOf, splitAtPercent, toSplit } from '../src/lib/split.js'
 
 // Every fallback here is one step from `splitYen` and a wrong number on somebody's balance.
 // The transitions are pure functions specifically so they can be tested: the control using
@@ -34,6 +34,14 @@ describe('defaultSplitFor', () => {
       expect(defaultSplitFor({ defaultSplitP1: value }, PERSON.P1)).toBe(EVEN_SHARE)
     }
     expect(defaultSplitFor(undefined, PERSON.P1)).toBe(EVEN_SHARE)
+  })
+})
+
+describe('percentOf', () => {
+  it('rounds a share to the nearest whole percent, half away from zero', () => {
+    // The displayed figure only; `toSplit` carries the exact share beside it, because saving
+    // `percent / 100` would rewrite a stored 0.335 as 0.34 on an edit that touched the note.
+    expect([0, 0.5, 0.334, 0.335, 0.8, 1].map(percentOf)).toEqual([0, 50, 33, 34, 80, 100])
   })
 })
 

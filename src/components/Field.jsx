@@ -3,21 +3,33 @@
  * `htmlFor` when the field wraps ONE control that can own the name, a `<span>` when it wraps several,
  * because a `<label>` naming a group announces the wrong element.
  *
+ * `optional` is here rather than composed by each caller for the same reason: the marker's class,
+ * and the space in front of it, are one decision.
+ *
  * @param {object} props
  * @param {string} [props.labelId] id to put ON the label, for a group using `aria-labelledby`
+ * @param {string} [props.optional] the "optional" wording, shown after the label when given
  * @param {import('react').ReactNode} [props.description] prose above the control
  * @param {import('react').ReactNode} [props.hint] prose below the control
  */
-export function Field({ label, htmlFor, labelId, description, hint, children }) {
+export function Field({ label, htmlFor, labelId, optional, description, hint, children }) {
+  const text = optional ? (
+    <>
+      {label} <span className="field__hint">{optional}</span>
+    </>
+  ) : (
+    label
+  )
+
   return (
     <div className="field">
       {htmlFor ? (
         <label className="field__label" htmlFor={htmlFor} id={labelId}>
-          {label}
+          {text}
         </label>
       ) : (
         <span className="field__label" id={labelId}>
-          {label}
+          {text}
         </span>
       )}
       {description ? <p className="field__hint">{description}</p> : null}

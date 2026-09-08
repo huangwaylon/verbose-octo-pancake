@@ -490,15 +490,25 @@ describe('shareByPerson', () => {
    * `computeBalance` over the same rows or the card and the header tell two different stories.
    */
   it('differs from what was paid by exactly the balance those rows produce', () => {
+    // An ODD amount on a half share, and a SETTLEMENT among the rows: without the first this
+    // holds for any rounding rule, because both sides go through `splitYen`; without the second
+    // the two are one line of algebra apart. The literals are what makes it an assertion at all.
     const entries = [
-      expense('a', 4820, { payer: PERSON.P1, payerShare: 0.5 }),
+      expense('a', 4821, { payer: PERSON.P1, payerShare: 0.5 }),
       expense('b', 1280, { payer: PERSON.P2, payerShare: 0.5 }),
       expense('c', 3150, { payer: PERSON.P1, payerShare: 0 }),
+      settlement('s1', 999, { payer: PERSON.P2 }),
     ]
     const paid = spendByPerson(entries)
     const share = shareByPerson(entries)
-    expect(paid.p1 - share.p1).toBe(computeBalance(entries).netYen)
-    expect(paid.p2 - share.p2).toBe(-computeBalance(entries).netYen)
+
+    expect(paid).toEqual({ p1: 7971, p2: 1280 })
+    // p1's half of 4821 rounds UP, and every yen of it is somebody's.
+    expect(share).toEqual({ p1: 3051, p2: 6200 })
+    // p2's transfer pays p1 back, so it leaves the spend figures alone and moves the balance.
+    const settled = 999
+    expect(paid.p1 - share.p1 - settled).toBe(computeBalance(entries).netYen)
+    expect(paid.p2 - share.p2 + settled).toBe(-computeBalance(entries).netYen)
   })
 })
 

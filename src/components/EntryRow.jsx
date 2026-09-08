@@ -1,8 +1,9 @@
 import { memo } from 'react'
-import { ENTRY_TYPE, EVEN_SHARE, otherPerson } from '../schema.js'
+import { EVEN_SHARE, isSettlement as isTransfer, otherPerson } from '../schema.js'
+import { percentOf } from '../lib/split.js'
 import { useEntryTitle, useT } from '../i18n/index.js'
 import { EntryLine } from './EntryLine.jsx'
-import { SwapIcon, TrashIcon } from './icons.jsx'
+import { TrashIcon } from './icons.jsx'
 
 /**
  * One row in the month's list. `label` arrives from the list, so a long month resolves the two names
@@ -15,17 +16,17 @@ function EntryRowInner({ entry, label, onEdit, onDelete }) {
   const { t } = useT()
   const description = useEntryTitle(entry)
 
-  const isSettlement = entry.type === ENTRY_TYPE.SETTLEMENT
+  const isSettlement = isTransfer(entry)
   const payerLabel = label(entry.payer)
   const otherLabel = label(otherPerson(entry.payer))
 
   /** Only mention the split when it is not the assumed even one. */
-  const splitNote = () => {
+  function splitNote() {
     if (isSettlement || entry.payerShare === EVEN_SHARE) return null
     if (entry.payerShare === 1) return t('entry.onlyPerson', { name: payerLabel })
     if (entry.payerShare === 0) return t('entry.onlyPerson', { name: otherLabel })
     return t('entry.splitPercent', {
-      percent: Math.round(entry.payerShare * 100),
+      percent: percentOf(entry.payerShare),
       name: payerLabel,
     })
   }
@@ -48,7 +49,6 @@ function EntryRowInner({ entry, label, onEdit, onDelete }) {
       description={description}
       meta={meta}
       settlement={isSettlement}
-      icon={isSettlement ? <SwapIcon width={16} height={16} /> : null}
       onOpen={() => onEdit(entry)}
     >
       <button

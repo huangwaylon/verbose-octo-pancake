@@ -10,6 +10,7 @@ import {
   recurringRows,
   restoredTemplate,
   retiredTemplate,
+  templateTitle,
   validateTemplateCodes,
 } from '../src/lib/recurring.js'
 import { expense, templateRow as row, tombstone } from './support/entries.js'
@@ -367,6 +368,17 @@ describe('retiring and restoring', () => {
     // React state and the list on screen both hold these.
     retiredTemplate(template, '2026-09')
     expect(template.activeTo).toBeNull()
+  })
+})
+
+describe('templateTitle', () => {
+  it('falls back for a name that was CLEARED, not only for one never set', () => {
+    // `||`, never `??`: the delete confirmation names what the field holds right now, and an empty
+    // one would put "Delete ?" on screen — the row and the guard reading it differently is the bug
+    // this exists to prevent.
+    expect(templateTitle({ description: 'Rent' }, 'Expense')).toBe('Rent')
+    expect(templateTitle({ description: '' }, 'Expense')).toBe('Expense')
+    expect(templateTitle({}, 'Expense')).toBe('Expense')
   })
 })
 

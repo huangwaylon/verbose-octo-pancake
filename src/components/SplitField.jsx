@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { EVEN_SHARE } from '../schema.js'
 import { splitYen } from '../lib/money.js'
-import { defaultSplitFor, nextSplit, splitAtPercent, toSplit } from '../lib/split.js'
+import { defaultSplitFor, nextSplit, percentOf, splitAtPercent, toSplit } from '../lib/split.js'
 import { useMoney, useT } from '../i18n/index.js'
 import { Segmented } from './Segmented.jsx'
 
@@ -30,7 +30,7 @@ export function useEntrySplit(entry, config, payer, { allowDefault = false } = {
     percent,
     payerShare: mode === 'even' ? EVEN_SHARE : share,
     /** One derivation: what the label promises and what the mode saves must be one figure. */
-    configuredPercent: Math.round(configuredShare * 100),
+    configuredPercent: percentOf(configuredShare),
     /** Dragging or hitting a preset pins the entry, so it survives a payer switch. */
     setPercent: (next) => setOverride(splitAtPercent(next)),
     setMode: (next) => setOverride(nextSplit(next, configuredShare)),

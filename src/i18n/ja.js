@@ -231,7 +231,7 @@ export default {
   'error.notOurSheet':
     'このスプレッドシートには他のタブがあり、このアプリのタブがありません。台帳ではない可能性があります。SHEET_ID プロパティを確認してください。',
   'error.entryGone': 'この項目はもうシートにありません。更新して最新の状態を確認してください。',
-  'error.missingTabs': 'シートに支出タブが見つかりませんでした。',
+  'error.missingTabs': 'シートにそのタブが見つかりませんでした。',
   'error.badKey':
     'このアプリキーは受け付けられませんでした。確認するか、今のキーを聞いてください。',
   'error.keyRequired': 'アプリキーを入力してください。',
@@ -260,7 +260,12 @@ export default {
     other: 'シートに日付を読み取れない行が {count} 行あるため、どの月にも表示されません。',
   },
   'warning.undecodedRows': {
-    other: 'シートに金額を読み取れない行が {count} 行あるため、合計に含まれていません。',
+    other:
+      'シートに読み取れない行が {count} 行あるため、合計に含まれていません。A 列から始まっているか確認してください。',
+  },
+  'warning.duplicateRows': {
+    other:
+      '他の生きている行と id が同じ行が {count} 行あるため、片方だけが集計されています。シートでどちらかを削除してください。',
   },
   'warning.unattributedRows': {
     other: '支払った人を読み取れない精算が {count} 件あるため、残高に含まれていません。',

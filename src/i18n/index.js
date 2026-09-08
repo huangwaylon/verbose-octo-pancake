@@ -6,7 +6,7 @@
 
 import { useMemo } from 'react'
 import { STORAGE_KEYS } from '../config.js'
-import { ENTRY_TYPE } from '../schema.js'
+import { isSettlement } from '../schema.js'
 import { formatYen } from '../lib/money.js'
 import { cached } from '../lib/memo.js'
 import { storedPreference } from '../lib/preference.js'
@@ -78,6 +78,7 @@ const store = storedPreference({
   },
 })
 
+/** The test's accessor: every component reads the locale through `useT`. */
 export const getLocale = store.get
 
 export function syncDocumentLocale() {
@@ -166,7 +167,7 @@ export function useEntryTitle(entry) {
   const { t, locale } = useT()
   return useMemo(
     () =>
-      entry.type === ENTRY_TYPE.SETTLEMENT
+      isSettlement(entry)
         ? t('entry.settled')
         : entry.description || entry.category || t('entry.expense'),
     // `locale` is the dependency that matters; `t` derives from it.

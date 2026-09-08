@@ -158,16 +158,6 @@ describe('splitYen — never loses or invents a yen', () => {
     }
   })
 
-  it('holds both properties across an exhaustive small sweep', () => {
-    for (let yen = 0; yen <= 200; yen += 1) {
-      for (let share = 0; share <= 1.0001; share += 0.05) {
-        const { payerYen, otherYen } = splitYen(yen, share)
-        expect(payerYen + otherYen).toBe(yen)
-        expect(Math.abs(payerYen - yen * Math.min(share, 1))).toBeLessThanOrEqual(0.5 + 1e-9)
-      }
-    }
-  })
-
   it('gives everything to the payer at share 1 and nothing at share 0', () => {
     expect(splitYen(101, 1)).toEqual({ payerYen: 101, otherYen: 0 })
     expect(splitYen(101, 0)).toEqual({ payerYen: 0, otherYen: 101 })

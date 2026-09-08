@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
-import { defaultSplitFor } from '../lib/split.js'
+import { defaultSplitFor, percentOf } from '../lib/split.js'
 import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
 import { LOCALE_LABELS, SUPPORTED } from '../i18n/catalogs.js'
@@ -141,7 +141,7 @@ export function SettingsSheet({
             <p className="settings__value" key={person}>
               {t('settings.defaultSplitValue', {
                 name: name(person),
-                percent: Math.round(defaultSplitFor(config, person) * 100),
+                percent: percentOf(defaultSplitFor(config, person)),
               })}
             </p>
           ))}

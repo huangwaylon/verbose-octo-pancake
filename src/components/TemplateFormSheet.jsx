@@ -2,13 +2,13 @@ import { useId, useRef, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { parseAmountToYen, yenToSheetString } from '../lib/money.js'
 import { isRetired, templateFormProblem } from '../lib/recurring.js'
-import { PEOPLE, PERSON, otherPerson } from '../schema.js'
-import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
+import { PERSON, otherPerson } from '../schema.js'
+import { usePeopleLabels, useT } from '../i18n/index.js'
 import { Field, FieldError } from './Field.jsx'
 import { AmountField } from './AmountField.jsx'
-import { SheetFormFooter } from './SheetFormFooter.jsx'
+import { SheetFormFooter, useSheetSave } from './SheetFormFooter.jsx'
 import { CategoryField } from './CategoryField.jsx'
-import { Segmented } from './Segmented.jsx'
+import { PayerField } from './PayerField.jsx'
 import { SplitField, useEntrySplit } from './SplitField.jsx'
 import { RetireIcon } from './icons.jsx'
 
@@ -43,8 +43,7 @@ export function TemplateFormSheet({
   const [day, setDay] = useState(String(template.dayOfMonth ?? 1))
   /** The values a submit refused, so each error derives from one; `EntryFormSheet` says why. */
   const [rejected, setRejected] = useState(null)
-  const [saveError, setSaveError] = useState(null)
-  const [busy, setBusy] = useState(false)
+  const { busy, saveError, clearError, save } = useSheetSave(onClose)
   const nameErrorId = useId()
   const amountErrorId = useId()
   const dayErrorId = useId()
@@ -74,7 +73,8 @@ export function TemplateFormSheet({
   const retired = isRetired(template)
 
   function collect() {
-    setSaveError(null)
+    // Before the fields are judged; `EntryFormSheet` says why.
+    clearError()
     const problem = templateFormProblem({ description, amount, day })
     if (problem) {
       setRejected({ description, amount, day })
@@ -102,14 +102,7 @@ export function TemplateFormSheet({
   async function run(write) {
     const input = collect()
     if (!input) return
-    setBusy(true)
-    try {
-      await write(input)
-      onClose()
-    } catch (cause) {
-      setBusy(false)
-      setSaveError(errorMessage(cause, 'form.saveError'))
-    }
+    await save(() => write(input))
   }
 
   // Blank is null, the value meaning "variable"; every other unreadable amount is already refused.
@@ -195,13 +188,7 @@ export function TemplateFormSheet({
           onChange={setCategory}
         />
 
-        <Segmented
-          name="template-payer"
-          label={t('common.whoPaid')}
-          value={payer}
-          options={PEOPLE.map((person) => [person, label(person)])}
-          onChange={setPayer}
-        />
+        <PayerField name="template-payer" value={payer} label={label} onChange={setPayer} />
 
         <Field htmlFor="template-day" label={t('recurring.day')} hint={t('recurring.dayHint')}>
           <input

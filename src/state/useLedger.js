@@ -191,6 +191,9 @@ export function useLedger(spreadsheetId) {
         // structure.
         if (looksUninitialized(cause)) {
           try {
+            // Checked BEFORE the write as well as after: this is the only path that adds tabs to
+            // somebody's spreadsheet, and by now the app may have been pointed at another one.
+            if (!isCurrent()) return
             await sheets.ensureStructure(id)
             if (!isCurrent()) return
             apply(await sheets.loadAll(id))

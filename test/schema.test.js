@@ -339,6 +339,20 @@ describe('entryToRow', () => {
     expect(entryToRow(settlement(), SETTLEMENTS)).toHaveLength(6)
   })
 
+  /**
+   * Every cell a STRING, on an entry carrying none of the optional fields. A RAW write treats a
+   * MISSING cell as "leave that one alone", so a hole where a cleared note or a cleared category
+   * should be keeps whatever the row it overwrites already held.
+   */
+  it('never writes a hole, whatever the entry is missing', () => {
+    for (const [entry, tab] of [
+      [{ id: 'e1', type: ENTRY_TYPE.EXPENSE, amountYen: 100 }, P1],
+      [{ id: 's1', type: ENTRY_TYPE.SETTLEMENT, amountYen: 100 }, SETTLEMENTS],
+    ]) {
+      for (const cell of entryToRow(entry, tab)) expect(typeof cell, tab.title).toBe('string')
+    }
+  })
+
   // The half that matters is that a column the tab DOES carry is filled from the entry. `payer`
   // is the case: absent from an expenses row, present in a settlement one, blank in neither.
   it('writes each tab only the columns it has', () => {

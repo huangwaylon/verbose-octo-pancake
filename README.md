@@ -40,10 +40,17 @@ transfer needs no category and its share is 0 by definition.
 - **A settlement is an entry with `payer_share` of `0`**: the balance is one sum with no settlement branch,
   settlements never count toward spend or category totals, and nothing in the interface writes one — we
   settle by wire transfer, which comes back in as ordinary spend.
+- **Every row the app writes starts in column A**, through `appendCells`: `values.append` only *searches*
+  its range for a table and lands the cells at that table's first column, so one stray row below the entries
+  pulls every later one across. A row that does start further right — pasted by hand, or left by an older
+  build — is counted as unreadable, and only the sheet can put it right: drag it back, or delete it.
 - **Yen only** (an amount is an integer number of yen), **last-write-wins** with no prompt, and any row the
   app cannot fully read is counted and reported on screen. **Deletes are soft**, because the API addresses
   rows by index: one cell write, reversible from the month's collapsed **Deleted** section; **compact** is
-  the only hard delete.
+  the only hard delete, and it takes a row only when the id column and `deleted_at` are BOTH filled:
+  a stamp with no id beside it is a row in the wrong columns, not a tombstone, and deleting it would
+  destroy the expense the notice just asked you to rescue. That row and a second live row under one id
+  are reported instead, because only the sheet can put either right.
 
 ### `recurring` tab
 
@@ -176,4 +183,4 @@ static-HTML visual harness that is the only check on whether the page looks righ
 | `src/lib/{ledgerState,recurring}.js` | the optimistic list transitions, the status decisions, duplicate-id reconciliation; what a month owes, retire/restore, what a form refuses, and what makes a ledger row a fixed cost; pure |
 | `src/lib/{snapshot,serviceWorker,viewport,preference}.js` | the launch cache: last successful read, kept on the device; registration, and when it is safe to activate an update; how much of the layout viewport the keyboard covers; the per-device store the locale, the accent and the summary view share; which person this device is, ISO date helpers, accent presets (`{identity,dates,theme}.js`) |
 | `src/state/`, `src/components/`, `src/i18n/`, `src/styles/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts`, `useKeyboardInset`; `LedgerScreen.jsx` is the whole signed-in surface, with `App`, the visual harness and one render test its three callers; one file per view, with inline-SVG icons and chart; the i18n engine and `en`/`ja` catalogs; `tokens`/`base`/`primitives`/`app` in that order |
-| `test/`, `scripts/`, `.github/workflows/deploy.yml` | vitest specs, shared harnesses under `test/support/`; `preview.jsx` and `frames.html` the visual harness and the viewer that measures it at several widths; `build-sw.js` walking `dist/` to emit the worker, importable so its silent failure modes are tested; `bank_to_ledger.py` turning a bank CSV into pasteable rows, one of the two places outside `schema.js` that knows a column list; the workflow that tests, builds and deploys to Pages |
+| `test/`, `scripts/`, `.github/workflows/deploy.yml` | vitest specs, shared harnesses under `test/support/`; `preview.jsx` and `frames.html` the visual harness and the viewer that measures it at several widths; `build-sw.js` walking `dist/` to emit the worker, importable so its silent failure modes are tested; `bank_to_ledger.py` turning a bank CSV into pasteable rows, one of the two places outside `schema.js` that knows a column list — `bank-import.test.js` runs it, since a pin on the declaration cannot see a row emitted in the old order; the workflow that tests, builds and deploys to Pages |

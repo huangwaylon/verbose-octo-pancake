@@ -130,11 +130,16 @@ describe('what gets ignored', () => {
     expect(snapshot.readSnapshot(SHEET)).toBe(null)
   })
 
-  it('ignores a payload missing its entries or config', async () => {
-    const { snapshot } = await load({
-      'sf.snapshot': JSON.stringify({ v: 2, spreadsheetId: SHEET, entries: 'nope', config: {} }),
-    })
-    expect(snapshot.readSnapshot(SHEET)).toBe(null)
+  // BOTH halves: this is restored in a `useState` initializer, so a shape that gets through
+  // white-screens the first render — and the config reaches `mergeConfig`, which spreads it.
+  it('ignores a payload whose entries or config are the wrong shape', async () => {
+    const payload = { v: 2, spreadsheetId: SHEET, entries: [], config: {} }
+    for (const broken of [{ entries: 'nope' }, { config: 'nope' }, { config: null }]) {
+      const { snapshot } = await load({
+        'sf.snapshot': JSON.stringify({ ...payload, ...broken }),
+      })
+      expect(snapshot.readSnapshot(SHEET), JSON.stringify(broken)).toBe(null)
+    }
   })
 
   it('reads nothing when there is no spreadsheet yet', async () => {

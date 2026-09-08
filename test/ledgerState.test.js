@@ -6,6 +6,8 @@ import { SHEET, installSheets, removeSheets, values } from './support/sheets-api
 import {
   gateFor,
   acknowledge,
+  hasLoaded,
+  isRefreshing,
   blocksReload,
   compactRefusal,
   entryById,
@@ -197,8 +199,20 @@ describe('an edit', () => {
   it('clears only the flag on success, leaving fields the edit did not touch', () => {
     const pendingRow = withPendingEdit([original], edited)
     const [next] = settled(pendingRow, 'a')
-    expect(next.pending).toBe(false)
+    // Gone, not false: `sameEntry` counts keys, so a settled row has to be able to EQUAL the
+    // sheet's copy — otherwise `mergeLoaded` never recognises a read that changed nothing again.
+    expect('pending' in next).toBe(false)
     expect(next.description).toBe('Ozeki')
+  })
+
+  it('can equal the sheet’s own copy once settled, which is what lets a read bail out', () => {
+    // The identity `mergeLoaded` hands back is the list ALREADY ON SCREEN, and it can only do that
+    // when the settled row compares equal to the sheet's — which a leftover `pending` key prevents.
+    const onScreen = settled(withPendingEdit([original], edited), 'a')
+
+    expect(mergeLoaded(onScreen, [entry('a', { description: 'Ozeki', amountYen: 2000 })])).toBe(
+      onScreen,
+    )
   })
 
   it('puts the previous entry back on failure, not the optimistic values', () => {
@@ -214,7 +228,7 @@ describe('an edit', () => {
     // `previous` can itself be pending: Restore tapped while the delete is still in flight.
     const stillGoing = { ...original, pending: true }
     const [next] = reverted(withPendingEdit([original], edited), 'a', stillGoing)
-    expect(next.pending).toBe(false)
+    expect('pending' in next).toBe(false)
     expect(next.description).toBe('shop')
     expect(mergeLoaded([next], [edited])[0].description).toBe('Ozeki')
   })
@@ -552,6 +566,30 @@ describe('what a read carries beside the entries', () => {
   })
 })
 
+/**
+ * Two readings `App` used to make for itself. `hasLoaded` is the one that matters: `stale` is a
+ * cached offline launch, and read as "loaded" the recurring page offers Record for a month it cannot
+ * see — which posts a cost that is already there.
+ */
+describe('what a status says about the sheet', () => {
+  it('separates a cached launch from a sheet actually read', () => {
+    const EXPECTED = {
+      idle: { loaded: false, refreshing: false },
+      loading: { loaded: false, refreshing: false },
+      stale: { loaded: false, refreshing: false },
+      error: { loaded: false, refreshing: false },
+      ready: { loaded: true, refreshing: false },
+      refreshing: { loaded: true, refreshing: true },
+    }
+
+    for (const [status, expected] of Object.entries(EXPECTED)) {
+      expect({ loaded: hasLoaded(status), refreshing: isRefreshing(status) }, status).toEqual(
+        expected,
+      )
+    }
+  })
+})
+
 describe('noticeKeys', () => {
   const keysFor = (state) => noticeKeys(state).map((notice) => notice.key)
 
@@ -581,6 +619,18 @@ describe('noticeKeys', () => {
     expect(keysFor({ undecodedRows: 0, undatedRows: 0 })).toEqual([])
   })
 
+  /**
+   * The one notice with no button behind it: `compact` removes a stamped `deleted_at` and nothing
+   * else, so a second live row under one id can only be fixed in the sheet. Said out loud, or the
+   * balance is short by that row with everything on screen looking right.
+   */
+  it('reports a live row hidden behind another with the same id', () => {
+    expect(noticeKeys({ duplicateRows: 2 })).toEqual([
+      { key: 'warning.duplicateRows', vars: { count: 2 } },
+    ])
+    expect(keysFor({ duplicateRows: 0 })).toEqual([])
+  })
+
   it('reports settlements whose payer cell names nobody', () => {
     expect(noticeKeys({ unattributedRows: 2 })).toEqual([
       { key: 'warning.unattributedRows', vars: { count: 2 } },
@@ -602,6 +652,7 @@ describe('noticeKeys', () => {
         error: 'boom',
         configMissing: true,
         undecodedRows: 1,
+        duplicateRows: 1,
         undatedRows: 1,
         unattributedRows: 1,
         undecodedTemplates: 1,
@@ -610,6 +661,7 @@ describe('noticeKeys', () => {
       'warning.staleData',
       'warning.configMissing',
       'warning.undecodedRows',
+      'warning.duplicateRows',
       'warning.undatedRows',
       'warning.unattributedRows',
       // Last: it is the only one where no figure on screen is wrong.

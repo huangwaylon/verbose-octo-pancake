@@ -1,8 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { DATA_TABS, PERSON, RECURRING, SETTLEMENTS, SHEET_TABS, expenseTab } from '../src/schema.js'
+import {
+  DATA_TABS,
+  PERSON,
+  RECURRING,
+  SETTLEMENTS,
+  SHEET_TABS,
+  expenseTab,
+  rowToEntry,
+} from '../src/schema.js'
+import { missingGid, reconcileById } from '../src/lib/ledgerState.js'
 import { DEFAULT_CONFIG } from '../src/config.js'
 import {
+  DELETED_AT,
   asFields,
   expense as entry,
   row,
@@ -52,6 +62,37 @@ const GIDS = { expenses_p1: 111, expenses_p2: 222, settlements: 444, recurring: 
 
 const ALL_TABS = [...SHEET_TABS.map((tab) => tab.title), 'config']
 
+/**
+ * What `readSheetGids` answers. Every append resolves its tab's gid through it, as every hard
+ * delete does, so a test that stubs a write has to answer this call too.
+ */
+const sheetList = (titles) => ({
+  sheets: titles.map((title, index) => ({ properties: { title, sheetId: 100 + index } })),
+})
+
+const gidOf = (title) => 100 + ALL_TABS.indexOf(title)
+
+/** The one `appendCells` request a write sent, or undefined. */
+const appended = (call) => call.body?.requests?.[0]?.appendCells
+
+/** Its cells as the strings the sheet will hold, so an assertion names no index. */
+const appendedCells = (call) =>
+  appended(call).rows[0].values.map((cell) => cell.userEnteredValue.stringValue)
+
+/** The one template fixture: a real cost, with a share that is neither half nor a whole number. */
+const RENT = {
+  id: 'rent',
+  description: 'Rent',
+  amountYen: 220000,
+  category: 'Rent',
+  payer: PERSON.P1,
+  payerShare: 0.8,
+  months: null,
+  dayOfMonth: 27,
+  activeFrom: null,
+  activeTo: null,
+}
+
 const FIVE_RANGES = [
   P1.dataRange,
   P2.dataRange,
@@ -73,13 +114,7 @@ describe('every write is RAW', () => {
     const calls = installSheets((call) => {
       if (call.url.includes('values:batchGet')) return EMPTY_RANGES
       if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
-      if (call.url.includes('fields=sheets')) {
-        return {
-          sheets: Object.entries(GIDS).map(([title, sheetId]) => ({
-            properties: { title, sheetId },
-          })),
-        }
-      }
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       return {}
     })
 
@@ -92,7 +127,7 @@ describe('every write is RAW', () => {
     expect(mutating.length).toBeGreaterThan(3)
     for (const call of mutating) {
       expect(call.url).not.toContain('USER_ENTERED')
-      // Per endpoint, not "either shape": the QUERY copy is what `values.update`/`:append` read
+      // Per endpoint, not "either shape": the QUERY copy is what `values.update` reads
       // and the BODY copy what `values:batchUpdate` reads. A dropped option is USER_ENTERED.
       if (call.url.includes('/values:batchUpdate')) {
         expect(call.body.valueInputOption).toBe('RAW')
@@ -100,7 +135,45 @@ describe('every write is RAW', () => {
         expect(call.url).toContain('valueInputOption=RAW')
       } else {
         expect(call.url).toContain(`/${SHEET}:batchUpdate`)
+        // An append carries no `valueInputOption` at all: `stringValue` is how RAW is spelled in a
+        // cell, and a `formulaValue` would make a note beginning '=' a formula.
+        for (const cell of appended(call)?.rows[0].values ?? []) {
+          expect(Object.keys(cell.userEnteredValue)).toEqual(['stringValue'])
+        }
       }
+    }
+  })
+})
+
+describe('the shape every request has to have', () => {
+  /**
+   * Two headers-and-parameters facts that no other assertion in this file can see, and both of
+   * which fail the whole app rather than one path: read as COLUMNS and every row of the ledger
+   * comes back as a column, so the entire sheet decodes as rubbish; drop the content type and the
+   * API rejects every body.
+   */
+  it('reads as ROWS, and declares JSON on every body', async () => {
+    const calls = installSheets((call) => {
+      if (call.url.includes('values:batchGet')) return EMPTY_RANGES
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
+      if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
+      return {}
+    })
+
+    await sheets.loadAll(SHEET)
+    await sheets.appendEntry(SHEET, entry())
+    await sheets.updateEntry(SHEET, entry(), PERSON.P1)
+    await sheets.setDeletedAt(SHEET, P1, 'e1', null)
+
+    const reads = calls.filter((call) => call.url.includes('/values'))
+    expect(reads.length).toBeGreaterThan(3)
+    for (const call of reads) {
+      if (call.method === 'GET') expect(call.url, call.url).toContain('majorDimension=ROWS')
+    }
+    const bodies = calls.filter((call) => call.body)
+    expect(bodies.length).toBeGreaterThan(2)
+    for (const call of bodies) {
+      expect(call.headers['Content-Type'], call.url).toBe('application/json')
     }
   })
 })
@@ -201,24 +274,84 @@ describe('resolving a row before writing to it', () => {
       expect(writes(calls)[0].url).toContain('expenses_p1!F2:F2')
     })
 
-    // The fallback takes the LAST tombstone, and a restore makes that visible: `setDeletedAt`
-    // CLEARS as well as stamps, so clearing the oldest copy revives pre-move values while the
-    // newest stays dead. Nothing counts it: a tombstone either way.
-    it('restores the LAST tombstone, not the first, when every copy is dead', async () => {
+    // The fallback takes the LATEST STAMP, and a restore makes that visible: `setDeletedAt` CLEARS
+    // as well as stamps, so clearing a pre-move copy revives its stale values while the newest
+    // stays dead. Nothing counts it: a tombstone either way. The stamp sits on the EARLIER row
+    // here, so position alone cannot satisfy this.
+    it('restores the LATEST tombstone, not the last one down the tab', async () => {
       const calls = installSheets((call) =>
         call.url.includes('!A2:G')
           ? values([
-              // Pre-move copy, carrying stale values.
-              row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
-              row({ id: 'other' }),
               row({ id: 'e1', deleted_at: '2026-08-07T10:00:00.000Z' }),
+              row({ id: 'other' }),
+              // Pre-move copy, carrying stale values, deleted first.
+              row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
             ])
           : {},
       )
 
       await sheets.setDeletedAt(SHEET, P1, 'e1', null)
 
-      expect(writes(calls)[0].url).toContain('expenses_p1!F4:F4')
+      expect(writes(calls)[0].url).toContain('expenses_p1!F2:F2')
+    })
+
+    /**
+     * `resolveRow` decides which copy a WRITE lands on and `reconcileById` which copy is on
+     * SCREEN. Disagree, and every consequence is silent in the same direction: the delete stamps a
+     * row nobody can see, the toast says Deleted, and the next read brings the entry back — not
+     * even into the deleted list. So one fixture drives both, which is the only thing that can see
+     * them drift; the interesting row is TWO LIVE copies, where there is no stamp to compare.
+     */
+    it('writes to the copy reconcileById puts on screen, over one fixture', async () => {
+      const EARLIER = '2026-08-05T10:00:00.000Z'
+      const LATER = '2026-08-07T10:00:00.000Z'
+      // Every copy differs in its AMOUNT, or two identical rows satisfy "the same row" whichever
+      // was picked — and two LIVE rows, the case with no stamp to compare, is the interesting one.
+      const CASES = [
+        // Two live rows: the incumbent, so the FIRST.
+        { rows: [{ amount: '100' }, { amount: '200' }], at: 2 },
+        // A live row and a tombstone, either way round: live, whatever its position.
+        { rows: [{ amount: '100', deleted_at: EARLIER }, { amount: '200' }], at: 3 },
+        { rows: [{ amount: '100' }, { amount: '200', deleted_at: EARLIER }], at: 2 },
+        // Every copy dead: the latest stamp, whichever row it sits on. Both ways round, or
+        // "the latest" and "the last down the tab" pick the same row and neither is tested.
+        {
+          rows: [
+            { amount: '100', deleted_at: LATER },
+            { amount: '200', deleted_at: EARLIER },
+          ],
+          at: 2,
+        },
+        {
+          rows: [
+            { amount: '100', deleted_at: EARLIER },
+            { amount: '200', deleted_at: LATER },
+          ],
+          at: 3,
+        },
+        // Stamped in the same instant — a row copied in the Sheets UI: the FIRST, because
+        // `supersedes` compares with `>` and keeps the incumbent.
+        {
+          rows: [
+            { amount: '100', deleted_at: LATER },
+            { amount: '200', deleted_at: LATER },
+          ],
+          at: 2,
+        },
+      ]
+
+      for (const { rows, at } of CASES) {
+        const label = JSON.stringify(rows)
+        const cells = rows.map((fields) => row({ id: 'e1', date: '2026-08-05', ...fields }))
+        const calls = installSheets((call) => (call.url.includes('!A2:G') ? values(cells) : {}))
+
+        await sheets.setDeletedAt(SHEET, P1, 'e1', null)
+        expect(writes(calls)[0].url, label).toContain(`expenses_p1!F${at}:F${at}`)
+
+        // The same rows through the read path: the row the write chose is the row on screen.
+        const decoded = cells.map((cell) => rowToEntry(cell, P1))
+        expect(reconcileById(decoded), label).toEqual([decoded[at - 2]])
+      }
     })
   })
 })
@@ -227,6 +360,7 @@ describe('changing who paid moves the row between tabs', () => {
   it('appends to the new tab BEFORE tombstoning the old row', async () => {
     // A failure between the two must leave the entry visible under its old payer, not gone.
     const calls = installSheets((call) => {
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
       if (call.url.includes('!A2:G')) return values([row({ id: 'e1' })])
       return {}
     })
@@ -234,7 +368,7 @@ describe('changing who paid moves the row between tabs', () => {
     await sheets.updateEntry(SHEET, entry({ payer: PERSON.P2 }), PERSON.P1)
 
     const mutating = writes(calls)
-    expect(mutating[0].url).toContain('expenses_p2!A2:G:append')
+    expect(appended(mutating[0]).sheetId).toBe(gidOf('expenses_p2'))
     expect(mutating[1].method).toBe('PUT')
     expect(mutating[1].url).toContain('expenses_p1!F')
     // A real ISO stamp, not merely non-empty: `reconcileById` breaks a tombstone-vs-tombstone
@@ -259,7 +393,6 @@ describe('changing who paid moves the row between tabs', () => {
     expect(mutating).toHaveLength(1)
     expect(mutating[0].method).toBe('PUT')
     expect(mutating[0].url).toContain('settlements!A2:F2')
-    expect(mutating[0].url).not.toContain(':append')
     expect(mutating[0].body.values[0][SETTLEMENTS.index('payer')]).toBe(PERSON.P2)
   })
 
@@ -271,9 +404,8 @@ describe('changing who paid moves the row between tabs', () => {
 
     await sheets.updateEntry(SHEET, entry(), PERSON.P1)
 
-    const mutating = writes(calls)
-    expect(mutating).toHaveLength(1)
-    expect(mutating[0].url).not.toContain(':append')
+    // One write, so no copy was appended anywhere.
+    expect(writes(calls)).toHaveLength(1)
   })
 
   it('refuses a previousPayer that is not one of the two people', async () => {
@@ -285,38 +417,78 @@ describe('changing who paid moves the row between tabs', () => {
 })
 
 describe('appendEntry', () => {
+  const withGids = () =>
+    installSheets((call) => (call.url.includes('fields=sheets') ? sheetList(ALL_TABS) : {}))
+
   it('appends to the payer’s own tab, since the tab IS the payer', async () => {
-    const calls = installSheets(() => ({}))
+    const calls = installSheets((call) =>
+      call.url.includes('fields=sheets') ? sheetList(ALL_TABS) : {},
+    )
 
     await sheets.appendEntry(SHEET, entry({ payer: PERSON.P2 }))
 
-    expect(calls[0].url).toContain('expenses_p2!A2:G:append')
-    expect(calls[0].body.values[0][P2.index('id')]).toBe('e1')
+    const write = writes(calls)[0]
+    expect(appended(write).sheetId).toBe(gidOf('expenses_p2'))
+    expect(appendedCells(write)[P2.index('id')]).toBe('e1')
+    // Without the mask `appendCells` sets nothing at all, and no other assertion here would know.
+    expect(appended(write).fields).toBe('userEnteredValue')
   })
 
   /**
-   * `values.append` treats its range as one to SEARCH for a logical table, so a bare sheet name
-   * lets Google pick where the table starts — a row written from column G puts every value six
-   * fields right, reported as an unreadable amount. Literal ranges: deriving them from
-   * `tab.dataRange` would compare the module with its own arithmetic.
+   * THE bug this file exists to prevent, and the reason `appendRow` says why at length: a range
+   * cannot place a row, so no append may go through `values.append` — on any path, entries or
+   * templates.
    */
-  it.each([
-    ['expenses_p1', 'expenses_p1!A2:G:append'],
-    ['expenses_p2', 'expenses_p2!A2:G:append'],
-    ['settlements', 'settlements!A2:F:append'],
-  ])('anchors the %s append to column A', async (_title, range) => {
-    const calls = installSheets(() => ({}))
-    const rows = [
+  it('appends through appendCells, never values.append, on every path', async () => {
+    const calls = withGids()
+
+    for (const item of [
       entry({ payer: PERSON.P1 }),
       entry({ payer: PERSON.P2 }),
       settlement({ id: 's1', payer: PERSON.P1 }),
-    ]
+    ]) {
+      await sheets.appendEntry(SHEET, item)
+    }
+    await sheets.saveTemplate(SHEET, RENT)
 
-    for (const row of rows) await sheets.appendEntry(SHEET, row)
+    for (const call of calls) expect(call.url).not.toContain(':append')
+    expect(writes(calls).map((call) => appended(call).sheetId)).toEqual([
+      gidOf('expenses_p1'),
+      gidOf('expenses_p2'),
+      gidOf('settlements'),
+      gidOf('recurring'),
+    ])
+  })
 
-    expect(calls.map((call) => call.url).join('\n')).toContain(range)
-    // And never the bare title, which is the shape that let a row start at column G.
-    for (const call of calls) expect(call.url).not.toMatch(/values\/[^!]+:append/)
+  /**
+   * `missingGid` only asks whether a gid is ABSENT, so a tab present with a gid that is not a
+   * number is `assertGid`'s case: `JSON.stringify` drops it and `appendCells` acts on gid 0 —
+   * `expenses_p1`, whoever paid.
+   */
+  it('refuses a gid that is not a number, rather than writing to the first tab', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes('fields=sheets')
+        ? { sheets: [{ properties: { title: 'expenses_p2', sheetId: '222' } }] }
+        : {},
+    )
+
+    await expect(sheets.appendEntry(SHEET, entry({ payer: PERSON.P2 }))).rejects.toThrow(TypeError)
+    expect(writes(calls)).toHaveLength(0)
+  })
+
+  /**
+   * A gid `JSON.stringify` would drop, leaving `appendCells` acting on gid 0 — `expenses_p1`,
+   * whoever paid. Refused in the caller's language, because a missing tab is a person's problem.
+   */
+  it('refuses to append when the tab has no gid, rather than writing to the first one', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes('fields=sheets') ? sheetList(['expenses_p1', 'config']) : {},
+    )
+
+    await expect(sheets.appendEntry(SHEET, entry({ payer: PERSON.P2 }))).rejects.toMatchObject({
+      i18nKey: 'error.missingTabs',
+    })
+    expect(writes(calls)).toHaveLength(0)
   })
 })
 
@@ -536,7 +708,7 @@ describe('loadAll', () => {
     expect(supersededRows).toBe(1)
   })
 
-  it('reports rows whose amount cannot be read, rather than dropping them silently', async () => {
+  it('reports every row it cannot make an entry of, rather than dropping them silently', async () => {
     // Dropped silently, the ledger is short by that expense with nothing on screen saying so.
     installSheets(() =>
       ranges5({
@@ -544,8 +716,13 @@ describe('loadAll', () => {
           row({ id: 'ok', date: '2026-08-05', amount: '1000' }),
           row({ id: 'bad', date: '2026-08-05', amount: '12,34.5' }),
           row({ id: 'also-bad', date: '2026-08-05', amount: 'about ten' }),
-          // A row with no id is a blank one. Expected, and says nothing.
+          // Holds something, and NOTHING in the id column: every row the app writes carries an id,
+          // so this is a row whose values are not under the headings — a row that does not start in
+          // column A reads exactly like this. Counted, or the one shape the app itself used to
+          // write is the one shape nothing says a word about.
           row({ amount: '999' }),
+          // Genuinely empty, which is what the rows below the last one look like. Says nothing.
+          [],
         ]),
       }),
     )
@@ -553,12 +730,29 @@ describe('loadAll', () => {
     const { entries, undecodedRows } = await sheets.loadAll(SHEET)
 
     expect(entries.map((item) => item.id)).toEqual(['ok'])
-    expect(undecodedRows).toBe(2)
+    expect(undecodedRows).toBe(3)
   })
 
-  it('counts only tombstones as superseded, never a hidden live duplicate', async () => {
+  /**
+   * A row shifted one column right puts `payer_share` under `deleted_at` and leaves the id column
+   * empty, so it reads as a tombstone with no id — which is how it used to be dropped in silence
+   * AND skipped by `compact`. A row with no id is not a tombstone, whatever that cell holds.
+   */
+  it('counts a row with no id even when the deleted_at cell holds something', async () => {
+    installSheets(() =>
+      ranges5({ p1: values([['', '2026-08-05', 'Coffee', '480', 'Dining', '0.5', '']]) }),
+    )
+
+    const { entries, undecodedRows } = await sheets.loadAll(SHEET)
+
+    expect(entries).toHaveLength(0)
+    expect(undecodedRows).toBe(1)
+  })
+
+  it('counts a hidden live duplicate apart from a superseded tombstone', async () => {
     // Two LIVE rows under one id is what an interrupted payer move leaves. `compact` removes
-    // tombstones only, so counting it offers a removal that can never happen.
+    // tombstones only, so counting it as superseded offers a removal that can never happen — and
+    // saying nothing at all leaves ¥1000 in the sheet that no total on screen carries.
     installSheets(() =>
       ranges5({
         p1: values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
@@ -566,10 +760,31 @@ describe('loadAll', () => {
       }),
     )
 
-    const { entries, supersededRows } = await sheets.loadAll(SHEET)
+    const { entries, supersededRows, duplicateRows } = await sheets.loadAll(SHEET)
 
     expect(entries).toHaveLength(1)
     expect(supersededRows).toBe(0)
+    expect(duplicateRows).toBe(1)
+  })
+
+  // The two counts come out of one subtraction, so the case that can go wrong is a tombstone and a
+  // live duplicate for the SAME id: three rows in, one entry out, one of each count.
+  it('splits the two kinds of hidden row when an id has both', async () => {
+    installSheets(() =>
+      ranges5({
+        p1: values([
+          row({ id: 'dup', date: '2026-08-05', amount: '1000', deleted_at: DELETED_AT }),
+          row({ id: 'dup', date: '2026-08-05', amount: '1000' }),
+        ]),
+        p2: values([row({ id: 'dup', date: '2026-08-05', amount: '1000' })]),
+      }),
+    )
+
+    const { entries, supersededRows, duplicateRows } = await sheets.loadAll(SHEET)
+
+    expect(entries).toHaveLength(1)
+    expect(supersededRows).toBe(1)
+    expect(duplicateRows).toBe(1)
   })
 
   it('does not report a tombstoned row as missing from the totals', async () => {
@@ -765,30 +980,19 @@ describe('loadAll', () => {
 // Writes into a tab a person authored by hand. Both failures are silent: a blank that should
 // have stayed blank, and a write landing on the wrong row when two rows share an id.
 describe('template writes', () => {
-  const RENT = {
-    id: 'rent',
-    description: 'Rent',
-    amountYen: 220000,
-    category: 'Rent',
-    payer: PERSON.P1,
-    payerShare: 0.8,
-    months: null,
-    dayOfMonth: 27,
-    activeFrom: null,
-    activeTo: null,
-  }
-
   const sentRow = (call) => asFields(call.body.values[0], RECURRING.columns)
+  const appendedRow = (call) => asFields(appendedCells(call), RECURRING.columns)
 
-  it('appends when the tab has no row for that id, RAW, at the schema’s column order', async () => {
-    const calls = installSheets(() => ({}))
+  it('appends when the tab has no row for that id, at the schema’s column order', async () => {
+    const calls = installSheets((call) =>
+      call.url.includes('fields=sheets') ? sheetList(ALL_TABS) : {},
+    )
 
     await sheets.saveTemplate(SHEET, RENT)
 
     const write = writes(calls)[0]
-    expect(write.url).toContain('recurring!A2:J:append')
-    expect(write.url).toContain('valueInputOption=RAW')
-    expect(sentRow(write)).toEqual({
+    expect(appended(write).sheetId).toBe(gidOf('recurring'))
+    expect(appendedRow(write)).toEqual({
       description: 'Rent',
       amount: '220000',
       category: 'Rent',
@@ -809,11 +1013,13 @@ describe('template writes', () => {
    * just wrote it to.
    */
   it('writes a blank amount and a blank share, never a zero', async () => {
-    const calls = installSheets(() => ({}))
+    const calls = installSheets((call) =>
+      call.url.includes('fields=sheets') ? sheetList(ALL_TABS) : {},
+    )
 
     await sheets.saveTemplate(SHEET, { ...RENT, amountYen: null, payerShare: null })
 
-    const row = sentRow(writes(calls)[0])
+    const row = appendedRow(writes(calls)[0])
     expect(row.amount).toBe('')
     expect(row.payer_share).toBe('')
   })
@@ -847,15 +1053,16 @@ describe('template writes', () => {
    * rows, and every later edit to that cost is refused — unmaintainable from the app.
    */
   it('overwrites rather than duplicating when the same add is retried', async () => {
-    let appended = null
-    // `:append` matched FIRST: the append range CONTAINS the data range, which is the whole
-    // point of anchoring it, so testing the read first answers the append as though it were one.
+    // The sheet answers the second attempt with the row the first one appended, which is the
+    // state that decides append versus overwrite.
+    let landed = null
     const calls = installSheets((call) => {
-      if (call.url.includes(':append')) {
-        appended = call.body.values[0]
+      if (call.url.includes('fields=sheets')) return sheetList(ALL_TABS)
+      if (call.body?.requests) {
+        landed = appendedCells(call)
         return {}
       }
-      if (call.url.includes(RECURRING.dataRange)) return values(appended ? [appended] : [])
+      if (call.url.includes(RECURRING.dataRange)) return values(landed ? [landed] : [])
       return {}
     })
 
@@ -864,7 +1071,7 @@ describe('template writes', () => {
 
     const mutating = writes(calls)
     expect(mutating).toHaveLength(2)
-    expect(mutating[0].url).toContain(':append')
+    expect(appended(mutating[0]).sheetId).toBe(gidOf('recurring'))
     expect(mutating[1].method).toBe('PUT')
     expect(mutating[1].url).toContain('recurring!A2:J2')
   })
@@ -1097,10 +1304,6 @@ describe('compact', () => {
 })
 
 describe('ensureStructure', () => {
-  const sheetList = (titles) => ({
-    sheets: titles.map((title, index) => ({ properties: { title, sheetId: 100 + index } })),
-  })
-
   it('refuses a spreadsheet that has other tabs and none of ours', async () => {
     const calls = installSheets((call) =>
       call.url.includes('fields=sheets') ? sheetList(['Budget 2024', 'Notes', 'Pivot']) : {},
@@ -1308,6 +1511,31 @@ describe('ensureStructure', () => {
   })
 })
 
+/**
+ * A row shifted one column right reads its `payer_share` out of the `deleted_at` cell, so it looks
+ * tombstoned to anything asking that cell alone. `loadAll` counts it and the notice asks a person to
+ * put it back — and this is the button that would delete the expense they were about to rescue, and
+ * report it as tidying up. An id AND a stamp, because every row the app writes carries an id.
+ */
+describe('compact leaves alone what it cannot understand', () => {
+  it('never deletes a stamped row with nothing in the id column', async () => {
+    const shifted = ['', '2026-08-05', 'Coffee', '480', 'Dining', '0.5', '']
+    const calls = installSheets((call) => {
+      if (call.url.includes(P1.dataRange)) {
+        return values([row({ id: 'dead', deleted_at: DELETED_AT }), shifted])
+      }
+      return {}
+    })
+
+    const { removed } = await sheets.compact(SHEET, { [P1.title]: 111 })
+
+    // The tombstone on row 2, and nothing else — the shifted row sits on row 3.
+    expect(removed).toBe(1)
+    const { requests } = writes(calls)[0].body
+    expect(requests.map(({ deleteDimension }) => deleteDimension.range.startIndex)).toEqual([1])
+  })
+})
+
 describe('readSheetGids', () => {
   // `compact` must never reach gids through `ensureStructure`, which WRITES — so the absence of
   // a write is the assertion.
@@ -1323,6 +1551,29 @@ describe('readSheetGids', () => {
     expect(gids).toEqual({ expenses_p1: 7 })
     expect(writes(calls)).toHaveLength(0)
     expect(calls).toHaveLength(1)
+  })
+
+  /**
+   * A tab the reply names with no `sheetId` must not become gid 0, which is the FIRST tab: that
+   * defeats `missingGid` and `assertGid` at once, and `compact` would then delete rows out of
+   * `expenses_p1` on every other tab's behalf.
+   */
+  it('records no gid at all for a tab whose properties carry none', async () => {
+    installSheets((call) =>
+      call.url.includes('fields=sheets')
+        ? {
+            sheets: [
+              { properties: { title: 'expenses_p1' } },
+              { properties: { title: 'expenses_p2', sheetId: 2 } },
+            ],
+          }
+        : {},
+    )
+
+    const gids = await sheets.readSheetGids(SHEET)
+
+    expect(gids.expenses_p1).toBeUndefined()
+    expect(missingGid(gids, DATA_TABS)).toBe(true)
   })
 })
 

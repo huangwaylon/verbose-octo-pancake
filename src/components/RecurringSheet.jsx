@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
-import { isRetired, recurringRows } from '../lib/recurring.js'
+import { isRetired, recurringRows, templateTitle } from '../lib/recurring.js'
 import { dayOf, monthLabel } from '../lib/dates.js'
 import { OpenSheetLink } from './OpenSheetLink.jsx'
 import { PlusIcon } from './icons.jsx'
@@ -116,7 +116,7 @@ function RecurringRow({ state, label, money, onEdit, onRecord }) {
         ? t('recurring.notYetDue', { day: dayOf(draft.date) })
         : null
 
-  const name = template.description || t('entry.expense')
+  const name = templateTitle(template, t('entry.expense'))
 
   /** At 320px, a name beside an eight-figure amount and a Record button gets about 60px. */
   const meta = [

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { ENTRY_TYPE, PERSON, rowToTemplate } from '../src/schema.js'
+import { ENTRY_TYPE, PERSON, isSettlement, rowToTemplate } from '../src/schema.js'
 import { config, expense, noop, templateRow } from './support/entries.js'
 import { newTemplate } from '../src/lib/recurring.js'
 import {
@@ -253,7 +253,7 @@ describe('summary card renders', () => {
     expect(amounts).toContain('You paid')
     expect(amounts).toContain('Sam paid')
     expect(amounts).toContain(formatYen(paid.p1))
-    expect(amounts).not.toContain('share ')
+    expect(amounts).not.toContain('Your share')
     expect(amounts).not.toContain(formatYen(share.p1))
     expect(amounts).toContain('aria-pressed="true"')
   })
@@ -288,6 +288,11 @@ describe('entry list renders', () => {
     expect(markup).toContain('Settled up')
     expect(markup).toContain('¥4,210')
     expect(markup).toContain('¥2,350')
+    // A transfer is marked as one twice over — the CLASS and the GLYPH — because identity is never
+    // communicated by one signal alone, and `EntryLine` now owns both. The path is what proves the
+    // glyph rendered: it belongs to `SwapIcon` and to nothing else on this screen.
+    expect(markup).toContain('entry--settlement')
+    expect(markup.match(/M7 10h13l-3-3/g)).toHaveLength(entries.filter(isSettlement).length)
   })
 
   it('labels a one-person expense rather than implying it was split', () => {
@@ -340,6 +345,7 @@ describe('entry list renders', () => {
     it('leads with the fixed costs, above the first day, and names the section', () => {
       const markup = render([shop, rent])
       expect(markup).toContain('Recurring costs')
+      expect(markup).toContain('Groceries')
       expect(markup.indexOf('Recurring costs')).toBeLessThan(markup.indexOf('Groceries'))
       // 220,000 is rent alone, so it is the section being totalled rather than the month.
       expect(markup).toContain('¥220,000')
@@ -512,6 +518,7 @@ describe('the recurring form renders', () => {
     expect(markup).toContain('Stop this cost')
     expect(markup).toContain('Delete for good')
     // After the split control, the last field — so it is not among the form's inputs.
+    expect(markup).toContain('name="split"')
     expect(markup.indexOf('Delete for good')).toBeGreaterThan(markup.indexOf('name="split"'))
     // "Delete" does not imply losing the sheet's record of which months this cost covered.
     expect(markup).toContain('the sheet forgets which months it covered')
@@ -595,6 +602,7 @@ describe('the signed-in surface renders', () => {
   })
 
   it('puts the add action above the notices, so it never moves with the connection', () => {
+    expect(markup).toContain('class="notice"')
     expect(markup.indexOf('add-action')).toBeLessThan(markup.indexOf('class="notice"'))
   })
 

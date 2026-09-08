@@ -1,4 +1,34 @@
-import { useT } from '../i18n/index.js'
+import { useState } from 'react'
+import { errorMessage, useT } from '../i18n/index.js'
+
+/**
+ * The save state both forms hold FOR this footer: whether a write is in flight, and the sentence to
+ * show above it if one failed.
+ *
+ * `busy` is deliberately not cleared on success — the sheet unmounts, and clearing it first makes
+ * the button flash back to "Save". `clearError` stays a separate call, because WHEN it happens is a
+ * decision each form makes at its own validation point: before the input is judged, or two messages
+ * sit on screen at once, one of them about a write that was never attempted.
+ *
+ * A hook beside the control that consumes it, as `useEntrySplit` sits beside `SplitField`.
+ */
+export function useSheetSave(onClose) {
+  const [busy, setBusy] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+
+  const save = async (write) => {
+    setBusy(true)
+    try {
+      await write()
+      onClose()
+    } catch (cause) {
+      setBusy(false)
+      setSaveError(errorMessage(cause, 'form.saveError'))
+    }
+  }
+
+  return { busy, saveError, clearError: () => setSaveError(null), save }
+}
 
 /**
  * The footer both forms wear. Cancel comes before submit in the DOM as well as on screen. The submit
