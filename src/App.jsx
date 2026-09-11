@@ -15,7 +15,13 @@ import { currentMonthKey } from './lib/dates.js'
 import { useT, errorMessage } from './i18n/index.js'
 import { readStoredIdentity, storeIdentity } from './lib/identity.js'
 import { reconsiderUpdate, setSafeToReload } from './lib/serviceWorker.js'
-import { newTemplate, restoredTemplate, retiredTemplate, templateTitle } from './lib/recurring.js'
+import {
+  newTemplate,
+  recordableEntry,
+  restoredTemplate,
+  retiredTemplate,
+  templateTitle,
+} from './lib/recurring.js'
 import { LedgerScreen } from './components/LedgerScreen.jsx'
 import { EntryFormSheet } from './components/EntryFormSheet.jsx'
 import { ConfirmDeleteSheet } from './components/ConfirmDeleteSheet.jsx'
@@ -51,7 +57,7 @@ export default function App() {
   const [overlay, setOverlay] = useState(null)
   const closeOverlay = () => setOverlay(null)
 
-  const view = useLedgerView(entries, monthKey)
+  const view = useLedgerView(entries, templates, monthKey)
   useInitialMonth(ledger.status, view.active, setMonthKey)
 
   const setMe = (person) => {
@@ -72,6 +78,31 @@ export default function App() {
   /** Both stable, or `EntryList`'s memo dies on every toast. */
   const openEntry = useCallback((entry) => setOverlay({ kind: 'entry', mode: 'edit', entry }), [])
   const confirmDeleteEntry = useCallback((entry) => setOverlay({ kind: 'confirmEntry', entry }), [])
+
+  /**
+   * Record a recurring cost the month is missing: one tap for a cost that needs nothing typed, the
+   * prefilled ADD form for one that does — a variable bill, or a template with no category. The
+   * decision is `recordableEntry`'s, so the tap refuses exactly what a submit would.
+   *
+   * Stable for the same reason as the two above, so its deps are `toasts.push`/`toasts.error` rather
+   * than the object they hang off, which is fresh on every render.
+   */
+  const recordDraft = useCallback(
+    async (draft) => {
+      const entry = recordableEntry(draft, config)
+      if (!entry) {
+        setOverlay({ kind: 'entry', mode: 'add', entry: draft })
+        return
+      }
+      try {
+        await ledger.addEntry(entry)
+        toasts.push(t('toast.added'))
+      } catch (cause) {
+        toasts.error(errorMessage(cause, 'toast.addFailed'))
+      }
+    },
+    [config, ledger.addEntry, toasts.push, toasts.error, t],
+  )
 
   const openAdd = () => setOverlay({ kind: 'entry', mode: 'add', entry: newDraftEntry(me) })
   const openSettings = () => setOverlay({ kind: 'settings' })
@@ -109,8 +140,6 @@ export default function App() {
   const retire = (input) =>
     writeTemplate(retiredTemplate(input, currentMonthKey()), 'toast.retired')
   const restore = (input) => writeTemplate(restoredTemplate(input), 'toast.restored')
-
-  const recordTemplate = (entry) => setOverlay({ kind: 'entry', mode: 'add', entry })
 
   const deleteEntry = (entry) => {
     closeOverlay()
@@ -184,6 +213,7 @@ export default function App() {
         onEdit={openEntry}
         onDelete={confirmDeleteEntry}
         onRestore={undeleteEntry}
+        onRecord={recordDraft}
         onAdd={openAdd}
       />
 
@@ -235,7 +265,6 @@ export default function App() {
           spreadsheetId={connection.spreadsheetId}
           onAdd={() => openTemplate('add', newTemplate(me))}
           onEdit={(template) => openTemplate('edit', template)}
-          onRecord={recordTemplate}
           onClose={closeOverlay}
         />
       )}

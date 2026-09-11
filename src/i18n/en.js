@@ -80,7 +80,7 @@ export default {
 
   // --- recurring costs: the settings row -----------------------------------
   'settings.recurringHint':
-    'Rent, the gym, anything that comes round every month with an amount you already know.',
+    'Rent, the gym, the gas bill: anything that comes round every month. The ledger lists the ones this month is missing.',
   'settings.recurringCount': {
     one: 'Manage {count} cost',
     other: 'Manage {count} costs',
@@ -100,13 +100,11 @@ export default {
   // Not '{name} pays': `label` answers "You", and English does not inflect that to "You pays".
   'recurring.paidBy': 'paid by {name}',
   'recurring.recorded': 'recorded',
-  'recurring.notYetDue': 'due on day {day}',
+  'recurring.unpaid': 'not recorded yet',
   'recurring.notThisMonth': 'not this month',
   'recurring.stopped': 'stopped',
-  'recurring.record': 'Record',
+  // The ledger's tick. Identical ticks down a column need the name of what each records.
   'recurring.recordName': 'Record {name}',
-  'recurring.recordNow': 'Record now',
-  'recurring.recordNowName': 'Record {name} now',
 
   // --- recurring costs: the form --------------------------------------------
   'recurring.addTitle': 'Add a recurring cost',
@@ -115,9 +113,9 @@ export default {
   'recurring.namePlaceholder': 'Rent',
   'recurring.amountHint': 'Leave it empty if the amount changes every month.',
   'recurring.day': 'Day of the month',
-  // "on its own", not "never": the page offers Record now earlier. This governs the poster.
+  // The day is the DATE a recorded entry gets — nothing records itself, so it gates nothing.
   'recurring.dayHint':
-    'Nothing is recorded on its own before this day. A 31 lands on the last day of short months.',
+    'The date an entry gets when you record it. A 31 lands on the last day of short months.',
   // Names the person and the number: the mode saves a BLANK cell, so the figure can move.
   'recurring.splitDefault': 'Default',
   'recurring.splitDefaultHint': 'Follows {owner} default split, {percent}% today.',
@@ -241,6 +239,7 @@ export default {
   'toast.added': 'Added',
   'toast.saved': 'Saved',
   'toast.deleted': 'Deleted',
+  'toast.addFailed': 'Could not add that.',
   'toast.deleteFailed': 'Could not delete that.',
   'toast.restored': 'Restored',
   'toast.retired': 'Stopped',

@@ -11,24 +11,29 @@ import {
   spendByPerson,
   totalSpend,
 } from '../lib/balance.js'
+import { unpaidRecurring } from '../lib/recurring.js'
 import { currentMonthKey } from '../lib/dates.js'
 
 /**
- * Everything the signed-in screen shows: nine values, all of them a pure function of the entries
- * and which month is on screen. `App` is then just gates, sheets and layout.
+ * Everything the signed-in screen shows: nine values, all of them a pure function of the entries,
+ * the declarations and which month is on screen. `App` is then just gates, sheets and layout.
  *
- * Nothing about the recurring TAB is here: it is a settings surface, and `RecurringSheet` calls
- * `recurringRows` itself so nothing walks the templates while that sheet is closed. `monthSections`
- * needs none of them — a recurring row is recognised from its own id.
+ * The templates are here only for the reminder rows, which the recurring SECTION carries: what makes
+ * a recorded row a fixed cost is its own id, so `monthSections` needs none of them.
  *
  * Memoised in a chain — `active` feeds the balance, `monthEntries` the four month figures — so
  * typing in a form re-runs none of it.
  */
-export function useLedgerView(entries, monthKey) {
+export function useLedgerView(entries, templates, monthKey) {
   const active = useMemo(() => entries.filter(isActive), [entries])
   const monthEntries = useMemo(() => filterByMonth(active, monthKey), [active, monthKey])
+  // The RAW list, not `active`: a tombstoned instance means the month is recorded.
+  const unpaid = useMemo(
+    () => unpaidRecurring(templates, entries, monthKey),
+    [templates, entries, monthKey],
+  )
   // One memo for both halves of the list, because they are one partition of the month.
-  const sections = useMemo(() => monthSections(monthEntries), [monthEntries])
+  const sections = useMemo(() => monthSections(monthEntries, unpaid), [monthEntries, unpaid])
 
   return {
     active,

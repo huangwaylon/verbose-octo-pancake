@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import { ENTRY_TYPE, PERSON, isSettlement, rowToTemplate } from '../src/schema.js'
 import { config, expense, noop, templateRow } from './support/entries.js'
-import { newTemplate } from '../src/lib/recurring.js'
+import { newTemplate, unpaidRecurring } from '../src/lib/recurring.js'
 import {
   computeBalance,
   groupByDate,
@@ -330,15 +330,19 @@ describe('entry list renders', () => {
       date: '2026-08-27',
     })
     const shop = entry({ id: 's', amountYen: 4210, category: 'Groceries', date: '2026-08-04' })
+    const template = (fields) =>
+      rowToTemplate(templateRow({ payer: 'p1', day_of_month: '27', ...fields }))
+    const GAS = template({ id: 'gas', description: 'Gas', amount: '', day_of_month: '10' })
 
-    const render = (list) =>
+    const render = (list, templates = []) =>
       renderToStaticMarkup(
         <EntryList
-          {...monthSections(list)}
+          {...monthSections(list, unpaidRecurring(templates, list, '2026-08'))}
           config={config}
           me={PERSON.P1}
           onEdit={noop}
           onDelete={noop}
+          onRecord={noop}
         />,
       )
 
@@ -367,11 +371,45 @@ describe('entry list renders', () => {
       // Not a heading over nothing: `monthSections` answers null and this renders no band.
       expect(render([shop])).not.toContain('Recurring costs')
     })
+
+    /**
+     * The whole point of the section: a cost this month has no row for is listed with a way to
+     * record it, said in words as well as by the styling, and left OUT of every figure.
+     */
+    it('lists a cost the month is missing, unrecorded, with its own tick', () => {
+      const markup = render([], [template({ id: 'rent', description: 'Rent', amount: '220000' })])
+
+      expect(markup).toContain('Recurring costs')
+      expect(markup).toContain('entry--unpaid')
+      expect(markup).toContain('not recorded yet')
+      // The figure a tick would write, so nobody has to open the recurring page to see it.
+      expect(markup).toContain('¥220,000')
+      // Counted in nothing: the section total is money that moved, so it prints no figure at all.
+      expect(markup).not.toContain('entry-section__total')
+      // Named per row, or several identical ticks are all VoiceOver reads out.
+      expect(markup).toContain('aria-label="Record Rent"')
+      // And it is not an empty month, though it holds no entry.
+      expect(markup).not.toContain('Nothing logged this month')
+    })
+
+    it('says a variable cost varies rather than printing a zero it would write', () => {
+      // `money(0)` reads "¥0", which is a claim about money nobody has typed.
+      const markup = render([], [GAS])
+      expect(markup).toContain('Varies')
+      expect(markup).not.toContain('¥')
+    })
+
+    it('drops the reminder the moment the month has the row, tombstoned or not', () => {
+      const RENT = template({ id: 'rent', description: 'Rent', amount: '220000' })
+      expect(render([rent], [RENT])).not.toContain('entry--unpaid')
+      const removed = { ...rent, deletedAt: '2026-08-28T00:00:00.000Z' }
+      expect(render([removed], [RENT])).not.toContain('entry--unpaid')
+    })
   })
 })
 
-// The app's only write path into the `recurring` tab, and the whole reason the page exists is
-// to say what a list of names cannot: which costs this month is still missing.
+// The app's only write path into the `recurring` tab. It DECLARES costs; recording them is the
+// ledger's job, so what this page has to say is what a list of names cannot.
 describe('the recurring page renders', () => {
   const template = (fields) =>
     rowToTemplate(templateRow({ payer: 'p1', day_of_month: '27', ...fields }))
@@ -392,7 +430,6 @@ describe('the recurring page renders', () => {
         spreadsheetId="sheet-abc"
         onAdd={noop}
         onEdit={noop}
-        onRecord={noop}
         onClose={noop}
         {...props}
       />,
@@ -403,6 +440,7 @@ describe('the recurring page renders', () => {
     expect(markup).toContain('Recurring costs')
     expect(markup).toContain('Rent')
     expect(markup).toContain('¥220,000')
+    expect(markup).toContain('on day 27')
     // Which month the page is acting on, because it is not necessarily this one.
     expect(markup).toContain('August')
   })
@@ -415,16 +453,15 @@ describe('the recurring page renders', () => {
     expect(markup).not.toContain('¥')
   })
 
-  // Rendered as two states, rent-on-the-27th viewed on the 3rd is indistinguishable from rent
-  // already paid — so each row says which it is, in words rather than by a missing control.
-  it('offers Record only for a month it is missing, and explains every other row', () => {
-    // The delimited form, because bare 'Record' is also satisfied by 'Record now'.
-    expect(render()).toContain('>Record<')
+  // With no control on the row, its absence can say nothing: each row says which of the four
+  // things the month on screen makes it.
+  it('says of every row what the month makes it, in words', () => {
+    expect(render()).toContain('not recorded yet')
 
     // Including a tombstone, which is what a deliberately removed double charge leaves.
     const recorded = render({ entries: [expense({ id: 'rent#2026-08' })] })
     expect(recorded).toContain('recorded')
-    expect(recorded).not.toContain('>Record<')
+    expect(recorded).not.toContain('not recorded yet')
 
     // Stopped through `active_to`: still listed, so it can be restarted — and it says STOPPED
     // rather than "not this month", which a quarterly cost out of quarter says. The row is the
@@ -434,7 +471,6 @@ describe('the recurring page renders', () => {
     })
     expect(stopped).toContain('Rent')
     expect(stopped).toContain('stopped')
-    expect(stopped).not.toContain('>Record<')
 
     const quarterly = render({
       templates: [template({ id: 'tax', description: 'Tax', months: '1,7' })],
@@ -444,13 +480,13 @@ describe('the recurring page renders', () => {
   })
 
   // `active_to` is INCLUSIVE, so the month a cost was stopped in still applies and may still
-  // need recording. Asked in the wrong order, the row printed "stopped" beside its own Record.
+  // need recording. Asked in the wrong order, the row printed "stopped" in a month it applies to.
   it('does not call a cost stopped in a month it still applies to', () => {
     const markup = render({
       templates: [template({ id: 'rent', description: 'Rent', active_to: '2026-08' })],
     })
 
-    expect(markup).toContain('>Record<')
+    expect(markup).toContain('not recorded yet')
     expect(markup).not.toContain('stopped')
   })
 
@@ -459,16 +495,14 @@ describe('the recurring page renders', () => {
     expect(render({ templates: [], loaded: false })).toContain('Not loaded yet')
   })
 
-  // Recording early is a choice, so the row says the schedule as well. 2099 because this reads
-  // the real clock: a nearer month stops being future and the case would then assert nothing.
-  it('offers Record now, not Record, for a cost its day has not reached', () => {
-    const markup = render({ monthKey: '2099-08' })
-    expect(markup).toContain('>Record now<')
-    expect(markup).toContain('aria-label="Record Rent now"')
-    // Beside it, not instead of it: the day is what makes an early tap an informed one.
-    expect(markup).toContain('due on day 27')
-    const recorded = render({ monthKey: '2099-08', entries: [expense({ id: 'rent#2099-08' })] })
-    expect(recorded).not.toContain('Record now')
+  it('offers no way to record from here: the tick lives on the ledger row', () => {
+    // One place records a cost, so there is one place a double charge can come from — and the
+    // ledger is where the month's missing costs are listed.
+    const markup = render()
+    expect(markup).not.toContain('Record')
+    // Counted, because a control meant to be gone is invisible in every other assertion here:
+    // the sheet's close, the row's own edit affordance, and the footer's add.
+    expect(markup.match(/<button/g)).toHaveLength(3)
   })
 
   it('reports rows the sheet holds that it cannot use, where the person is standing', () => {
@@ -476,11 +510,6 @@ describe('the recurring page renders', () => {
     const markup = render({ undecodedTemplates: 2 })
     expect(markup).toContain('2 rows in the recurring tab')
     expect(markup).toContain('https://docs.google.com/spreadsheets/d/sheet-abc')
-  })
-
-  it('gives each Record button a name that says which cost it records', () => {
-    // Several identical "Record" buttons is all VoiceOver would otherwise read out.
-    expect(render()).toContain('aria-label="Record Rent"')
   })
 })
 
@@ -525,9 +554,8 @@ describe('the recurring form renders', () => {
     expect(markup).toContain('btn--danger')
   })
 
-  // A blank `payer_share` is a DURABLE declaration — follow the payer's default, forever — and
-  // the marker that makes `postRecurring` leave a row alone. Resolving it to a number on open
-  // would detach the cost from the config tab silently.
+  // A blank `payer_share` is a DURABLE declaration: follow the payer's default, forever. Resolved
+  // to a number when the form opens, the cost is detached from the config tab silently.
   it('opens a blank share on Default, and names whose default at what percent', () => {
     const markup = render({ config: { ...config, defaultSplitP1: 0.8 } })
     // The element, not two substring checks: `checked` on another radio in the same group is
@@ -590,6 +618,7 @@ describe('the signed-in surface renders', () => {
       onEdit={noop}
       onDelete={noop}
       onRestore={noop}
+      onRecord={noop}
       onAdd={noop}
     />,
   )

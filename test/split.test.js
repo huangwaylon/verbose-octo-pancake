@@ -99,7 +99,7 @@ describe('nextSplit', () => {
 
 // The third mode, for the recurring tab's blank `payer_share`: "follow whoever pays, at
 // whatever their default is, forever". So it has to keep saving null — resolving it to a number
-// detaches the cost from `default_split_p*` and switches on unattended posting.
+// detaches the cost from `default_split_p*` silently.
 describe('following the default', () => {
   it('reads a null share as its own mode, and keeps the share null', () => {
     const split = toSplit(null, 0.8)

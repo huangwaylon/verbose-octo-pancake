@@ -71,11 +71,6 @@ export function currentMonthKey(now = new Date()) {
   return monthKeyOf(now)
 }
 
-/** The CLAMPED day-of-month an ISO date carries, not the day a template declares. */
-export function dayOf(iso) {
-  return isIsoDate(iso) ? Number(iso.slice(8, 10)) : null
-}
-
 function partsOf(iso) {
   const [year, month, day] = iso.split('-').map(Number)
   return new Date(year, month - 1, day)

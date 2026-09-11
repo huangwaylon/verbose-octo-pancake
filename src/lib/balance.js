@@ -221,34 +221,41 @@ export function groupByDate(entries) {
 }
 
 /**
- * The month's list as the two sections it renders: the recurring costs it has recorded, then the
- * days.
+ * The month's list as the two sections it renders: the recurring costs, then the days.
  *
- * ONE function rather than a filter at each end, because the two halves have to PARTITION. A row
- * in both reads as a double charge of money that moved once; a row in neither vanishes from the
- * list while still counting in every total above it.
+ * ONE function rather than a filter at each end, because the two halves have to PARTITION. A row in
+ * both reads as a double charge of money that moved once; a row in neither vanishes from the list
+ * while still counting in every total above it.
  *
  * An instance is lifted OUT of its day, so a day's total is what that day holds on screen; the
- * month's own figures come from the month. The section's order comes from `groupByDate` rather
- * than a comparator of its own, so it cannot disagree with the days below it.
+ * month's own figures come from the month. The section's order comes from `groupByDate` rather than
+ * a comparator of its own, so it cannot disagree with the days below it.
  *
- * @returns {{recurring: {entries: object[], totalYen: number}|null, groups: object[]}}
+ * `unpaid` is what this month has NOT recorded (`unpaidRecurring`), riding in the same section
+ * because it is the reason the section leads the page. Those are drafts, not entries: they are
+ * absent from `totalYen` and from every figure above, since no money has moved.
+ *
+ * @returns {{recurring: {entries: object[], unpaid: object[], totalYen: number}|null,
+ *            groups: object[]}}
  */
-export function monthSections(entries) {
+export function monthSections(entries, unpaid = []) {
   const recurring = []
   const rest = []
   for (const entry of activeEntries(entries)) {
     ;(isRecurringInstance(entry) ? recurring : rest).push(entry)
   }
+  const drafts = Array.isArray(unpaid) ? unpaid : []
 
   return {
     // Null rather than an empty section, so nothing renders a heading over no rows.
-    recurring: recurring.length
-      ? {
-          entries: groupByDate(recurring).flatMap((group) => group.entries),
-          totalYen: totalSpend(recurring),
-        }
-      : null,
+    recurring:
+      recurring.length || drafts.length
+        ? {
+            entries: groupByDate(recurring).flatMap((group) => group.entries),
+            unpaid: drafts,
+            totalYen: totalSpend(recurring),
+          }
+        : null,
     groups: groupByDate(rest),
   }
 }

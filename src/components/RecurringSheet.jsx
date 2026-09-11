@@ -1,18 +1,19 @@
 import { useMemo } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { isRetired, recurringRows, templateTitle } from '../lib/recurring.js'
-import { dayOf, monthLabel } from '../lib/dates.js'
+import { monthLabel } from '../lib/dates.js'
 import { OpenSheetLink } from './OpenSheetLink.jsx'
 import { PlusIcon } from './icons.jsx'
 import { useMoney, usePeopleLabels, useT } from '../i18n/index.js'
 
 /**
  * Every recurring cost, and what the month on screen says about each. Reached from Settings, because
- * nothing about it belongs over the balance.
+ * nothing about it belongs over the balance. Recording happens on the LEDGER, where the costs a month
+ * is missing are listed: this page declares them.
  *
- * ONE list, not a due section and a template section: a row's state is four-way and `recurringRows`
+ * ONE list, not a due section and a template section: a row's state is three-way and `recurringRows`
  * answers all of it in a sentence, where two sections could show two. Scoped to `monthKey`, NOT
- * today's: a missed month has to stay recordable, and `postRecurring` only posts the current one.
+ * today's, because a missed month has to stay answerable.
  */
 export function RecurringSheet({
   templates,
@@ -25,14 +26,13 @@ export function RecurringSheet({
   spreadsheetId,
   onAdd,
   onEdit,
-  onRecord,
   onClose,
 }) {
   const { t, locale } = useT()
   const money = useMoney()
   const { label } = usePeopleLabels(config, me)
 
-  /** Here, not in `useLedgerView`, so nothing walks the ledger while this sheet is closed. */
+  /** Every template, including the ones the ledger has nothing to show for — that is this page. */
   const rows = useMemo(
     () => recurringRows(templates, entries, monthKey),
     [templates, entries, monthKey],
@@ -64,7 +64,6 @@ export function RecurringSheet({
                 label={label}
                 money={money}
                 onEdit={onEdit}
-                onRecord={onRecord}
               />
             ))}
           </ul>
@@ -91,42 +90,35 @@ export function RecurringSheet({
   )
 }
 
-function RecurringRow({ state, label, money, onEdit, onRecord }) {
+function RecurringRow({ state, label, money, onEdit }) {
   const { t } = useT()
-  const { template, draft, due, recorded, scheduled } = state
+  const { template, recorded, scheduled } = state
 
   /**
-   * Why this row has no Record button, in words rather than by its absence.
+   * What the month on screen says about this cost, in words: with no control on the row, its absence
+   * can say nothing.
    *
-   * `scheduled` is asked FIRST and retirement only refines it, because they cover different spans:
-   * `active_to` is about the cost now, `scheduled` about the month on screen. The other way round, a
-   * cost retired in July and viewed IN July — still recordable — prints "stopped".
-   *
-   * The not-yet-due wording takes its day from the INSTANCE, the clamped one: a cost declared on the
-   * 31st is due on the 28th in February, and naming the 31st there disagrees with its own button.
+   * `scheduled` is asked BEFORE retirement, because they cover different spans: `active_to` is about
+   * the cost now, `scheduled` about the month on screen. The other way round, a cost retired in July
+   * and viewed IN July — still recordable — prints "stopped".
    */
-  const notYetDue = scheduled && !recorded && !due
   const status = recorded
     ? t('recurring.recorded')
-    : !scheduled
-      ? isRetired(template)
+    : scheduled
+      ? t('recurring.unpaid')
+      : isRetired(template)
         ? t('recurring.stopped')
         : t('recurring.notThisMonth')
-      : notYetDue
-        ? t('recurring.notYetDue', { day: dayOf(draft.date) })
-        : null
 
   const name = templateTitle(template, t('entry.expense'))
 
-  /** At 320px, a name beside an eight-figure amount and a Record button gets about 60px. */
+  /** At 320px, a name beside an eight-figure amount gets about 100px, so the amount rides here. */
   const meta = [
     template.amountYen == null ? t('recurring.amountVaries') : money(template.amountYen),
-    notYetDue ? null : t('recurring.schedule', { day: template.dayOfMonth }),
+    t('recurring.schedule', { day: template.dayOfMonth }),
     t('recurring.paidBy', { name: label(template.payer) }),
     status,
-  ]
-    .filter(Boolean)
-    .join(t('entry.metaSeparator'))
+  ].join(t('entry.metaSeparator'))
 
   return (
     <li className="recurring__row">
@@ -134,22 +126,6 @@ function RecurringRow({ state, label, money, onEdit, onRecord }) {
         <span className="recurring__name">{name}</span>
         <span className="recurring__meta">{meta}</span>
       </button>
-      {/* `draft`, not `due`: rent paid on the 3rd has to be enterable then. `due` only decides
-          the wording; the schedule still governs the unattended poster. */}
-      {draft && (
-        <button
-          type="button"
-          className="btn btn--sm btn--ghost"
-          onClick={() => onRecord(draft)}
-          /* Identical "Record" buttons say nothing about which cost each belongs to. The name
-             goes between the two words, so the visible label still reads in order. */
-          aria-label={
-            due ? t('recurring.recordName', { name }) : t('recurring.recordNowName', { name })
-          }
-        >
-          {due ? t('recurring.record') : t('recurring.recordNow')}
-        </button>
-      )}
     </li>
   )
 }

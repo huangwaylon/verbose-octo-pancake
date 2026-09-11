@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
   DATA_TABS,
-  CONFIG_TAB,
-  DEFAULT_DAY_OF_MONTH,
   EXPENSE_COLUMNS,
   RECURRING,
   RECURRING_COLUMNS,
@@ -675,67 +673,6 @@ describe('the importer script agrees about the column list', () => {
   // Order included: the app pre-selects `categories[0]`, so a reordering is a disagreement too.
   it('classifies into the categories a fresh config offers', () => {
     expect(pythonList('CATEGORIES', '()')).toEqual(DEFAULT_CONFIG.categories)
-  })
-})
-
-/**
- * `Code.gs` is the worse of the two copies: it is PASTED into the Apps Script editor rather than
- * deployed from the repo, so a disagreement is invisible in a build AND in the running script,
- * and it costs a nightly unattended write with every value one field over. Parsed out of the
- * source, which is why the `.gs` arrays are one string per line and outside Prettier's glob.
- */
-describe('the recurring poster agrees about the column lists', () => {
-  const source = readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8')
-
-  const gsList = (name) => {
-    const match = source.match(new RegExp(`^var ${name} = \\[$([\\s\\S]*?)^\\]$`, 'm'))
-    expect(match, `${name} not found in Code.gs`).toBeTruthy()
-    return [...match[1].matchAll(/'([^']+)'/g)].map((found) => found[1])
-  }
-
-  it('builds its rows from the same expense columns, in the same order', () => {
-    expect(gsList('EXPENSE_COLUMNS')).toEqual(EXPENSE_COLUMNS)
-  })
-
-  it('reads the recurring tab at the same layout', () => {
-    expect(gsList('RECURRING_COLUMNS')).toEqual(RECURRING_COLUMNS)
-  })
-
-  it('appends to the tabs this module names, not to titles of its own', () => {
-    // Both people: a payer change moves a row, and a one-tab handled-scan posts a second copy.
-    const declared = source.match(/^var EXPENSE_TABS = \{(.*)\}$/m)
-    expect(declared, 'EXPENSE_TABS not found in Code.gs').toBeTruthy()
-    const titles = [...declared[1].matchAll(/'([^']+)'/g)].map((found) => found[1])
-    expect(titles).toEqual(PEOPLE.map((person) => expenseTab(person).title))
-  })
-
-  // The quietest failure of all: rename the recurring tab here and `readTemplates` reads a tab
-  // that is gone, returns `[]`, and the poster posts nothing, forever. Nothing throws, no mail
-  // goes out, and the app itself looks perfect.
-  it('reads the same tab titles this module names', () => {
-    expect(source).toContain(`var RECURRING_TAB = '${RECURRING.title}'`)
-    expect(source).toContain(`var CONFIG_TAB = '${CONFIG_TAB}'`)
-  })
-
-  it('falls back to the same even split, and the same blank day', () => {
-    expect(source).toContain(`var EVEN_SHARE = ${EVEN_SHARE}`)
-    // The blank-day default is inline in `toTemplate`, so it is matched where it is used.
-    expect(source).toContain(`cellAt(row, 'day_of_month') || '${DEFAULT_DAY_OF_MONTH}'`)
-  })
-
-  // The instance id is the whole of "already recorded", and the two derivations must agree
-  // character for character or the poster and the page each post their own copy of every rent.
-  it('joins the template id and the month with the same separator', () => {
-    expect(source).toContain("template.id + '#' + monthKey")
-  })
-
-  // `setValues` coerces like the forbidden `USER_ENTERED`, so the range must be text-formatted
-  // BEFORE the write or '2026-09-01' becomes a date serial that reads back in the spreadsheet's
-  // locale — which `rowToEntry` rejects and `loadAll` counts as `undatedRows`.
-  it('sets the range to text before writing to it', () => {
-    const append = source.slice(source.indexOf('function appendInstance'))
-    expect(append.indexOf("setNumberFormat('@')")).toBeGreaterThan(-1)
-    expect(append.indexOf("setNumberFormat('@')")).toBeLessThan(append.indexOf('setValues('))
   })
 })
 

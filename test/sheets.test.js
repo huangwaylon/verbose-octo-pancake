@@ -1007,10 +1007,9 @@ describe('template writes', () => {
   })
 
   /**
-   * Blank amount means "the figure changes every month", blank share "follow the payer's default"
-   * — which is also what makes `postRecurring` leave the row for a human. As '0' both are lies,
-   * and `rowToTemplate` refuses an amount of 0, so the template vanishes from the page the app
-   * just wrote it to.
+   * Blank amount means "the figure changes every month", blank share "follow the payer's default".
+   * As '0' both are lies, and `rowToTemplate` refuses an amount of 0, so the template vanishes from
+   * the page the app just wrote it to.
    */
   it('writes a blank amount and a blank share, never a zero', async () => {
     const calls = installSheets((call) =>

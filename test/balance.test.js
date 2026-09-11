@@ -723,6 +723,40 @@ describe('monthSections', () => {
     expect(monthSections(null)).toEqual({ recurring: null, groups: [] })
   })
 
+  /**
+   * The drafts a month has NOT recorded ride in the same section: they are the reason it leads the
+   * page. They are not entries, so nothing may count them — a reminder that moved the month's total
+   * would claim money that has not left the household.
+   */
+  describe('the costs the month is still missing', () => {
+    const draft = { id: 'gas#2026-03', date: '2026-03-10', amountYen: 7200 }
+
+    it('carries them, and opens the section on their own', () => {
+      const { recurring } = monthSections([expense('shop', 4820, { date: '2026-03-05' })], [draft])
+
+      expect(recurring.unpaid).toEqual([draft])
+      expect(recurring.entries).toEqual([])
+      // Not one yen of it: no money has moved.
+      expect(recurring.totalYen).toBe(0)
+    })
+
+    it('leaves the recorded rows and the days exactly as they were', () => {
+      const entries = [
+        instance('rent#2026-03', 220000, { date: '2026-03-27' }),
+        expense('shop', 4820, { date: '2026-03-05' }),
+      ]
+      const { recurring, groups } = monthSections(entries, [draft])
+
+      expect(recurring.entries.map((e) => e.id)).toEqual(['rent#2026-03'])
+      expect(recurring.totalYen).toBe(220000)
+      expect(groups.flatMap((g) => g.entries.map((e) => e.id))).toEqual(['shop'])
+    })
+
+    it('is an empty list when nothing is missing, so the section is one shape', () => {
+      expect(monthSections([instance('rent#2026-03', 100)]).recurring.unpaid).toEqual([])
+    })
+  })
+
   it('leaves the month total alone: the two sections only regroup it', () => {
     const entries = [
       instance('rent#2026-03', 220001, { date: '2026-03-27' }),

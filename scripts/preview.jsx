@@ -20,7 +20,7 @@ import {
   rowToTemplate,
 } from '../src/schema.js'
 import { ACCENTS } from '../src/lib/theme.js'
-import { newTemplate } from '../src/lib/recurring.js'
+import { newTemplate, unpaidRecurring } from '../src/lib/recurring.js'
 import {
   computeBalance,
   monthSections,
@@ -43,6 +43,9 @@ const config = {
   person2Name: 'Yuki',
   categories: ['食費', '外食', '日用品', '交通費', '娯楽', 'その他'],
 }
+
+/** The month every page is scoped to, so the reminders and the entries answer the same one. */
+const MONTH = '2026-08'
 
 const raw = [
   // Two recurring instances, at the ids the `templates` below mint — so the fixed-costs section
@@ -92,36 +95,42 @@ const deleted = [
 
 const noop = () => {}
 
+/** A `recurring` row by field name, decoded by the app itself, so every page reads a real tab. */
+const templateFrom = (fields) =>
+  rowToTemplate(RECURRING.columns.map((column) => fields[column] ?? ''))
+
 /**
- * Four recurring costs, one per row state, built from `recurring` rows through the app's own
- * decoder so the page renders what a real tab produces.
+ * Five recurring costs, one per row state the pages can show: recorded, waiting with a figure,
+ * waiting without one, and stopped. `rent` and `electric` are the two the month has no row for, so
+ * they are the ledger's reminder rows — one with an amount a tick would write outright, one whose
+ * figure has to be typed.
  */
 const templates = [
-  ['rent', '家賃', '220000', 'Rent', 'p1', '80', '27'],
-  ['gas', 'ガス・水道', '', '日用品', 'p2', '', '10'],
-  ['gym', 'ジムの会費', '8000', '娯楽', 'p2', '50', '1'],
-  ['old', '前のアパートの家賃', '180000', 'Rent', 'p1', '80', '27', '2026-05'],
-].map(([id, description, amount, category, payer, payer_share, day_of_month, active_to]) =>
-  rowToTemplate(
-    RECURRING.columns.map(
-      (column) =>
-        ({ id, description, amount, category, payer, payer_share, day_of_month, active_to })[
-          column
-        ] ?? '',
-    ),
-  ),
-)
+  { id: 'rent', description: '家賃', amount: '220000', category: 'Rent', payer: 'p1' },
+  { id: 'electric', description: '電気代', category: '日用品', payer: 'p1', day_of_month: '20' },
+  { id: 'gas', description: 'ガス・水道', category: '日用品', payer: 'p2', day_of_month: '10' },
+  { id: 'gym', description: 'ジムの会費', amount: '8000', category: '娯楽', payer: 'p2' },
+  {
+    id: 'old',
+    description: '前のアパートの家賃',
+    amount: '180000',
+    category: 'Rent',
+    payer: 'p1',
+    active_to: '2026-05',
+  },
+].map((fields) => templateFrom({ payer_share: '80', day_of_month: '27', ...fields }))
 
 // The same shape `useLedgerView` hands the screen, built here because the hook needs a renderer.
 // The figures come from `balance.js`, so they are the app's own arithmetic; one builder, so a new
-// page cannot forget a field.
-const viewOf = (list, tombstones = []) => ({
+// page cannot forget a field. `declarations` is what puts the month's unrecorded costs at the top
+// of the list — rent is recorded below, gas is not.
+const viewOf = (list, tombstones = [], declarations = templates) => ({
   balance: computeBalance(list),
   monthSpend: totalSpend(list),
   byCategory: spendByCategory(list),
   byPerson: spendByPerson(list),
   byShare: shareByPerson(list),
-  ...monthSections(list),
+  ...monthSections(list, unpaidRecurring(declarations, list, MONTH)),
   deleted: tombstones,
 })
 
@@ -135,7 +144,7 @@ function body(overlay, { view = baseView, config: pageConfig = config } = {}) {
         config={pageConfig}
         me={PERSON.P1}
         view={view}
-        monthKey="2026-08"
+        monthKey={MONTH}
         notices={[t('warning.configMissing')]}
         refreshing={false}
         onRefresh={noop}
@@ -144,6 +153,7 @@ function body(overlay, { view = baseView, config: pageConfig = config } = {}) {
         onEdit={noop}
         onDelete={noop}
         onRestore={noop}
+        onRecord={noop}
         onAdd={noop}
       />
       {overlay}
@@ -213,7 +223,19 @@ const stressEntries = [
   }),
 ]
 
-const stressView = viewOf(stressEntries)
+/* The reminder row under the same stress: the longest name a hand-authored tab can hold, no figure
+   at all, and the tick beside both. */
+const stressTemplates = [
+  templateFrom({
+    id: 'stress-unpaid',
+    description: 'Electricity and gas for the apartment plus the parking space, split unevenly',
+    category: 'Groceries and household supplies',
+    payer: 'p1',
+    day_of_month: '28',
+  }),
+]
+
+const stressView = viewOf(stressEntries, [], stressTemplates)
 
 /** One builder per sheet, so a stress page cannot drift from the page it stresses. */
 const entryForm = (entry, pageConfig) => (
@@ -258,13 +280,12 @@ const recurringSheet = (pageConfig, props) => (
     ]}
     config={pageConfig}
     me={PERSON.P1}
-    monthKey="2026-08"
+    monthKey={MONTH}
     loaded
     undecodedTemplates={1}
     spreadsheetId="preview-sheet-id"
     onAdd={noop}
     onEdit={noop}
-    onRecord={noop}
     onClose={noop}
     {...props}
   />
@@ -310,24 +331,16 @@ const STRESS_SETTINGS = settingsSheet(stressConfig)
 // an eight-figure amount, in a row whose name must stay readable in full. `.sheet__body`'s
 // `overflow-x: hidden` CLIPS rather than reports, so the harness measures its own scroll width.
 const STRESS_RECURRING = recurringSheet(stressConfig, {
-  /* A month nobody has reached, so every row is recordable but not yet due — which puts the
-     WIDER of the two record labels next to the widest name the tab can hold. */
-  monthKey: '2099-08',
   templates: [
-    rowToTemplate(
-      RECURRING.columns.map(
-        (column) =>
-          ({
-            id: 'stress',
-            description: 'Groceries and household supplies for the whole month, split evenly',
-            amount: '123456789',
-            category: 'Groceries and household supplies',
-            payer: 'p1',
-            payer_share: '70',
-            day_of_month: '1',
-          })[column] ?? '',
-      ),
-    ),
+    templateFrom({
+      id: 'stress',
+      description: 'Groceries and household supplies for the whole month, split evenly',
+      amount: '123456789',
+      category: 'Groceries and household supplies',
+      payer: 'p1',
+      payer_share: '70',
+      day_of_month: '1',
+    }),
   ],
   entries: [],
 })

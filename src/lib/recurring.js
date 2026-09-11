@@ -2,10 +2,9 @@
  * Recurring costs: what a month says about each declaration, and what a form may refuse. The row
  * <-> template mapping is in `schema.js`.
  *
- * A recurrence is a DECLARATION, never a schedule this app runs. Two writers post one — the Record
- * control here and `postRecurring` in `apps-script/Code.gs` — and they coexist because both derive
- * the same deterministic instance id, which makes a re-run a no-op for either. Pure and
- * React-free, because a static-markup render cannot submit a form.
+ * A recurrence is a DECLARATION, never a schedule anything runs: every instance is written by a
+ * person tapping Record, so the deterministic instance id is what makes a second tap a no-op. Pure
+ * and React-free, because a static-markup render cannot submit a form.
  */
 
 import {
@@ -17,9 +16,11 @@ import {
   isDayOfMonth,
   isPerson,
   rowToTemplate,
+  validateEntryCodes,
 } from '../schema.js'
-import { dayInMonth, isMonthKey, monthNumber, shiftMonth, todayIso } from './dates.js'
+import { dayInMonth, isMonthKey, monthNumber, shiftMonth } from './dates.js'
 import { isShare, isYenAmount, parseAmountToYen } from './money.js'
+import { defaultSplitFor } from './split.js'
 
 /** Spelled once, so minting an instance id and recognising one cannot drift apart. */
 const INSTANCE_JOIN = '#'
@@ -39,10 +40,10 @@ function instanceId(templateId, monthKey) {
  * Whether an entry is some month's instance of a recurring cost — the inverse of `instanceId`, and
  * the whole of how the ledger tells a fixed cost from an ordinary one.
  *
- * The ID, not a marker in the note (lost the first time anyone corrects a typo) and not a column
- * of its own (a schema change in three files that cannot import each other). Reads the ENTRY
- * rather than the loaded templates: those are not in the launch snapshot, so the section would
- * vanish on the cached paint, and `deleteTemplate` orphans instances that are still fixed costs.
+ * The ID, not a marker in the note (lost the first time anyone corrects a typo) and not a column of
+ * its own (a schema change in two files that cannot import each other). Reads the ENTRY rather than
+ * the loaded templates: those are not in the launch snapshot, so the section would vanish on the
+ * cached paint, and `deleteTemplate` orphans instances that are still fixed costs.
  *
  * The last join wins, so a hand-authored template id containing one still resolves.
  */
@@ -64,8 +65,8 @@ export function entryFromTemplate(template, monthKey) {
     type: ENTRY_TYPE.EXPENSE,
     date: dayInMonth(monthKey, template.dayOfMonth),
     payer: template.payer,
-    // 0 rather than null, so the form's `entry.amountYen ? … : ''` opens it empty and
-    // `validateEntryCodes` refuses a submit that never filled it in.
+    // 0 rather than null, so the form opens empty, `validateEntryCodes` refuses a submit that never
+    // filled it in, and `recordableEntry` sends a variable cost to the form rather than writing ¥0.
     amountYen: template.amountYen ?? 0,
     category: template.category,
     description: template.description,
@@ -84,37 +85,30 @@ function scheduledIn(template, monthKey) {
 }
 
 /**
- * Every template with what the month on screen says about it — the ONE derivation of "due".
+ * Every template with what the month on screen says about it — the ONE derivation of what a month
+ * has and has not recorded.
  *
- * A row rendered as "record me or nothing" cannot tell four states apart, so each answers all of
- * them: not scheduled, scheduled but not yet due, due, recorded.
+ * A row rendered as "record me or nothing" cannot tell three states apart, so each answers all of
+ * them: not scheduled, scheduled but not recorded, recorded.
  *
  *   `scheduled`  applies to this month at all — false for a quarterly cost out of quarter, and for
  *                one retired through `active_to`
  *   `recorded`   its instance id is already in the ledger, LIVE OR TOMBSTONED
- *   `due`        scheduled, not recorded, and its day has come
  *   `draft`      the entry to record, or null when this month has nothing to record
  *
- * `draft` is non-null for every month a cost MAY be recorded into, which is wider than `due`: rent
- * is recordable on the 3rd, it is simply not due yet. So `due` names the control and `draft`
- * decides whether there is one, which keeps the unattended poster the only thing bound by the day.
+ * The `day_of_month` deliberately gates nothing: nothing posts unattended, so a cost is recordable
+ * for the whole month it belongs to and the day only decides the DATE the instance carries.
  *
- * `entries` must be the RAW ledger, TOMBSTONES INCLUDED — the one place here where deleted rows
- * are the ones that count, or a soft-deleted double charge is offered again all month. An
- * optimistic row counts as recorded the instant a save starts, so a second tap cannot duplicate
- * it.
- *
- * `due` is ONE comparison, `date <= today`, against the instance's own date, which covers a past
- * month, the current month's `day_of_month` and a future month with no branch.
+ * `entries` must be the RAW ledger, TOMBSTONES INCLUDED — the one place here where deleted rows are
+ * the ones that count, or a soft-deleted double charge is offered again all month. An optimistic
+ * row counts as recorded the instant a save starts, so a second tap cannot duplicate it.
  *
  * @param {object[]} templates from `reconcileTemplates`
  * @param {object[]} entries the raw list, tombstones and pending rows included
  * @param {string} monthKey the month being looked at
- * @param {string} [today] injected by the tests; the app always takes the default
- * @returns {{template: object, scheduled: boolean, recorded: boolean, due: boolean,
- *            draft: object|null}[]}
+ * @returns {{template: object, scheduled: boolean, recorded: boolean, draft: object|null}[]}
  */
-export function recurringRows(templates, entries, monthKey, today = todayIso()) {
+export function recurringRows(templates, entries, monthKey) {
   if (!templates.length) return []
   const known = new Set(entries.map((entry) => entry.id))
   const real = isMonthKey(monthKey)
@@ -123,15 +117,34 @@ export function recurringRows(templates, entries, monthKey, today = todayIso()) 
     const instance = real ? entryFromTemplate(template, monthKey) : null
     const scheduled = Boolean(real && scheduledIn(template, monthKey))
     const recorded = Boolean(instance && known.has(instance.id))
-    const recordable = scheduled && !recorded
-    return {
-      template,
-      scheduled,
-      recorded,
-      due: recordable && instance.date <= today,
-      draft: recordable ? instance : null,
-    }
+    return { template, scheduled, recorded, draft: scheduled && !recorded ? instance : null }
   })
+}
+
+/**
+ * The drafts this month is still missing, in the tab's order — the ledger's reminder rows.
+ *
+ * Derived FROM `recurringRows` rather than beside it, so "which months are handled" keeps one
+ * definition. They are drafts, not entries: nothing counts them toward a total until one is
+ * recorded.
+ */
+export function unpaidRecurring(templates, entries, monthKey) {
+  return recurringRows(templates, entries, monthKey)
+    .map((state) => state.draft)
+    .filter(Boolean)
+}
+
+/**
+ * The entry one tap would write, or null when the form has to open instead — a variable amount, a
+ * template with no category. `validateEntryCodes` is the judge, so the one-tap path refuses exactly
+ * what a submit would rather than writing a row the ledger cannot read back.
+ *
+ * A blank `payer_share` is resolved HERE, from the PAYER's default: left null, `makeEntry` would
+ * split an 80/20 sheet's rent down the middle.
+ */
+export function recordableEntry(draft, config) {
+  const entry = { ...draft, payerShare: draft.payerShare ?? defaultSplitFor(config, draft.payer) }
+  return validateEntryCodes(entry).length ? null : entry
 }
 
 /**
@@ -139,8 +152,8 @@ export function recurringRows(templates, entries, monthKey, today = todayIso()) 
  *
  * Retiring is `active_to`, NOT a deleted row, and that is correctness: the instance id is the only
  * link between a declaration and the rows it has posted, so re-created under a new id a month
- * already paid reads as unrecorded, and the unattended poster appends a second rent that night. It
- * is also reversible, which is why nothing here confirms.
+ * already paid reads as unrecorded and the ledger offers it again. It is also reversible, which is
+ * why nothing here confirms.
  *
  * The PREVIOUS month, because `active_to` is inclusive.
  */

@@ -32,8 +32,8 @@ the only thing in front of a public endpoint; never a build-time value, and neve
 3. **Project Settings** (gear) → tick **Show `appsscript.json` manifest file in editor**.
 4. Back in **Editor**, replace `appsscript.json` with
    [`apps-script/appsscript.json`](apps-script/appsscript.json): scope pinned to `spreadsheets` alone,
-   web app run as owner with anonymous access, timezone pinned to `Asia/Tokyo` — which step 9 needs,
-   since `new Date()` is UTC and a 03:00 JST run on the 1st would compute last month.
+   web app run as owner with anonymous access, plus the timezone and error logging Apps Script wants
+   in every project.
 5. **Project Settings** → **Script Properties** → **Add script property**, twice:
 
    | Property | Value |
@@ -102,28 +102,6 @@ Screen**) and enter the key there; iOS can also evict storage from an app left u
 you retype the key and the ledger rebuilds. Then pick which of the two people you are — a per-device choice
 nothing detects, because the token belongs to the sheet's owner.
 
-## 9. The recurring-cost trigger (optional)
-
-Only needed if you want rent to land without anyone opening the app; without it, **Settings → Recurring
-costs** still lists every cost with a **Record** button wherever the month is missing one
-([README.md](README.md#recurring-tab) describes the tab). Set up a cost first, or a run has nothing to do:
-one with an **amount** posts itself, one with a blank amount stays tap-to-record, and a cost that ends is
-**stopped**, not deleted, since its id is the sheet's only record of the months it covered. Same project as
-the minter, which already holds `SHEET_ID`, the authorization and `postRecurring`, from step 3.
-
-1. Confirm the manifest from step 3 carries `"timeZone": "Asia/Tokyo"`.
-2. **Editor** → clock icon (**Triggers**) → **Add Trigger**: function `postRecurring`, deployment
-   **Head**, event source **Time-driven**, **Day timer**, **3am to 4am**.
-3. Set **Failure notification settings** to **Notify me immediately**, not the **daily** default: that
-   mail is the only channel reporting this stopping, and the app cannot see it.
-4. **Save** and authorize, then run `postRecurring` once from the editor and check **Executions**.
-
-Create the trigger in the UI, not with `ScriptApp.newTrigger`, which would need `script.scriptapp` added to
-`oauthScopes`. **Triggers run HEAD; the web app runs the pinned deployment** — saving `Code.gs` changes
-tonight's 3am run immediately while the token endpoint keeps serving step 6's version, so adding the poster
-needs no new deployment and a half-finished edit left saved in the editor runs unattended. Cost is ~90
-seconds of runtime a month against the free 90 minutes **per day**, shared with the minter.
-
 ## Rotating the app key
 
 The only incident response this design has, and about a minute. Do it if a phone is lost, if the key is
@@ -137,3 +115,7 @@ Editing `Code.gs` is the opposite — a deployment is pinned to a version, so sa
 nothing until **Deploy → Manage deployments →** pencil → **New version**. Rotation stops new tokens at once,
 but one already issued lives out its hour, since there is no revoking it individually; the endpoint URL does
 not change and the app needs no rebuild.
+
+There is nothing else to set up. The script has one entry point and writes nothing: recurring costs are
+recorded from the ledger, which lists the ones the month on screen is missing, so no trigger exists to
+lapse silently.

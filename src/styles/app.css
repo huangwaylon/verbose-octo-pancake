@@ -229,19 +229,10 @@
 /* =========================================================================
    Recurring costs
    =========================================================================
-   Inside a SHEET rather than a card, which changes one rule: the name WRAPS rather
-   than truncating, since `.sheet__body`'s `overflow-x: hidden` would clip a
-   truncation rather than report it. */
-
-.recurring__row {
-  display: grid;
-  /* Two tracks, not three. The amount rides the meta line instead of taking one of
-     its own: at 320px a name, an eight-figure figure and the Record button leave
-     the name about 60px, and `overflow-wrap` then breaks words mid-glyph. */
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  gap: var(--space-2);
-}
+   The declarations page, inside a SHEET rather than a card, which changes one rule:
+   the name WRAPS rather than truncating, since `.sheet__body`'s `overflow-x: hidden`
+   would clip a truncation rather than report it. One tappable row, no trailing
+   control — recording happens in the ledger. */
 
 /* Full-bleed hairline, not the entry list's inset one: these rows have no leading
    padding to inset from, and the sheet's own padding is what holds it off the edge. */
@@ -258,7 +249,10 @@
   flex-direction: column;
   justify-content: center;
   gap: var(--space-1);
-  min-width: 0;
+  /* A form control's `width: auto` is FIT-CONTENT in WebKit, not fill-available, so without this
+     a row whose name and meta are short is a 48px tap target in a full-width row — invisible
+     until the finger misses. It used to come from the grid track this row no longer needs. */
+  width: 100%;
   min-height: var(--tap-target);
   margin-inline-start: calc(var(--space-2) * -1);
   padding: var(--space-2);
@@ -281,9 +275,8 @@
 }
 
 /* `overflow-wrap` rather than an ellipsis, for the reason at the top of this block.
-   These are flex items on the CROSS axis of a column container, so they need no
-   `min-width: 0` of their own — `.recurring__main`'s is what lets the grid track
-   shrink. */
+   These are flex items on the CROSS axis of a column container, so they are already
+   sized to it and need no `min-width` of their own. */
 .recurring__name {
   color: var(--ink);
   font-size: var(--fs-label);
@@ -590,6 +583,20 @@
   opacity: 0.55;
 }
 
+/* A recurring cost the month has not recorded: a dashed leading rule and a lighter
+   figure, because it is a row about money that has NOT moved. Never the mark on its
+   own — the meta line says "not recorded yet" in words, and --line-input is a 3.1:1
+   boundary rather than a colour carrying meaning. */
+.entry--unpaid {
+  border-inline-start: 2px dashed var(--line-input);
+  padding-inline-start: calc(var(--space-4) - 2px);
+}
+
+.entry--unpaid .entry__amount {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
 /* The row body carries the same layout whether it is the edit affordance (a button in
    the list) or inert text (a span in the deleted list). The touch rules below belong
    only to the button: a press state on inert text promises a tap that does nothing,
@@ -656,12 +663,25 @@ button.entry__main:active {
   font-weight: 600;
 }
 
-.entry__delete {
+/* The row's trailing control, one per row: delete on a recorded entry, record on a
+   cost still waiting for one. Both are --tap-target-sm, which is what lets the amount
+   beside them keep its width at 320px. */
+.entry__delete,
+.entry__record {
   width: var(--tap-target-sm);
   min-width: var(--tap-target-sm);
   height: var(--tap-target-sm);
   min-height: var(--tap-target-sm);
+}
+
+.entry__delete {
   color: var(--ink-3);
+}
+
+/* The one affirmative action in the ledger, so it carries the accent while the delete
+   beside it stays neutral ink. */
+.entry__record {
+  color: var(--accent);
 }
 
 /* =========================================================================

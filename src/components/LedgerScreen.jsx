@@ -26,6 +26,7 @@ export function LedgerScreen({
   onEdit,
   onDelete,
   onRestore,
+  onRecord,
   onAdd,
 }) {
   const { t } = useT()
@@ -74,6 +75,7 @@ export function LedgerScreen({
             me={me}
             onEdit={onEdit}
             onDelete={onDelete}
+            onRecord={onRecord}
           />
           <DeletedList entries={view.deleted} config={config} me={me} onRestore={onRestore} />
         </section>

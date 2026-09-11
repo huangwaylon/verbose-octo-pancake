@@ -11,7 +11,7 @@ security models, `SETUP.md` the Google setup.
 `npm run format` / `format:check` (the CI gate).
 
 ## The sheet contract
-- **`src/schema.js` is the only file in `src/` that knows the layout.** Use a tab's own `letter`/`index`; never hardcode a range. `bank_to_ledger.py` and `Code.gs` are the exceptions.
+- **`src/schema.js` is the only file in `src/` that knows the layout.** Use a tab's own `letter`/`index`; never hardcode a range. `bank_to_ledger.py` is the one exception, and the only other file that may become one.
 - **TWO entry layouts, so every positional lookup hangs off a TAB, never the module** — `deleted_at` is index 5 for an expense, 4 for a settlement.
 - **`DATA_TABS` holds entries; `SHEET_TABS` is that plus `RECURRING`, and the data tabs are its PREFIX.** `RECURRING` in `DATA_TABS` would have `compact` hard-delete a template whose `active_to` sits where an expense's `deleted_at` does; `RECURRING.type` being null prevents it, since `rowToEntry`/`entryToRow` refuse a typeless tab. There is no `type` column.
 - **Every column list is append-only**: letters come from array position and `ensureStructure` rewrites a mismatched header without touching data rows. Past 26 columns `letterAt` answers `[`, guarded only by `test/schema.test.js`.
@@ -19,7 +19,7 @@ security models, `SETUP.md` the Google setup.
 - **`rowToEntry` and `expenseTab` throw rather than guess a person**; `loadAll` counts the drops as `unattributedRows`, separate from `undecodedRows` because the cell to fix differs.
 - **`tabOf` is the one home of "where does this entry live"**, and only an EXPENSE's payer moves a row.
 - **An entry never carries its row position**: `updateEntry`/`setDeletedAt` re-resolve id → row through `resolveRow` immediately before writing. There is no `rowNumber` field.
-- **Never `USER_ENTERED`, and never `values.append`.** Its range only bounds a SEARCH for a table; the cells land at the first column of the LAST table found there, which Google documents by appending `A3:G10` at `B7`. No range form fixes that, so `appendRow` uses `appendCells` with a fresh gid — no range, always column A, as `Code.gs`'s `getRange(getLastRow() + 1, 1, ...)` is. `stringValue` is how RAW is spelled in a cell.
+- **Never `USER_ENTERED`, and never `values.append`.** Its range only bounds a SEARCH for a table; the cells land at the first column of the LAST table found there, which Google documents by appending `A3:G10` at `B7`. No range form fixes that, so `appendRow` uses `appendCells` with a fresh gid — no range, always column A. `stringValue` is how RAW is spelled in a cell.
 - **A row carries no `created_at`/`updated_at`, and `makeEntry` reads no clock.** `deleted_at` also breaks a tombstone-vs-tombstone tie in `supersedes`, which must never fall back to array order — which is why `updateEntry` stamps the payer-move tombstone from the clock rather than writing a bare marker.
 - **`rowToTemplate`/`templateToRow` are exact inverses**, and blank is a value in both: a variable bill, and "follow the payer's default". Never write `'0'` for either — `rowToTemplate` refuses the row, so the template vanishes from the page that just wrote it.
 
@@ -35,24 +35,23 @@ security models, `SETUP.md` the Google setup.
 ## Recurring costs
 
 A tab of DECLARATIONS, editable through `RecurringSheet`/`TemplateFormSheet` and still
-hand-authorable. Every decision the page makes is in `src/lib/recurring.js`.
+hand-authorable. **A PERSON is the only writer** — there is no trigger, no unattended post, nothing to
+die quietly. Every decision either page makes is in `src/lib/recurring.js`.
 
-- **`${templateId}#${monthKey}` is the whole of "already recorded", derived in two files that cannot import each other**, so a template's id is minted once and NEVER changes. **`isRecurringInstance` reads the ENTRY ALONE**: never the templates, never the note.
+- **`${templateId}#${monthKey}` is the whole of "already recorded"**, so a template's id is minted once and NEVER changes. **`isRecurringInstance` reads the ENTRY ALONE**: never the templates, never the note.
 - **Two ways to stop a cost, and retiring is the one to reach for.** `active_to` keeps the row, so the id, so which months are handled, and it is reversible — no confirmation, not `btn--danger`. `deleteTemplate` ORPHANS every instance it posted: say that, not "cannot be undone".
-- **`recurringRows` is the ONE derivation of "due" and its four fields say four things**: not scheduled, not yet due, due, recorded. Never add a second predicate beside it.
-- **Due is ONE comparison, `date <= today`, against the instance's own date**, and it takes the RAW entry list — a tombstone means recorded.
-- **`draft` gates the Record control, not `due`**, which only chooses Record or Record now. The day binds one writer, `postRecurring`.
-- **"Stopped" is a refinement of "not scheduled"**: `active_to` is inclusive, so asked first it contradicts its own Record button.
-- **A status naming a day takes it from the INSTANCE, which is clamped** — day 31 is the 28th in February.
-- **The page is scoped to the month on SCREEN; retiring is dated from TODAY.**
+- **`recurringRows` is the ONE derivation of what a month says about a cost**, and its three fields say three things: not scheduled, recorded, and the `draft` to record. Never add a second predicate beside it — `unpaidRecurring` is derived FROM it, and it takes the RAW entry list, because a tombstone means recorded.
+- **`day_of_month` gates nothing**: it is the instance's DATE. A cost is recordable for the whole month it belongs to, and the ledger row says "not recorded yet" rather than naming a day it has no room for.
+- **`recordableEntry` decides one tap versus the form, through `validateEntryCodes`** — so a tap refuses exactly what a submit would, and it resolves a blank share from the PAYER's default rather than letting `makeEntry` read null as an even split.
+- **"Stopped" is a refinement of "not scheduled"**: `active_to` is inclusive, so asked first it contradicts a month the cost still applies to.
+- **The recurring page names the DECLARED day; the instance's DATE is the clamped one** (`dayInMonth`) — day 31 lands on the 28th in February, and only the row that gets written carries it.
+- **Both pages are scoped to the month on SCREEN; retiring is dated from TODAY.**
 - **`sheets.saveTemplate` is the whole non-destructive write surface — append OR overwrite by id, retiring included.** One function is what makes a retried add idempotent.
 - **A blank cell takes its default; a cell FILLED IN and unreadable refuses the whole row**, counted by `loadAll` — the opposite of `config`. A blank `payer_share` stays null so `defaultSplitFor` applies.
 - **`reconcileTemplates` keeps the FIRST template per id and counts the rest**, and `saveTemplate` refuses to write to a duplicate at all.
-- **`postRecurring` posts anything with an AMOUNT and resolves a blank share itself.** It can import neither `money.js` function, so `readYen`/`readShare` are FULL ports rather than approximations: a comma strip reads `'42,10'` as ¥4210 where `decimalSeparatorIndex` reads ¥42.
-- **The poster's handled set grows as rows land**, or two rows under one id both post; `appendInstance` returns whether the row landed, so a missing tab is not counted as posted.
 - **`templateFormProblem` owns which field a submit refuses, in `lib/`** because a static-markup render cannot submit a form. A blank amount is VALID.
 - **The template form shows six of ten columns and writes all ten**: the three scheduling ones ride the draft untouched. Say so on screen.
-- **Nothing on the recurring page auto-posts**: Record prefills `EntryFormSheet` as an ADD, so validation, `splitYen`, `tabOf` and the toasts all apply unchanged.
+- **The tick writes through `addEntry`, and a draft that needs typing opens `EntryFormSheet` as an ADD** — so validation, `splitYen`, `tabOf` and the toasts all apply unchanged either way. Recording lives on the LEDGER; the recurring page only declares.
 
 ## Optimistic state
 - **A pending row always beats the server's copy** (`mergeLoaded`), so `pending` must never be left set with no write in flight — `reverted` strips it.
@@ -90,7 +89,7 @@ hand-authorable. Every decision the page makes is in `src/lib/recurring.js`.
 - **No raw error text reaches the screen.** `i18nError` is the only way to throw something a person reads; the API's English stays on `.message` behind an `i18nKey`, and `errorMessage` never falls back to it.
 - **Store the cause, never the sentence** — a translated string is frozen in the language that built it, and both `useLedger`'s error and the compact outcome outlive a change.
 - **Every destructive confirmation goes through `ConfirmSheet`**, the one home of "Cancel first in the DOM" and of being content-sized rather than `full`, and `App`'s `confirmEntry` overlay is the only caller of `removeEntry`. The caller supplies the BODY, because only the caller knows whether the thing can be recovered. Recovery is `DeletedList`, never a toast action.
-- **The ledger shows recurring costs it has RECORDED, never one it has not.** No "rent is not in yet" on that screen; reminders live on the recurring page.
+- **The ledger's recurring section shows both, and says which is which**: the rows it has RECORDED, and above them the drafts it has not — `entry--unpaid`, the words "not recorded yet", and a tick. A draft is in no total, no chart and no balance until the tick writes it.
 - **A recurring instance appears in the SECTION or in its day, never both** (`monthSections` partitions). A day's total is that day's remaining rows; the month's figures come from the month.
 - **The deleted list is scoped to the month on screen**, while settings' count stays sheet-wide because that is what `compact` acts on.
 - **A tombstoned row says everything its live twin says** — a settlement without its direction reads as an expense.
@@ -100,8 +99,7 @@ hand-authorable. Every decision the page makes is in `src/lib/recurring.js`.
 - **The app key is never a build-time value**: `VITE_SCRIPT_URL` ships in the public bundle.
 - **The token endpoint always answers HTTP 200**, so branch on the body, never `response.ok`. `connection.js` holds the taxonomy — `unauthorized` terminal, the rest transient — and it flags a rejected key rather than deleting it.
 - **The mint is `Content-Type: text/plain` and the method is never forced through the redirect**, which keeps it a CORS simple request — hence no `doOptions` in the script.
-- **`doPost` must be incapable of throwing; `postRecurring` must be allowed to.** A throw in the web app returns HTML, read as transient; an uncaught throw in a TRIGGER mails the owner, and that mail is the only channel reporting the poster stopping.
-- **`setValues` coerces like `USER_ENTERED`**, so `Code.gs` sets the number format to `@` BEFORE writing and every date goes through `Utilities.formatDate` in the pinned zone.
+- **`doPost` must be incapable of throwing, and it is the whole of `Code.gs`.** A throw in the web app returns HTML, which `connection.js` reads as transient, so the app would say "busy, try again" forever instead of naming the cause. The script writes NOTHING: no `SpreadsheetApp`, no trigger, and therefore no second copy of a column list.
 - **The refresh margin is performance; the 401 retry is correctness.** A mint begun before the 401 may carry the rejected token, so `refreshToken` counts generations and the retry cannot retry.
 - **A failure retrying cannot fix must not be reported as transient**, or it hides behind the 30s floor forever: a lost share, and `unavailable`. A 403 is both, so `isUnreachable` reads the reason, not the status.
 - **The token mint starts before the first React render**, because everything after it is serialized.
@@ -179,14 +177,14 @@ hand-rolled inline SVG — a `stroke-dasharray` trick, r chosen so the circumfer
 - **Keep specificity flat**: no IDs, no `!important`, no deep nesting. The four files have roles — tokens, reset and typography, generic primitives, app layout — and a rule goes in the one whose job it is.
 
 ## Testing
-- **`sheets.test.js` and `apps-script.test.js` assert what was SENT, not what came back.** The Apps Script harness `new Function`s `Code.gs`, so it also proves the file PARSES — which nothing else does, since it is pasted into an editor rather than built — and its fake `getRange` honours the START COLUMN, or a nightly write landing at column D passes every assertion. It runs `doPost` too: a reply that echoes the expected key would leak it to an anonymous caller.
+- **`sheets.test.js` and `apps-script.test.js` assert what was SENT, not what came back.** The Apps Script harness `new Function`s `Code.gs`, so it also proves the file PARSES — which nothing else does, since it is pasted into an editor rather than built. A reply that echoed the expected key would leak it to an anonymous caller, and the file is pinned as writing nothing at all.
 - **`connection`, `snapshot`, `sw-build`, `styles`, `preferences` and `viewport` exist because their failures are invisible in a build and on screen.** Where the interesting half is an outcome rather than a string — which cache keys survive an `activate` — RUN the code; `sw-build` also compiles the generated worker, since a typo inside the template literal satisfies every substring check while producing a worker that never installs.
 - **Render tests are static markup and there is no DOM: never fake one** to reach a focus trap, an effect or a `scrollIntoView`. That is the reason logic belongs in `lib/`.
-- **`bank_to_ledger.py` and `Code.gs` are the two places outside `schema.js` that know a column list.** `test/schema.test.js` parses both out of source and compares them, with the tab titles, the defaults, the instance-id join and the format-before-write ordering. Never add a third home — and both must BUILD their rows from the list they declare, or the pin compares two declarations while the rows keep the old order. `bank-import.test.js` runs the Python for that reason; nothing else does.
+- **`bank_to_ledger.py` is the ONE place outside `schema.js` that knows a column list.** `test/schema.test.js` parses it out of the source and compares the columns and the categories. Never add a second home — and it must BUILD its rows from the list it declares, or the pin compares two declarations while the rows keep the old order. `bank-import.test.js` runs the Python for that reason; nothing else does.
 - **A test that cannot fail is worse than no test.** Do not assert a function against itself, a property of the platform, an attribute a different element in the same markup supplies, `not.toContain` against a string absent from both the right and the wrong output, or either of two shapes with `??` when one is correct — and never name a test after an invariant it does not exercise. **Mutate the code and watch the test fail** before believing it, undoing the mutation by editing the file back, never `git checkout`.
 - **When two files must agree, pin them over one shared table of inputs**, not over the cases where they happen to agree.
 - **When fixing a bug, add the regression test.** For money arithmetic the one that matters is end-to-end: a settlement of exactly the outstanding balance drives the net to zero, with odd-unit amounts.
-- **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the real `LedgerScreen` to static HTML with the real stylesheets, twenty-six pages, five of them 320px stress pages whose `SIDEWAYS` readout catches an overflow no assertion can see. Its recurring instances stay SMALL on purpose: rent's ¥220,000 would take 84% of the category ring.
+- **A passing suite does not mean it looks right.** `scripts/preview.jsx` renders the real `LedgerScreen` to static HTML with the real stylesheets, twenty-six pages, five of them 320px stress pages whose `SIDEWAYS` readout catches an overflow no assertion can see. Its recorded recurring instances stay SMALL on purpose: rent's ¥220,000 would take 84% of the category ring — which is why rent is one of the two UNRECORDED costs there, counted by nothing.
 
 ```sh
 npx vite-node scripts/preview.jsx   # writes scripts/preview-*.html (gitignored)

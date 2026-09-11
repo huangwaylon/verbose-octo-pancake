@@ -3,9 +3,8 @@
 A static React app for two people to track shared expenses, with one Google Sheet as the database; the
 target is Safari on iOS, added to the Home Screen, on a phone. Nobody signs in: an Apps Script web app,
 owned by a dedicated account that owns the sheet, mints short-lived Google tokens for whoever presents a
-shared app key, the browser talks straight to the Sheets API, and an optional daily trigger in the same
-script posts recurring costs. [SETUP.md](SETUP.md) has the Google setup, [CLAUDE.md](CLAUDE.md) the
-invariants that fail silently.
+shared app key, and the browser talks straight to the Sheets API. Nothing runs unattended.
+[SETUP.md](SETUP.md) has the Google setup, [CLAUDE.md](CLAUDE.md) the invariants that fail silently.
 
 ## Data model
 
@@ -54,18 +53,18 @@ transfer needs no category and its share is 0 by definition.
 
 ### `recurring` tab
 
-Rent, the gym, a subscription: costs known in advance, where the only failure mode is forgetting to type
-them. The tab **declares** what recurs rather than logging it — no date, no `deleted_at`.
+Rent, the gym, the gas bill: costs that come round every month, where the only failure mode is forgetting
+to type them. The tab **declares** what recurs rather than logging it — no date, no `deleted_at`.
 
 | Col | Field | Example | Notes |
 | --- | --- | --- | --- |
 | A | `description` | `Rent` | What the entry's note will say |
-| B | `amount` | `220000` | Blank means recurring but **variable** — a utility bill. The page lists it with no figure and the form opens empty |
-| C | `category` | `Rent` | Blank falls through to the first configured category |
+| B | `amount` | `220000` | Blank means recurring but **variable** — a utility bill. The row reads "Varies" and recording it opens the form for the figure |
+| C | `category` | `Rent` | Blank falls through to the first configured category, so a blank one cannot be recorded in a single tap |
 | D | `payer` | `p1` | Whose tab the instance lands in; case-folded on read |
 | E | `payer_share` | `80` | As in the expense column. Blank means "follow that payer's `default_split`" — **not** an even split |
 | F | `months` | `1, 7` | Blank means every month; `1,7` covers annual and quarterly. There is no weekly: the app is month-scoped throughout |
-| G | `day_of_month` | `27` | Nothing is recorded before its day unless somebody asks for it, and 31 is clamped to the month's last day. Blank means the 1st |
+| G | `day_of_month` | `27` | The DATE a recorded entry gets, and 31 is clamped to the month's last day. Blank means the 1st. It gates nothing — nothing records itself |
 | H | `active_from` | `2026-04` | Month keys, so an ended lease stops nagging without deleting what it cost. Both blank means always |
 | I | `active_to` | `2027-03` | as above |
 | J | `id` | `rent` | Minted by the app; yours to invent by hand. It has to be stable — see below |
@@ -76,18 +75,16 @@ them. The tab **declares** what recurs rather than logging it — no date, no `d
 - **A month's instance gets the id `<template id>#<YYYY-MM>`** (`rent#2026-09`), and that id in either
   expenses tab, **live or tombstoned**, is the whole of "already recorded" — so a template's id must never
   change, and deleting a double-charged rent marks the month handled.
-- **Two writers, neither able to post a month twice.** The app lists every cost as recorded, due now, not
-  yet due or not scheduled; **Record** prefills the ordinary entry form, early payments included, nothing
-  auto-posts, and the page is scoped to the month on screen, so a missed month stays recordable and a row
-  still offering Record tells you the poster has died. **`postRecurring`** runs on a daily trigger
-  (`SETUP.md` step 9 — daily, since a run can be skipped and later ones are no-ops), posts only a template
-  with an **amount**, resolves a blank share from the payer's `default_split`, and never runs early. The
-  **ledger** reads the same id to lift the month's instances into a **Recurring costs** section, with its
-  own total, above the days.
+- **The ledger's own top section is the reminder**, above the days and scoped to the month on screen: the
+  costs it has recorded, with their total, and above them the ones it has not — dashed, "not recorded
+  yet", and each with a tick. **One tap on the tick writes the row** at the template's own figure, date
+  and split, and it becomes an ordinary entry to edit or delete; a cost with **no amount** (or no
+  category) opens the prefilled entry form instead, because there is something left to type. Nothing
+  posts on its own, and there is no unattended writer to die quietly.
 - **Two ways to stop a cost**: **stopping** (footer) sets `active_to`, keeping the row, its id and the
   record of which months it covered — reversible, and the one to use. **Deleting** (body, behind a
   confirmation) removes the row: the entries stay, that record does not, so the cost re-added under a new
-  id reads a paid month as unrecorded and posts again.
+  id reads a paid month as unrecorded and is offered again.
 
 ### `config` tab
 
@@ -176,11 +173,11 @@ static-HTML visual harness that is the only check on whether the page looks righ
 
 | Path | |
 | --- | --- |
-| `index.html`, `base.js`, `vite.config.js`, `apps-script/` | entry HTML with the CSP, the manifest and Home Screen tags; the Pages base path in one place; React plugin and vitest config; the token endpoint and the recurring-cost poster — `Code.gs` and its manifest, pasted into the editor by hand |
+| `index.html`, `base.js`, `vite.config.js`, `apps-script/` | entry HTML with the CSP, the manifest and Home Screen tags; the Pages base path in one place; React plugin and vitest config; the token endpoint — `Code.gs` and its manifest, pasted into the editor by hand; it mints tokens and touches the spreadsheet not at all |
 | `src/schema.js`, `src/config.js` | the sheet contract (columns, ranges, row ↔ entry mapping); build-time values, storage keys, defaults and their merge, `localStorage` wrappers |
 | `src/lib/{sheets,sheetConfig,connection}.js` | every Sheets API call; the `config` tab's key map, one parser per kind and what a fresh tab is seeded with; the app key, the minted token and the failure taxonomy |
 | `src/lib/{money,split,balance}.js` | whole yen: parse, format, split, sum; the payer's default share and the split control's transitions; who-owes-whom, the month aggregates and the list's two sections; pure |
-| `src/lib/{ledgerState,recurring}.js` | the optimistic list transitions, the status decisions, duplicate-id reconciliation; what a month owes, retire/restore, what a form refuses, and what makes a ledger row a fixed cost; pure |
+| `src/lib/{ledgerState,recurring}.js` | the optimistic list transitions, the status decisions, duplicate-id reconciliation; which costs a month is missing, what one tap may record, retire/restore, what a form refuses, and what makes a ledger row a fixed cost; pure |
 | `src/lib/{snapshot,serviceWorker,viewport,preference}.js` | the launch cache: last successful read, kept on the device; registration, and when it is safe to activate an update; how much of the layout viewport the keyboard covers; the per-device store the locale, the accent and the summary view share; which person this device is, ISO date helpers, accent presets (`{identity,dates,theme}.js`) |
 | `src/state/`, `src/components/`, `src/i18n/`, `src/styles/` | `useConnection`, `useLedger` (optimistic CRUD, throttled focus refresh), `useLedgerView` (every derived figure), `useToasts`, `useKeyboardInset`; `LedgerScreen.jsx` is the whole signed-in surface, with `App`, the visual harness and one render test its three callers; one file per view, with inline-SVG icons and chart; the i18n engine and `en`/`ja` catalogs; `tokens`/`base`/`primitives`/`app` in that order |
-| `test/`, `scripts/`, `.github/workflows/deploy.yml` | vitest specs, shared harnesses under `test/support/`; `preview.jsx` and `frames.html` the visual harness and the viewer that measures it at several widths; `build-sw.js` walking `dist/` to emit the worker, importable so its silent failure modes are tested; `bank_to_ledger.py` turning a bank CSV into pasteable rows, one of the two places outside `schema.js` that knows a column list — `bank-import.test.js` runs it, since a pin on the declaration cannot see a row emitted in the old order; the workflow that tests, builds and deploys to Pages |
+| `test/`, `scripts/`, `.github/workflows/deploy.yml` | vitest specs, shared harnesses under `test/support/`; `preview.jsx` and `frames.html` the visual harness and the viewer that measures it at several widths; `build-sw.js` walking `dist/` to emit the worker, importable so its silent failure modes are tested; `bank_to_ledger.py` turning a bank CSV into pasteable rows, the one place outside `schema.js` that knows a column list — `bank-import.test.js` runs it, since a pin on the declaration cannot see a row emitted in the old order; the workflow that tests, builds and deploys to Pages |

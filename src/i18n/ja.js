@@ -73,7 +73,8 @@ export default {
   'entry.metaSeparator': '・',
 
   // --- recurring costs: the settings row -----------------------------------
-  'settings.recurringHint': '家賃やジムなど、毎月かかって金額が分かっているもの。',
+  'settings.recurringHint':
+    '家賃やジム、光熱費など、毎月かかるもの。今月まだ記録していないものは台帳に並びます。',
   'settings.recurringCount': {
     other: '{count}件を管理',
   },
@@ -89,13 +90,10 @@ export default {
   'recurring.schedule': '{day}日',
   'recurring.paidBy': '{name}の支払い',
   'recurring.recorded': '記録ずみ',
-  'recurring.notYetDue': '{day}日に予定',
+  'recurring.unpaid': '未記録',
   'recurring.notThisMonth': '今月は対象外',
   'recurring.stopped': '停止中',
-  'recurring.record': '記録',
   'recurring.recordName': '{name}を記録',
-  'recurring.recordNow': '今すぐ記録',
-  'recurring.recordNowName': '{name}を今すぐ記録',
 
   // --- recurring costs: the form --------------------------------------------
   'recurring.addTitle': '定期の支出を追加',
@@ -104,8 +102,7 @@ export default {
   'recurring.namePlaceholder': '家賃',
   'recurring.amountHint': '毎月変わる場合は空のままにしてください。',
   'recurring.day': '毎月の日付',
-  'recurring.dayHint':
-    'この日より前に自動で記録されることはありません。31日は短い月の末日になります。',
+  'recurring.dayHint': '記録したときの日付になります。31日は短い月の末日になります。',
   'recurring.splitDefault': '既定',
   'recurring.splitDefaultHint': '{owner}既定の分担に従います。現在は{percent}%です。',
   'recurring.sheetOnlyHint':
@@ -220,6 +217,7 @@ export default {
   'toast.added': '追加しました',
   'toast.saved': '保存しました',
   'toast.deleted': '削除しました',
+  'toast.addFailed': '追加できませんでした。',
   'toast.deleteFailed': '削除できませんでした。',
   'toast.restored': '元に戻しました',
   'toast.retired': '止めました',

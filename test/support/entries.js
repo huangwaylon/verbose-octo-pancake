@@ -65,12 +65,7 @@ export function tombstone(over = {}) {
  * `category` under `payer`.
  */
 export function row(fields, tab = expenseTab(PERSON.P1)) {
-  return columnRow(fields, tab.columns)
-}
-
-/** The same, for the two consumers that hold a column LIST rather than a tab. */
-export function columnRow(fields, columns) {
-  return columns.map((column) => fields[column] ?? '')
+  return tab.columns.map((column) => fields[column] ?? '')
 }
 
 /** A raw settlement row, for the one tab whose payer is a cell. */

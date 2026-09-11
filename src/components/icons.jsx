@@ -86,6 +86,15 @@ export function RetireIcon(props) {
   )
 }
 
+/** Record: a tick, because the row it sits on is a cost waiting to be ticked off. */
+export function CheckIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M5 12.5l4.5 4.5L19 7" />
+    </svg>
+  )
+}
+
 export function SwapIcon(props) {
   return (
     <svg {...base} {...props}>

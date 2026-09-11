@@ -69,6 +69,14 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
     expect(blocksFor(FILES.app, '.summary__person-swatch').at(-1)).toContain('var(--accent)')
   })
 
+  // One shared block for the two trailing row controls: attached to one of them alone, the other
+  // loses its 36px box — a 20px target for a thumb, or an amount pushed off the row at 320px.
+  it.each([['.entry__delete'], ['.entry__record']])('%s is still a tap target', (selector) => {
+    for (const property of ['width', 'height', 'min-width', 'min-height']) {
+      expect(declares(FILES.app, selector, property)).toBe(true)
+    }
+  })
+
   // One shared block: land it on one track and the other stops being a column at all.
   it.each([['.layout__aside'], ['.layout__main']])('%s is still a flex column', (selector) => {
     for (const property of ['display', 'flex-direction', 'gap']) {
@@ -318,6 +326,13 @@ describe('the rules an installed iOS web app depends on', () => {
     expect(declares(FILES.app, '.entry__main', 'user-select')).toBe(false)
   })
 
+  it('keeps the whole recurring row tappable, not just its text', () => {
+    // A `<button>`'s `width: auto` is FIT-CONTENT in WebKit, so a row with a short name and a
+    // short meta line becomes a 48px target inside a full-width row — and nothing else here can
+    // see it, since the text still renders correctly.
+    expect(declares(FILES.app, '.recurring__main', 'width')).toBe(true)
+  })
+
   it('never lets a control set the width of the sheet it sits in', () => {
     // `.sheet` is a row flex container, so the panel's automatic minimum is its min-content
     // width; a date input's intrinsic minimum on iOS pushes the whole panel off the screen.
@@ -336,7 +351,7 @@ describe('the rules an installed iOS web app depends on', () => {
     }
     // The recurring page WRAPS the same hand-authored text rather than truncating — inside a
     // sheet nothing scrolls a truncation into view. These two are flex items on the CROSS axis
-    // of a column, which `.recurring__main` already lets shrink, so they need no `min-width`.
+    // of a column container, so they are already sized to it and need no `min-width`.
     for (const selector of ['.recurring__name', '.recurring__meta']) {
       expect(declares(FILES.app, selector, 'overflow-wrap')).toBe(true)
     }
