@@ -106,6 +106,7 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
       title={title}
       /* A settlement's three remaining fields do not fill a phone. */
       full={!isSettlement}
+      busy={busy}
       onClose={onClose}
       footer={
         <SheetFormFooter

@@ -185,30 +185,30 @@ describe('monthLabel', () => {
 })
 
 describe('dayLabel', () => {
-  const now = at(2026, 8, 5)
+  const today = '2026-08-05'
 
   it('uses the words the caller supplies, never its own', () => {
-    expect(dayLabel('2026-08-05', { now, labels: LABELS })).toBe('Today')
-    expect(dayLabel('2026-08-04', { now, labels: LABELS })).toBe('Yesterday')
-    expect(dayLabel('', { now, labels: LABELS })).toBe('No date')
+    expect(dayLabel('2026-08-05', { today, labels: LABELS })).toBe('Today')
+    expect(dayLabel('2026-08-04', { today, labels: LABELS })).toBe('Yesterday')
+    expect(dayLabel('', { today, labels: LABELS })).toBe('No date')
     // The catalogs pass Japanese here; the module must not reach for English.
     const ja = { today: '今日', yesterday: '昨日', none: '日付なし' }
-    expect(dayLabel('2026-08-05', { now, labels: ja })).toBe('今日')
+    expect(dayLabel('2026-08-05', { today, labels: ja })).toBe('今日')
   })
 
   it('crosses a month boundary to find yesterday', () => {
-    expect(dayLabel('2026-07-31', { now: at(2026, 8, 1), labels: LABELS })).toBe('Yesterday')
+    expect(dayLabel('2026-07-31', { today: '2026-08-01', labels: LABELS })).toBe('Yesterday')
   })
 
   it('crosses a year boundary to find yesterday', () => {
-    expect(dayLabel('2025-12-31', { now: at(2026, 1, 1), labels: LABELS })).toBe('Yesterday')
+    expect(dayLabel('2025-12-31', { today: '2026-01-01', labels: LABELS })).toBe('Yesterday')
   })
 
   it('spells out an older day, adding the year only outside the current one', () => {
     // The 1st is where a UTC-parsed string slips into the previous month: 'Fri, Jul 31'
     // would be the wrong day AND the wrong month.
-    expect(dayLabel('2026-08-01', { locale: 'en', now, labels: LABELS })).toBe('Sat, Aug 1')
-    expect(dayLabel('2025-08-01', { locale: 'en', now, labels: LABELS })).toBe('Fri, Aug 1, 2025')
+    expect(dayLabel('2026-08-01', { locale: 'en', today, labels: LABELS })).toBe('Sat, Aug 1')
+    expect(dayLabel('2025-08-01', { locale: 'en', today, labels: LABELS })).toBe('Fri, Aug 1, 2025')
   })
 })
 

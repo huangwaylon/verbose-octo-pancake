@@ -12,6 +12,7 @@ import {
   entryWriteRefusal,
   compactRefusal,
   createReadGate,
+  addWriteKind,
   entryById,
   entryFromInput,
   hasPendingWrite,
@@ -292,6 +293,19 @@ describe('a soft delete', () => {
   it('comes back exactly as it was when the write fails', () => {
     const gone = withPendingDeletedAt([live], 'a', '2026-08-06T00:00:00.000Z')
     expect(reverted(gone, 'a', live)[0]).toBe(live)
+  })
+})
+
+describe('addWriteKind', () => {
+  it('appends an id the screen does not hold', () => {
+    expect(addWriteKind([{ id: 'a' }], 'new')).toBe('append')
+  })
+
+  // The failed save whose append DID land: a refresh has read the row, and the form still holds
+  // the draft id. Appending again would be two rows, and the entry counted twice.
+  it('edits the row a retried add already put in the sheet', () => {
+    const landed = mergeLoaded([], [{ id: 'draft', amountYen: 1250 }])
+    expect(addWriteKind(landed, 'draft')).toBe('edit')
   })
 })
 
@@ -853,6 +867,15 @@ describe('blocksReload', () => {
       )
     }
     expect(blocksReload({ overlay: null, entries: settledList, writing: true })).toBe(true)
+  })
+
+  it('blocks while a read is in flight, or a waiting worker throws away the launch read', () => {
+    for (const status of ['loading', 'refreshing']) {
+      expect(blocksReload({ overlay: null, entries: settledList, status }), status).toBe(true)
+    }
+    for (const status of ['idle', 'stale', 'ready', 'error']) {
+      expect(blocksReload({ overlay: null, entries: settledList, status }), status).toBe(false)
+    }
   })
 
   it('allows a reload with nothing open and nothing in flight', () => {

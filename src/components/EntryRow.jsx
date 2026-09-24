@@ -49,12 +49,15 @@ function EntryRowInner({ entry, label, onEdit, onDelete }) {
       description={description}
       meta={meta}
       settlement={isSettlement}
-      onOpen={() => onEdit(entry)}
+      /* A row still saving refuses an edit or a delete (`entryWriteRefusal`), so it offers neither
+         rather than letting someone fill in a form it will then turn down. */
+      onOpen={entry.pending ? undefined : () => onEdit(entry)}
     >
       <button
         type="button"
         className="btn btn--icon entry__delete"
         onClick={() => onDelete(entry)}
+        disabled={Boolean(entry.pending)}
         aria-label={isSettlement ? t('entry.deleteSettlement') : t('entry.delete', { description })}
       >
         <TrashIcon width={18} height={18} />

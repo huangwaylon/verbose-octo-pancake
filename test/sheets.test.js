@@ -105,7 +105,7 @@ describe('every write is RAW', () => {
     const calls = stubSheets({
       gids: true,
       batch: EMPTY_RANGES,
-      rows: { [P1.title]: [row({ id: 'e1' })] },
+      rows: { [P1.title]: [row({ amount: '1000', id: 'e1' })] },
     })
 
     await sheets.appendEntry(SHEET, entry())
@@ -142,7 +142,7 @@ describe('the shape every request has to have', () => {
     const calls = stubSheets({
       gids: true,
       batch: EMPTY_RANGES,
-      rows: { [P1.title]: [row({ id: 'e1' })] },
+      rows: { [P1.title]: [row({ amount: '1000', id: 'e1' })] },
     })
 
     await sheets.loadAll(SHEET)
@@ -163,11 +163,47 @@ describe('the shape every request has to have', () => {
   })
 })
 
+// A request that never settles leaves its row `pending` for good, refusing every edit to it.
+describe('a stalled request', () => {
+  /** Rejects when aborted, as `fetch` and a body read do; never settles otherwise. */
+  const stalls = (signal) =>
+    new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))))
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('gives up rather than waiting for ever', async () => {
+    vi.useFakeTimers()
+    globalThis.fetch = vi.fn((url, { signal }) => stalls(signal))
+    const read = sheets.loadAll(SHEET)
+    const outcome = expect(read).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(30_000)
+    await outcome
+  })
+
+  // Headers in, body stalled: swallowed as "no JSON", the read succeeds with an empty ledger.
+  it('fails, never reads as empty, when the body is cut off', async () => {
+    vi.useFakeTimers()
+    globalThis.fetch = vi.fn(async (url, { signal }) => ({ ok: true, json: () => stalls(signal) }))
+    const read = sheets.loadAll(SHEET)
+    const outcome = expect(read).rejects.toThrow()
+    await vi.advanceTimersByTimeAsync(30_000)
+    await outcome
+  })
+})
+
 describe('resolving a row before writing to it', () => {
   it('writes to the row the sheet says, not to any cached position', async () => {
     // The id sits third in the tab, so the write must land on row 4 (header + 2).
     const calls = stubSheets({
-      rows: { [P1.title]: [row({ id: 'other-1' }), row({ id: 'other-2' }), row({ id: 'e1' })] },
+      rows: {
+        [P1.title]: [
+          row({ amount: '1000', id: 'other-1' }),
+          row({ amount: '1000', id: 'other-2' }),
+          row({ amount: '1000', id: 'e1' }),
+        ],
+      },
     })
 
     await sheets.updateEntry(SHEET, entry(), PERSON.P1)
@@ -181,7 +217,7 @@ describe('resolving a row before writing to it', () => {
   })
 
   it('stamps deleted_at on the resolved row, in the deleted_at column only', async () => {
-    const calls = stubSheets({ rows: { [P2.title]: [row({ id: 'e1' })] } })
+    const calls = stubSheets({ rows: { [P2.title]: [row({ amount: '1000', id: 'e1' })] } })
 
     await sheets.setDeletedAt(SHEET, P2, 'e1', '2026-08-06T00:00:00.000Z')
 
@@ -192,7 +228,7 @@ describe('resolving a row before writing to it', () => {
   })
 
   it('clears the cell with an empty string when restoring', async () => {
-    const calls = stubSheets({ rows: { [P1.title]: [row({ id: 'e1' })] } })
+    const calls = stubSheets({ rows: { [P1.title]: [row({ amount: '1000', id: 'e1' })] } })
 
     await sheets.setDeletedAt(SHEET, P1, 'e1', null)
 
@@ -200,7 +236,9 @@ describe('resolving a row before writing to it', () => {
   })
 
   it('refuses to write at all when the id is gone from the sheet', async () => {
-    const calls = stubSheets({ rows: { [P1.title]: [row({ id: 'someone-else' })] } })
+    const calls = stubSheets({
+      rows: { [P1.title]: [row({ amount: '1000', id: 'someone-else' })] },
+    })
 
     await expect(sheets.setDeletedAt(SHEET, P1, 'e1', null)).rejects.toMatchObject({
       i18nKey: 'error.entryGone',
@@ -214,9 +252,9 @@ describe('resolving a row before writing to it', () => {
     const duplicated = {
       rows: {
         [P1.title]: [
-          row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
-          row({ id: 'other' }),
-          row({ id: 'e1' }),
+          row({ amount: '1000', id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
+          row({ amount: '1000', id: 'other' }),
+          row({ amount: '1000', id: 'e1' }),
         ],
       },
     }
@@ -240,7 +278,9 @@ describe('resolving a row before writing to it', () => {
 
     it('falls back to a tombstone when no copy in the tab is live', async () => {
       const calls = stubSheets({
-        rows: { [P1.title]: [row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' })] },
+        rows: {
+          [P1.title]: [row({ amount: '1000', id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' })],
+        },
       })
 
       // The payer-move branch has to be able to stamp a row that is already dead.
@@ -257,10 +297,10 @@ describe('resolving a row before writing to it', () => {
       const calls = stubSheets({
         rows: {
           [P1.title]: [
-            row({ id: 'e1', deleted_at: '2026-08-07T10:00:00.000Z' }),
-            row({ id: 'other' }),
+            row({ amount: '1000', id: 'e1', deleted_at: '2026-08-07T10:00:00.000Z' }),
+            row({ amount: '1000', id: 'other' }),
             // Pre-move copy, carrying stale values, deleted first.
-            row({ id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
+            row({ amount: '1000', id: 'e1', deleted_at: '2026-08-05T10:00:00.000Z' }),
           ],
         },
       })
@@ -308,19 +348,31 @@ describe('resolving a row before writing to it', () => {
           ],
           at: 2,
         },
+        // A row the read cannot decode is on no screen, so it is never the row a write takes:
+        // the valid copy below it is, live or dead.
+        { rows: [{ amount: 'abc' }, { amount: '200' }], at: 3 },
+        {
+          rows: [
+            { amount: 'abc', deleted_at: LATER },
+            { amount: '200', deleted_at: EARLIER },
+          ],
+          at: 3,
+        },
       ]
 
       for (const { rows, at } of CASES) {
         const label = JSON.stringify(rows)
-        const cells = rows.map((fields) => row({ id: 'e1', date: '2026-08-05', ...fields }))
+        const cells = rows.map((fields) =>
+          row({ amount: '1000', id: 'e1', date: '2026-08-05', ...fields }),
+        )
         const calls = stubSheets({ rows: { [P1.title]: cells } })
 
         await sheets.setDeletedAt(SHEET, P1, 'e1', null)
         expect(writes(calls)[0].url, label).toContain(`expenses_p1!F${at}:F${at}`)
 
         // The same rows through the read path: the row the write chose is the row on screen.
-        const decoded = cells.map((cell) => rowToEntry(cell, P1))
-        expect(reconcileById(decoded), label).toEqual([decoded[at - 2]])
+        const decoded = cells.map((cell) => rowToEntry(cell, P1)).filter(Boolean)
+        expect(reconcileById(decoded), label).toEqual([rowToEntry(cells[at - 2], P1)])
       }
     })
   })
@@ -329,7 +381,10 @@ describe('resolving a row before writing to it', () => {
 describe('changing who paid moves the row between tabs', () => {
   it('appends to the new tab BEFORE tombstoning the old row', async () => {
     // A failure between the two must leave the entry visible under its old payer, not gone.
-    const calls = stubSheets({ gids: true, rows: { [P1.title]: [row({ id: 'e1' })] } })
+    const calls = stubSheets({
+      gids: true,
+      rows: { [P1.title]: [row({ amount: '1000', id: 'e1' })] },
+    })
 
     await sheets.updateEntry(SHEET, entry({ payer: PERSON.P2 }), PERSON.P1)
 
@@ -361,7 +416,7 @@ describe('changing who paid moves the row between tabs', () => {
   })
 
   it('overwrites in place when the payer is unchanged', async () => {
-    const calls = stubSheets({ rows: { [P1.title]: [row({ id: 'e1' })] } })
+    const calls = stubSheets({ rows: { [P1.title]: [row({ amount: '1000', id: 'e1' })] } })
 
     await sheets.updateEntry(SHEET, entry(), PERSON.P1)
 

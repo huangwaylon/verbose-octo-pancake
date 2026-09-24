@@ -25,7 +25,8 @@ security models, `SETUP.md` the Google setup.
 
 ## Reads and writes
 - **`loadAll`'s ranges are positionally coupled to `SHEET_TABS`** — the list, the `valueRanges[index]` mapping, the config index from `ranges.length`, the no-config retry slicing from the END. None may become a literal; recurring sits BEFORE config.
-- **An id is unique in neither tab.** Reads go through `reconcileById`, writes to an existing row through `resolveRow`, and **both must choose the same row**: live over dead, then the FIRST live row, then the LATEST `deleted_at`. One fixture in `test/sheets.test.js` drives both. Hidden tombstones count as `supersededRows` (for `compact`), hidden live rows as `duplicateRows`.
+- **An id is unique in neither tab.** Reads go through `reconcileById`, writes to an existing row through `resolveRow`, and **both must choose the same row**: live over dead, then the FIRST live row, then the LATEST `deleted_at`, and never a row `rowToEntry` refuses. One fixture in `test/sheets.test.js` drives both. Hidden tombstones count as `supersededRows` (for `compact`), hidden live rows as `duplicateRows`.
+- **An add whose id is already on screen is an edit** (`addWriteKind`): a failed save can be a lost response to an append that landed. Every Sheets request times out at 30s, and a body cut off by it throws — never reads as empty.
 - **`updateEntry`/`setDeletedAt` take the row's CURRENT payer** — `previous.payer`, never `entry.payer`. `entryWriteRefusal` refuses an entry gone from state (`error.entryGone`) or still `pending` (`error.stillSaving`), which is why `removeEntry`/`restoreEntry` take an id alone.
 - **Only `ensureStructure` builds structure**; it refuses a spreadsheet holding other tabs and none of ours, `looksUninitialized` is 400 and 404 alone, and only `useLedger`'s first-read retry calls it.
 - **`compact()` and `deleteTemplate` are the only hard deletes.** `compact` reads full rows, serializes its tab reads, and deletes in **descending** row order. It takes a row only when the id AND `deleted_at` are filled. It covers `DATA_TABS`, never `RECURRING`.
@@ -57,7 +58,7 @@ A tab of DECLARATIONS, edited through `RecurringSheet`/`TemplateFormSheet` and h
 - **The persist effect watches the CONFIG as well as the list**, or a config-only change never reaches the cache and a stale `default_split_p*` moves money next launch.
 - **`writeSnapshot`'s reference guard names the SHEET too, and `useLedger` resets on an id CHANGE**, not just on losing one.
 - **Template writes are NOT optimistic**: write, then `refresh()`, as `compact` does — which keeps templates out of the snapshot, `mergeLoaded` and `hasPendingWrite`.
-- **`blocksReload` (in `lib/`) decides whether an update may reload**: an open form or one held in a confirmation's `returnTo`, an unacknowledged write, or `useLedger`'s `writing` count. Never solve it with new overlay kinds or a second "which sheet is open" value.
+- **`blocksReload` (in `lib/`) decides whether an update may reload**: an open form or one held in a confirmation's `returnTo`, an unacknowledged write, `useLedger`'s `writing` count, or a read in flight (a waiting worker would otherwise throw the launch read away). Never solve it with new overlay kinds or a second "which sheet is open" value.
 - **Read state through `entriesRef`, never inside a `setEntries` updater**, and mint an entry's id when the draft OPENS.
 - **Focus refreshes have a 30s floor and EVERY read counts** — `load` stamps the clock.
 - **A hook holds effects; decisions live in `lib/`** (`ledgerState.js`, `balance.js`, `split.js`, `recurring.js`) — no test can reach a `use*.js`. `useEntrySplit` and `useSheetSave` sit beside the one control holding their state.
@@ -70,6 +71,7 @@ A tab of DECLARATIONS, edited through `RecurringSheet`/`TemplateFormSheet` and h
 - **A displayed share is not the saved share** — `toSplit` carries the exact `share` beside the whole `percent`; `splitAtPercent` is the only slider → share conversion.
 - **The default split is per person, keyed on the payer**; the two values need not sum to 1. Never mirror one from the other.
 - **No `if (type === 'settlement')` branch in arithmetic** — `payer_share: 0` says it — and a settlement never counts toward spend or categories (`activeExpenses`).
+- **`dayLabel` takes `today` as a string** from `LedgerScreen`, so the memoised list re-renders when the date turns over.
 - **Within a day, `groupByDate` orders by id.** `descending` is `balance.js`'s one comparator.
 - **Dates are ISO strings compared as strings** — never `new Date('2026-08-05')` (UTC midnight). `lib/dates.js` owns every helper; `isIsoDate` needs its UTC round-trip, `monthParts` checks shape first, **`dayInMonth` CLAMPS**.
 - **The pure layers stay pure**: `money`, `dates`, `balance`, `schema`, `split`, `identity` never read the i18n singleton or call argless `localeCompare`; locale is an argument with an English default, and formatters are cached.
@@ -86,6 +88,7 @@ A tab of DECLARATIONS, edited through `RecurringSheet`/`TemplateFormSheet` and h
 - **No raw error text reaches the screen.** `i18nError` is how to throw something a person reads; API English stays on `.message` behind an `i18nKey`, and `errorMessage` never falls back to it.
 - **Store the cause, never the sentence** — `useLedger`'s error and the compact outcome outlive a locale change.
 - **Every destructive confirmation goes through `ConfirmSheet`** (Cancel first in the DOM, content-sized, not `full`); the caller supplies the BODY. `App`'s `confirmEntry` overlay is the only caller of `removeEntry`. Recovery is `DeletedList`, never a toast action.
+- **A sheet cannot be closed while its write is in flight** — `BottomSheet`'s `busy` makes the X, backdrop and Escape inert, or a failure has no form left to show it and a success closes whatever opened next. A non-optimistic confirmation (`deleteTemplate`) returns its promise from `onConfirm` and stays up until it settles. A pending row offers no edit or delete.
 - **A confirmation opened from a form carries `returnTo`** — the draft plus its fields AS TYPED (`typed`, the split's `held`); Cancel restores it, and from a row Cancel closes. Never rebuild a form from parsed values: a half-typed amount parses to null, which a template reads as "variable".
 - **The ledger's recurring section shows recorded rows, and above them the unrecorded drafts** (`entry--unpaid`, "not recorded yet", a tick). A draft is in no total, chart or balance.
 - **A recurring instance appears in the SECTION or its day, never both** (`monthSections`). Month figures come from the month.
@@ -164,6 +167,7 @@ hand-rolled SVG — `stroke-dasharray` on a circle whose circumference is exactl
 - **Use the tokens** — `var(--transition-*)` collapses under reduced motion. The two colours in `index.html` and the manifest are pinned to `tokens.css`.
 - **`letter-spacing: 0`, no `text-transform`, and line-height ≥ 1.5 wherever text can be Japanese.** Carve-out: `.balance__amount` (digits, `--lh-flat`). Headings use `--lh-tight` (1.5).
 - **Nothing below 13px**; weights `400|500|600` only; **no form control below 16px** (Safari zooms on focus).
+- **No `backdrop-filter`**: the sticky header is solid `--bg`, since Safari re-renders a blur every scroll frame.
 - **Elevations appear in exactly three places** (`--shadow-*`); focus ring, selection ring and hairline are not elevations. **Contrast budgets live in `tokens.css`.**
 - **`--shell-max` leaves room for `--main-max`**, and centring matches `.layout` with a percentage, never a viewport unit.
 - **`.btn--icon` is never combined with `.btn--ghost`.**

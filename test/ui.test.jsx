@@ -557,7 +557,7 @@ describe('deleted entries list', () => {
   it('starts collapsed: opening it has to be someone’s decision', () => {
     const markup = render([removed('a')])
     expect(markup).toContain('<details')
-    expect(markup).not.toContain('open')
+    expect(markup).not.toMatch(/<details[^>]*\sopen/)
   })
 
   it('says how many there are while it is still closed', () => {

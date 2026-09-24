@@ -11,7 +11,7 @@ import { ChevronRightIcon } from './icons.jsx'
  * A `<details>` rather than React state: the flag is the element's own, so it starts closed by
  * construction and needs no reset when the list changes underneath it.
  */
-export function DeletedList({ entries, config, me, onRestore }) {
+export function DeletedList({ entries, today, config, me, onRestore }) {
   const { t, locale } = useT()
   const labels = useDayLabels()
   const { label } = usePeopleLabels(config, me)
@@ -32,7 +32,7 @@ export function DeletedList({ entries, config, me, onRestore }) {
             entry={entry}
             payerLabel={label(entry.payer)}
             otherLabel={label(otherPerson(entry.payer))}
-            dateLabel={dayLabel(entry.date, { locale, labels })}
+            dateLabel={dayLabel(entry.date, { today, locale, labels })}
             onRestore={onRestore}
           />
         ))}

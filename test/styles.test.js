@@ -84,6 +84,18 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
     }
   })
 
+  // One press state for the two quiet buttons: land it on one and the other stops answering a tap.
+  it.each([
+    ['.btn--ghost:hover:not([disabled])'],
+    ['.btn--icon:hover:not([disabled])'],
+    ['.btn--ghost:active:not([disabled])'],
+    ['.btn--icon:active:not([disabled])'],
+  ])('%s still presses', (selector) => {
+    for (const property of ['background-color', 'color']) {
+      expect(declares(FILES.primitives, selector, property)).toBe(true)
+    }
+  })
+
   it.each(headings)('%s %s is still a heading', (file, selector) => {
     const css = FILES[file]
     expect(declares(css, selector, 'font-size')).toBe(true)

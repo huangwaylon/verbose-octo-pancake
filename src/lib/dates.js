@@ -142,12 +142,16 @@ export function monthLabel(monthKey, { locale, now = new Date() } = {}) {
   }).format(date)
 }
 
-/** 'Today' / 'Yesterday' / 'Mon, Aug 4' — short enough for a narrow phone. */
-export function dayLabel(iso, { now = new Date(), locale, labels = EN_DAY_LABELS } = {}) {
+/**
+ * 'Today' / 'Yesterday' / 'Mon, Aug 4' — short enough for a narrow phone. `today` is a string so a
+ * memoised list can take it as a prop: read from the clock inside, the headings stay a day behind
+ * on an app resumed the next morning.
+ */
+export function dayLabel(iso, { today = todayIso(), locale, labels = EN_DAY_LABELS } = {}) {
   if (!iso) return labels.none
-  const today = todayIso(now)
   if (iso === today) return labels.today
 
+  const now = partsOf(today)
   const yesterday = new Date(now)
   yesterday.setDate(yesterday.getDate() - 1)
   if (iso === todayIso(yesterday)) return labels.yesterday

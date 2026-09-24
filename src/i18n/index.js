@@ -125,7 +125,6 @@ export function useT() {
     () => ({
       locale,
       t: (key, vars) => translate(locale, key, vars),
-      setLocale,
     }),
     [locale],
   )

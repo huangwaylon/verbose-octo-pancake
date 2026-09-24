@@ -5,6 +5,7 @@ import { EntryList } from './EntryList.jsx'
 import { DeletedList } from './DeletedList.jsx'
 import { PlusIcon } from './icons.jsx'
 import { useT } from '../i18n/index.js'
+import { todayIso } from '../lib/dates.js'
 
 /**
  * The whole signed-in surface. Everything arrives as props: no ledger, no connection, no writes.
@@ -30,6 +31,9 @@ export function LedgerScreen({
   onAdd,
 }) {
   const { t } = useT()
+  // Read per render, which every refresh causes, and passed down as a string so `EntryList`'s memo
+  // breaks exactly when the date changes.
+  const today = todayIso()
 
   return (
     <>
@@ -71,13 +75,20 @@ export function LedgerScreen({
           <EntryList
             groups={view.groups}
             recurring={view.recurring}
+            today={today}
             config={config}
             me={me}
             onEdit={onEdit}
             onDelete={onDelete}
             onRecord={onRecord}
           />
-          <DeletedList entries={view.deleted} config={config} me={me} onRestore={onRestore} />
+          <DeletedList
+            entries={view.deleted}
+            today={today}
+            config={config}
+            me={me}
+            onRestore={onRestore}
+          />
         </section>
       </main>
     </>

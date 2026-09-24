@@ -177,7 +177,6 @@ pre {
    Latin faces regardless of the Japanese fallbacks, so `tnum` always applies. */
 .tnum {
   font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum" 1;
 }
 
 /* ---- Focus -------------------------------------------------------------

@@ -6,6 +6,7 @@ import * as sheets from '../lib/sheets.js'
 import { takeLaunchRead } from '../lib/launchRead.js'
 import {
   acknowledge,
+  addWriteKind,
   compactRefusal,
   createReadGate,
   entryById,
@@ -254,25 +255,6 @@ export function useLedger(spreadsheetId) {
     }
   }, [spreadsheetId, refresh])
 
-  const addEntry = useCallback(
-    async (input) => {
-      const entry = entryFromInput(input)
-
-      setEntries((current) => withPending(current, entry))
-      try {
-        await sheets.appendEntry(spreadsheetId, entry)
-        setEntries((current) => acknowledge(current, entry))
-        return entry
-      } catch (cause) {
-        setEntries((current) => without(current, entry.id))
-        throw cause
-      } finally {
-        readGate.writeSettled()
-      }
-    },
-    [spreadsheetId, readGate],
-  )
-
   const editEntry = useCallback(
     async (input) => {
       const entry = entryFromInput(input)
@@ -297,6 +279,26 @@ export function useLedger(spreadsheetId) {
       }
     },
     [spreadsheetId, readGate],
+  )
+
+  const addEntry = useCallback(
+    async (input) => {
+      const entry = entryFromInput(input)
+      if (addWriteKind(entriesRef.current, entry.id) === 'edit') return editEntry(input)
+
+      setEntries((current) => withPending(current, entry))
+      try {
+        await sheets.appendEntry(spreadsheetId, entry)
+        setEntries((current) => acknowledge(current, entry))
+        return entry
+      } catch (cause) {
+        setEntries((current) => without(current, entry.id))
+        throw cause
+      } finally {
+        readGate.writeSettled()
+      }
+    },
+    [spreadsheetId, readGate, editEntry],
   )
 
   const setDeleted = useCallback(
@@ -327,22 +329,20 @@ export function useLedger(spreadsheetId) {
 
   /** Add, edit and retire, all one call. Not optimistic: write, then re-read, as `compact` does. */
   const saveTemplate = useCallback(
-    async (input) => {
-      await tracked(async () => {
+    (input) =>
+      tracked(async () => {
         await sheets.saveTemplate(spreadsheetId, templateFromInput(input))
         await refresh()
-      })
-    },
+      }),
     [spreadsheetId, refresh, tracked],
   )
 
   const deleteTemplate = useCallback(
-    async (template) => {
-      await tracked(async () => {
+    (template) =>
+      tracked(async () => {
         await sheets.deleteTemplate(spreadsheetId, template.id)
         await refresh()
-      })
-    },
+      }),
     [spreadsheetId, refresh, tracked],
   )
 

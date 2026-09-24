@@ -31,6 +31,13 @@ import { defaultConfigRows, parseConfigRows } from './sheetConfig.js'
 import { i18nError } from '../i18n/index.js'
 
 const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
+
+/**
+ * A stalled request on phone data otherwise never settles: its row stays `pending`, which refuses
+ * every edit to it, holds back `compact` and blocks an update's reload. Generous, because a write
+ * that times out may still land — `addWriteKind` is what makes the retry of one safe.
+ */
+const REQUEST_TIMEOUT_MS = 30_000
 const RAW = 'RAW'
 
 /**
@@ -85,23 +92,37 @@ async function request(path, { method = 'GET', params, body, allowRetry = true }
   const token = await getAccessToken()
   const query = buildQuery(params)
 
-  const response = await fetch(`${BASE_URL}${path}${query ? `?${query}` : ''}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      ...(body ? { 'Content-Type': 'application/json' } : {}),
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  let response
+  let payload
+  try {
+    response = await fetch(`${BASE_URL}${path}${query ? `?${query}` : ''}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    })
+    // Inside the timeout too: the headers can arrive and the body stall. A body cut off by the
+    // timeout rethrows — read as "no JSON" it is an empty ledger reported as a successful read.
+    payload = await response.json().catch((cause) => {
+      if (controller.signal.aborted) throw cause
+      return null
+    })
+  } finally {
+    clearTimeout(timer)
+  }
 
-  if (response.ok) return response.json().catch(() => ({}))
+  if (response.ok) return payload ?? {}
 
   if (response.status === 401 && allowRetry) {
     await refreshToken()
     return request(path, { method, params, body, allowRetry: false })
   }
 
-  const payload = await response.json().catch(() => null)
   const message = payload?.error?.message ?? response.statusText ?? 'Request failed'
   const error = new Error(`Google Sheets: ${message} (HTTP ${response.status})`)
   error.status = response.status
@@ -319,7 +340,8 @@ export async function appendEntry(spreadsheetId, entry) {
  * tombstone. The copy chosen must be the one `reconcileById` put ON SCREEN, or the write lands on
  * a row nobody can see and an edit reverts, a delete undoes itself: live beats dead, the FIRST
  * live row wins, and between tombstones the LATEST stamp, the first of two equal ones (`supersedes`
- * keeps the incumbent). The dead fallback matters too: `setDeletedAt` also CLEARS the cell.
+ * keeps the incumbent). The dead fallback matters too: `setDeletedAt` also CLEARS the cell. A row
+ * `rowToEntry` refuses is on no screen, so it is never a candidate.
  */
 async function resolveRow(spreadsheetId, tab, id) {
   const data = await getValues(spreadsheetId, tab.dataRange)
@@ -328,7 +350,7 @@ async function resolveRow(spreadsheetId, tab, id) {
   let live = -1
   let dead = -1
   rows.forEach((row, index) => {
-    if (idCell(tab, row) !== id) return
+    if (idCell(tab, row) !== id || !rowToEntry(row, tab)) return
     const deletedAt = deletedCell(tab, row)
     if (!deletedAt) {
       if (live < 0) live = index

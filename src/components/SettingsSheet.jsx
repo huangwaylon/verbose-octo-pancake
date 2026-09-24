@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
 import { defaultSplitFor, percentOf } from '../lib/split.js'
-import { errorMessage, usePeopleLabels, useT } from '../i18n/index.js'
+import { errorMessage, setLocale, usePeopleLabels, useT } from '../i18n/index.js'
 import { useTNodes } from '../i18n/nodes.jsx'
 import { LOCALE_LABELS, SUPPORTED } from '../i18n/catalogs.js'
 import { ACCENTS, setAccent, useAccent } from '../lib/theme.js'
@@ -22,7 +22,7 @@ export function SettingsSheet({
   onForget,
   onClose,
 }) {
-  const { t, locale, setLocale } = useT()
+  const { t, locale } = useT()
   const accentLabelId = useId()
   const tn = useTNodes()
   const { name } = usePeopleLabels(config, me)

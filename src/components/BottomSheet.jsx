@@ -13,8 +13,11 @@ const FIRST_FIELD = 'input, select, textarea, button:not([data-dismiss])'
  * A modal panel: full-screen page or bottom sheet on phones, centred dialog above 48rem (the CSS
  * decides which). `full` is opt-in because it is a claim about the CONTENT: a one-sentence
  * confirmation in a full-screen panel is 600px of white.
+ *
+ * `busy` makes every way out inert while a write the sheet started is in flight: closed under it, a
+ * failure has no form left to say so, and a success's own close lands on whatever sheet came next.
  */
-export function BottomSheet({ title, full = false, onClose, children, footer }) {
+export function BottomSheet({ title, full = false, busy = false, onClose, children, footer }) {
   const { t } = useT()
   const panel = useRef(null)
   const titleId = useId()
@@ -24,7 +27,7 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
    * fresh arrow, so a re-render behind the sheet would re-run the open effect and yank focus back.
    */
   const close = useRef(onClose)
-  close.current = onClose
+  close.current = busy ? () => {} : onClose
 
   useEffect(() => {
     const node = panel.current
@@ -100,7 +103,7 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
   return (
     <div className="sheet">
       {/* A `full` panel covers this below 48rem, so the X and Cancel are a phone's only ways out. */}
-      <div className="sheet__backdrop" onClick={onClose} />
+      <div className="sheet__backdrop" onClick={() => close.current()} />
       <div
         className={full ? 'sheet__panel sheet__panel--full' : 'sheet__panel'}
         role="dialog"
@@ -116,6 +119,7 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
             type="button"
             className="btn btn--icon"
             onClick={onClose}
+            disabled={busy}
             aria-label={t('common.close')}
             data-dismiss
           >

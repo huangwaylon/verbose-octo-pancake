@@ -114,18 +114,6 @@
   color: var(--ink-2);
 }
 
-@media (hover: hover) {
-  .btn--ghost:hover:not([disabled]) {
-    background-color: var(--sunken);
-    color: var(--ink);
-  }
-}
-
-.btn--ghost:active:not([disabled]) {
-  background-color: var(--sunken);
-  color: var(--ink);
-}
-
 .btn--danger {
   background-color: var(--danger);
   color: var(--danger-text);
@@ -151,13 +139,16 @@
   color: var(--ink-2);
 }
 
+/* One press state for both quiet buttons, which differ only at rest. */
 @media (hover: hover) {
+  .btn--ghost:hover:not([disabled]),
   .btn--icon:hover:not([disabled]) {
     background-color: var(--sunken);
     color: var(--ink);
   }
 }
 
+.btn--ghost:active:not([disabled]),
 .btn--icon:active:not([disabled]) {
   background-color: var(--sunken);
   color: var(--ink);
@@ -630,6 +621,8 @@
   border-left: 3px solid var(--danger);
 }
 
+/* It rotates even under reduced motion, only slower (below), or it is just a
+   broken ring: it is a progress indicator, not decoration. */
 .spinner {
   width: 1rem;
   height: 1rem;
@@ -637,6 +630,7 @@
   border-top-color: transparent;
   border-radius: var(--radius-full);
   opacity: 0.8;
+  animation: spinner-rotate 0.7s linear infinite;
 }
 
 .spinner--lg {
@@ -717,12 +711,6 @@
   to {
     transform: rotate(1turn);
   }
-}
-
-/* The spinner must rotate even under reduced motion or it is just a broken
-   ring; it is a progress indicator, not decoration. Kept slow. */
-.spinner {
-  animation: spinner-rotate 0.7s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

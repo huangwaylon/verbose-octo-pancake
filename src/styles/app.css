@@ -27,23 +27,15 @@
      holds one line when settled and two otherwise, and the figure's optical
      position should not move between those states. */
   padding: calc(var(--space-2) + var(--safe-top)) var(--space-4) var(--space-2);
-  /* The one blur in the app, and it is functional: content scrolls under it. The
-     ground is held close to --bg because the figure's recessive spans are measured
-     against --bg, and what passes underneath includes white cards and the
-     settlement row's accent wash. */
-  background-color: color-mix(in srgb, var(--bg) 90%, transparent);
-  backdrop-filter: blur(14px) saturate(1.4);
+  /* Solid, not a translucent blur: Safari re-renders a backdrop filter on every
+     scroll frame of the ledger beneath it, and the figure's recessive spans are
+     measured against --bg, which is then exactly what they sit on. */
+  background-color: var(--bg);
   border-bottom: 1px solid var(--line);
 }
 
-@supports not (backdrop-filter: blur(1px)) {
-  .app__header {
-    background-color: var(--bg);
-  }
-}
-
-/* Full-bleed for the blur, with the content inside lined up on the ledger's column:
-   padding rather than a wrapper, which would have to sit inside the blurred box.
+/* Full-bleed for the band, with the content inside lined up on the ledger's column:
+   padding rather than a wrapper, which would have to sit inside the band's box.
 
    50%, not 50vw. `.layout` centres inside BODY's content box, already shrunk by the
    horizontal safe insets, while a viewport unit measures past them — a rotated

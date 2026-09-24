@@ -103,6 +103,16 @@ export function entryById(entries, id) {
   return entries.find((entry) => entry.id === id)
 }
 
+/**
+ * Whether an add appends a row or overwrites one. A form keeps its draft id through a failed save,
+ * and a failure can be a lost RESPONSE to an append that landed: once a refresh has read that row,
+ * appending again puts the entry in the sheet, and on screen, twice. So an id already present is an
+ * edit of it — refused, like any edit, while that row is still pending.
+ */
+export function addWriteKind(entries, id) {
+  return entryById(entries, id) ? 'edit' : 'append'
+}
+
 /** One entry replaced, everything else the same object. */
 function replace(entries, id, next) {
   return entries.map((item) => (item.id === id ? next(item) : item))
@@ -153,9 +163,9 @@ export function without(entries, id) {
  * The edit or delete failed: put back exactly what was there before, rather than clearing
  * `pending` and leaving the optimistic values on screen as if saved.
  *
- * `pending` is stripped, because `previous` can itself be a pending copy when two writes to one
- * entry overlap — and left set it is permanent: `mergeLoaded` keeps a pending row over the
- * server's, so the row freezes and blocks `compact` for the life of the install.
+ * `pending` is stripped whatever `previous` carries. `entryWriteRefusal` keeps a pending copy from
+ * reaching here today, but left set the flag is permanent: `mergeLoaded` keeps a pending row over
+ * the server's, so the row would freeze and block `compact` for the life of the install.
  */
 export function reverted(entries, id, previous) {
   if (!previous) return entries
@@ -181,7 +191,7 @@ export function hasPendingWrite(entries) {
  * Whether activating a service-worker update — which RELOADS the page — would interrupt something.
  * Here rather than in `App`, whose decisions no test can reach.
  *
- * Three inputs, because `pending` cannot cover them all:
+ * Four inputs, because `pending` cannot cover them all:
  *
  * - An open FORM, or one a delete confirmation will return to, since a reload throws away what is
  *   half-typed.
@@ -189,10 +199,17 @@ export function hasPendingWrite(entries) {
  * - A write carrying no optimistic flag: `saveTemplate`, `deleteTemplate` and `compact`, which sit
  *   outside `mergeLoaded` and change or leave the overlay BEFORE awaiting. The hard deletes are also
  *   irreversible, and reloading mid-`batchUpdate` leaves one half-reported.
+ * - A read in flight (`status`). Nothing is lost, but the reloaded page spends the same round trips
+ *   again — and a worker already waiting at launch would otherwise throw away the launch read.
  */
-export function blocksReload({ overlay, entries, writing }) {
+export function blocksReload({ overlay, entries, writing, status }) {
   return (
-    isForm(overlay) || isForm(overlay?.returnTo) || Boolean(writing) || hasPendingWrite(entries)
+    isForm(overlay) ||
+    isForm(overlay?.returnTo) ||
+    Boolean(writing) ||
+    hasPendingWrite(entries) ||
+    status === 'loading' ||
+    isRefreshing(status)
   )
 }
 
@@ -386,27 +403,24 @@ export function noticeKeys(state = {}) {
   const notices = []
   if (state.status === 'stale' && state.error) notices.push({ key: 'warning.staleData' })
   if (state.configMissing) notices.push({ key: 'warning.configMissing' })
-  if (state.undecodedRows > 0) {
-    notices.push({ key: 'warning.undecodedRows', vars: { count: state.undecodedRows } })
-  }
-  // Beside the unreadable rows: both are an amount the sheet holds and no total carries.
-  if (state.duplicateRows > 0) {
-    notices.push({ key: 'warning.duplicateRows', vars: { count: state.duplicateRows } })
-  }
-  if (state.undatedRows > 0) {
-    notices.push({ key: 'warning.undatedRows', vars: { count: state.undatedRows } })
-  }
-  if (state.unattributedRows > 0) {
-    notices.push({ key: 'warning.unattributedRows', vars: { count: state.unattributedRows } })
-  }
-  if (state.undecodedTemplates > 0) {
-    notices.push({
-      key: 'warning.undecodedTemplates',
-      vars: { count: state.undecodedTemplates },
-    })
+  for (const [count, key] of COUNTED_NOTICES) {
+    if (state[count] > 0) notices.push({ key, vars: { count: state[count] } })
   }
   return notices
 }
+
+/**
+ * The counted notices in order. The duplicates sit beside the unreadable rows: both are an amount
+ * the sheet holds and no total carries.
+ */
+// prettier-ignore
+const COUNTED_NOTICES = [
+  ['undecodedRows',      'warning.undecodedRows'],
+  ['duplicateRows',      'warning.duplicateRows'],
+  ['undatedRows',        'warning.undatedRows'],
+  ['unattributedRows',   'warning.unattributedRows'],
+  ['undecodedTemplates', 'warning.undecodedTemplates'],
+]
 
 /**
  * Which screen stands in front of the ledger, or null for the ledger itself.

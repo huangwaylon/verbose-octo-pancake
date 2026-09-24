@@ -71,9 +71,11 @@ export default function App() {
    * `focus` event to ask again.
    */
   useEffect(() => {
-    setSafeToReload(() => !blocksReload({ overlay, entries, writing: ledger.writing }))
+    setSafeToReload(
+      () => !blocksReload({ overlay, entries, writing: ledger.writing, status: ledger.status }),
+    )
     reconsiderUpdate()
-  }, [overlay, entries, ledger.writing])
+  }, [overlay, entries, ledger.writing, ledger.status])
 
   /** Both stable, or `EntryList`'s memo dies on every toast. */
   const openEntry = useCallback((entry) => setOverlay({ kind: 'entry', mode: 'edit', entry }), [])
@@ -88,44 +90,43 @@ export default function App() {
   )
 
   /**
+   * `useLedger` has already reverted the optimistic change, so there is nothing to undo here. Stable,
+   * with `toasts.push`/`toasts.error` as deps rather than the object they hang off, which is fresh
+   * on every render — `recordDraft` below takes it into `EntryList`'s memo.
+   */
+  const report = useCallback(
+    async (write, okKey, failKey) => {
+      try {
+        await write()
+        toasts.push(t(okKey))
+      } catch (cause) {
+        toasts.error(errorMessage(cause, failKey))
+      }
+    },
+    [toasts.push, toasts.error, t],
+  )
+
+  /**
    * Record a recurring cost the month is missing: one tap for a cost that needs nothing typed, the
    * prefilled ADD form for one that does — a variable bill, or a template with no category. The
    * decision is `recordableEntry`'s, so the tap refuses exactly what a submit would.
-   *
-   * Stable for the same reason as the two above, so its deps are `toasts.push`/`toasts.error` rather
-   * than the object they hang off, which is fresh on every render.
    */
   const recordDraft = useCallback(
-    async (draft) => {
+    (draft) => {
       const entry = recordableEntry(draft, config)
       if (!entry) {
         setOverlay({ kind: 'entry', mode: 'add', entry: draft })
         return
       }
-      try {
-        await ledger.addEntry(entry)
-        toasts.push(t('toast.added'))
-      } catch (cause) {
-        toasts.error(errorMessage(cause, 'toast.addFailed'))
-      }
+      return report(() => ledger.addEntry(entry), 'toast.added', 'toast.addFailed')
     },
-    [config, ledger.addEntry, toasts.push, toasts.error, t],
+    [config, ledger.addEntry, report],
   )
 
   const openAdd = () => setOverlay({ kind: 'entry', mode: 'add', entry: newDraftEntry(me) })
   const openSettings = () => setOverlay({ kind: 'settings' })
   const openRecurring = () => setOverlay({ kind: 'recurring' })
   const openTemplate = (mode, template) => setOverlay({ kind: 'template', mode, template })
-
-  /** `useLedger` has already reverted the optimistic change, so there is nothing to undo here. */
-  const report = async (write, okKey, failKey) => {
-    try {
-      await write()
-      toasts.push(t(okKey))
-    } catch (cause) {
-      toasts.error(errorMessage(cause, failKey))
-    }
-  }
 
   /** The form paths RETHROW: the form stays open and shows the reason against its own Save. */
   const submitEntry = async (input) => {
@@ -157,10 +158,14 @@ export default function App() {
   const undeleteEntry = (entry) =>
     report(() => ledger.restoreEntry(entry.id), 'toast.restored', 'toast.restoreFailed')
 
-  /** Irreversible, and reported by toast because no form is left. */
-  const deleteTemplate = (template) => {
+  /**
+   * Irreversible, and reported by toast because no form is left. The confirmation stays up until the
+   * delete and its re-read land: back on the recurring page early, the template is still listed, and
+   * saving it would append it again.
+   */
+  const deleteTemplate = async (template) => {
+    await report(() => ledger.deleteTemplate(template), 'toast.deleted', 'toast.deleteFailed')
     openRecurring()
-    return report(() => ledger.deleteTemplate(template), 'toast.deleted', 'toast.deleteFailed')
   }
 
   const forgetKey = () => {

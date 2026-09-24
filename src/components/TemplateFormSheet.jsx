@@ -58,6 +58,9 @@ export function TemplateFormSheet({
   /** `allowDefault`, so a blank `payer_share` stays blank; `useEntrySplit` says why. */
   const split = useEntrySplit(template, config, payer, { allowDefault: true, held: typed?.split })
 
+  // Blank is null, the value meaning "variable"; every other unreadable amount is already refused.
+  const yen = amount.trim() ? parseAmountToYen(amount) : null
+
   const { label, possessive } = usePeopleLabels(config, me)
   const payerLabel = label(payer)
   const otherLabel = label(otherPerson(payer))
@@ -109,12 +112,11 @@ export function TemplateFormSheet({
     await save(() => write(input))
   }
 
-  // Blank is null, the value meaning "variable"; every other unreadable amount is already refused.
-  const yen = amount.trim() ? parseAmountToYen(amount) : null
   return (
     <BottomSheet
       title={editing ? t('recurring.editTitle') : t('recurring.addTitle')}
       full
+      busy={busy}
       onClose={onClose}
       footer={
         <SheetFormFooter

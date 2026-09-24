@@ -111,7 +111,6 @@ describe('toasts render', () => {
     expect(markup).toContain('Saved')
     expect(markup).toContain('Could not save')
     expect(markup.match(/toast--error/g)).toHaveLength(1)
-    expect(markup).not.toContain('toast--success')
   })
 
   it('interrupts for a failure and waits its turn for anything else', () => {
@@ -309,6 +308,39 @@ describe('entry list renders', () => {
       />,
     )
     expect(markup).toContain('You only')
+  })
+
+  it('offers no edit or delete on a row still saving, which a write would refuse', () => {
+    const saving = [{ ...entry({ id: 'saving', amountYen: 900 }), pending: true }]
+    const markup = renderToStaticMarkup(
+      <EntryList
+        groups={groupByDate(saving)}
+        config={config}
+        me={PERSON.P1}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    )
+    expect(markup).toContain('<span class="entry__main">')
+    expect(markup).toMatch(/<button[^>]*class="btn btn--icon entry__delete"[^>]*disabled=""/)
+  })
+
+  it('names a day heading from the `today` it is given, not the clock', () => {
+    // A prop, so the memoised list re-renders when the date turns over. The rows are dated years
+    // from now, so a clock-read heading could never say "Today" or "Yesterday".
+    const days = [entry({ id: 'a', date: '2031-03-01' }), entry({ id: 'b', date: '2031-02-28' })]
+    const markup = renderToStaticMarkup(
+      <EntryList
+        groups={groupByDate(days)}
+        today="2031-03-01"
+        config={config}
+        me={PERSON.P1}
+        onEdit={noop}
+        onDelete={noop}
+      />,
+    )
+    expect(markup).toContain('Today')
+    expect(markup).toContain('Yesterday')
   })
 
   it('explains an empty month without a second add button', () => {

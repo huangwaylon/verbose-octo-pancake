@@ -13,7 +13,16 @@ import { CheckIcon, RepeatIcon, WalletIcon } from './icons.jsx'
  * Memoised, and it is the memo that matters most: `App` re-renders on every toast, refresh and month
  * change, and this subtree is the only one whose size grows with the ledger.
  */
-function EntryListInner({ groups, recurring = null, config, me, onEdit, onDelete, onRecord }) {
+function EntryListInner({
+  groups,
+  recurring = null,
+  today,
+  config,
+  me,
+  onEdit,
+  onDelete,
+  onRecord,
+}) {
   const { t, locale } = useT()
   const money = useMoney()
   const labels = useDayLabels()
@@ -56,7 +65,7 @@ function EntryListInner({ groups, recurring = null, config, me, onEdit, onDelete
       {groups.map((group) => (
         <EntrySection
           key={group.date}
-          title={dayLabel(group.date, { locale, labels })}
+          title={dayLabel(group.date, { today, locale, labels })}
           entries={group.entries}
           totalYen={group.totalYen}
           {...shared}
