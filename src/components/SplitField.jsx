@@ -15,12 +15,17 @@ import { Segmented } from './Segmented.jsx'
  *
  * For a TEMPLATE, `allowDefault` makes null a durable answer rather than an unfilled one: the cost
  * keeps FOLLOWING `default_split_p*` instead of being pinned to whatever it said on the day.
+ *
+ * `held` is a previous mount's own state, returned as `held`: a form reopened after a delete is
+ * cancelled resumes the exact control, where rebuilding it from a share turns Custom-at-50 into Even
+ * and pins a share that was following the default.
  */
-export function useEntrySplit(entry, config, payer, { allowDefault = false } = {}) {
+export function useEntrySplit(entry, config, payer, { allowDefault = false, held } = {}) {
   const stored = Number.isFinite(entry.payerShare) ? entry.payerShare : null
-  const [override, setOverride] = useState(() =>
-    stored == null && !allowDefault ? null : toSplit(stored, defaultSplitFor(config, payer)),
-  )
+  const [override, setOverride] = useState(() => {
+    if (held !== undefined) return held
+    return stored == null && !allowDefault ? null : toSplit(stored, defaultSplitFor(config, payer))
+  })
 
   const configuredShare = defaultSplitFor(config, payer)
   const { mode, percent, share } = override ?? toSplit(configuredShare)
@@ -29,6 +34,7 @@ export function useEntrySplit(entry, config, payer, { allowDefault = false } = {
     mode,
     percent,
     payerShare: mode === 'even' ? EVEN_SHARE : share,
+    held: override,
     /** One derivation: what the label promises and what the mode saves must be one figure. */
     configuredPercent: percentOf(configuredShare),
     /** Dragging or hitting a preset pins the entry, so it survives a payer switch. */

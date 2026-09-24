@@ -20,7 +20,7 @@ export function NoteField({ value, presets, onChange }) {
            into an English word it recognises. */
         autoCapitalize="none"
         autoCorrect="off"
-        spellCheck="false"
+        spellCheck={false}
         enterKeyHint="done"
         placeholder={t('form.notePlaceholder')}
         value={value}

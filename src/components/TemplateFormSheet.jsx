@@ -31,16 +31,19 @@ export function TemplateFormSheet({
   onClose,
 }) {
   const { t } = useT()
-  const { mode, template } = draft
+  const { mode, template, typed } = draft
   const editing = mode === 'edit'
 
-  const [description, setDescription] = useState(template.description ?? '')
+  // `typed` is the fields as a previous mount left them; `EntryFormSheet`'s `resumeDraft` says why.
+  const [description, setDescription] = useState(typed?.description ?? template.description ?? '')
   const [amount, setAmount] = useState(
-    template.amountYen == null ? '' : yenToSheetString(template.amountYen),
+    () => typed?.amount ?? (template.amountYen == null ? '' : yenToSheetString(template.amountYen)),
   )
-  const [category, setCategory] = useState(template.category || config.categories[0] || '')
-  const [payer, setPayer] = useState(template.payer || PERSON.P1)
-  const [day, setDay] = useState(String(template.dayOfMonth ?? 1))
+  const [category, setCategory] = useState(
+    typed?.category ?? (template.category || config.categories[0] || ''),
+  )
+  const [payer, setPayer] = useState(typed?.payer ?? (template.payer || PERSON.P1))
+  const [day, setDay] = useState(typed?.day ?? String(template.dayOfMonth ?? 1))
   /** The values a submit refused, so each error derives from one; `EntryFormSheet` says why. */
   const [rejected, setRejected] = useState(null)
   const { busy, saveError, clearError, save } = useSheetSave(onClose)
@@ -53,7 +56,7 @@ export function TemplateFormSheet({
   const dayInput = useRef(null)
 
   /** `allowDefault`, so a blank `payer_share` stays blank; `useEntrySplit` says why. */
-  const split = useEntrySplit(template, config, payer, { allowDefault: true })
+  const split = useEntrySplit(template, config, payer, { allowDefault: true, held: typed?.split })
 
   const { label, possessive } = usePeopleLabels(config, me)
   const payerLabel = label(payer)
@@ -83,11 +86,6 @@ export function TemplateFormSheet({
       field.current?.focus()
       return null
     }
-    return edited()
-  }
-
-  /** Unjudged, because Delete needs the values too. */
-  function edited() {
     return {
       ...template,
       description: description.trim(),
@@ -98,6 +96,12 @@ export function TemplateFormSheet({
       payerShare: split.payerShare,
     }
   }
+
+  /** Raw strings, never `yen`/`Number(day)`, which answer null and NaN for a field mid-edit. */
+  const resumeDraft = () => ({
+    ...draft,
+    typed: { description, amount, category, payer, day, split: split.held },
+  })
 
   async function run(write) {
     const input = collect()
@@ -157,7 +161,7 @@ export function TemplateFormSheet({
             /* iOS autocorrects a landlord's name into an English word it recognises. */
             autoCapitalize="none"
             autoCorrect="off"
-            spellCheck="false"
+            spellCheck={false}
             placeholder={t('recurring.namePlaceholder')}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
@@ -195,10 +199,12 @@ export function TemplateFormSheet({
             id="template-day"
             ref={dayInput}
             className="input tnum"
-            type="number"
-            min="1"
-            max="31"
-            step="1"
+            /* Text, as `AmountField` is and for its reason: `type="number"` raises iOS's
+               punctuation keyboard, and `templateFormProblem` judges the string anyway. */
+            type="text"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={2}
             value={day}
             onChange={(event) => setDay(event.target.value)}
             aria-invalid={dayError ? 'true' : undefined}
@@ -234,7 +240,10 @@ export function TemplateFormSheet({
               <button
                 type="button"
                 className="btn btn--danger btn--sm"
-                onClick={() => onDelete(edited())}
+                /* The name on screen, so the confirmation names what the person is looking at. */
+                onClick={() =>
+                  onDelete({ ...template, description: description.trim() }, resumeDraft())
+                }
                 disabled={busy}
               >
                 {t('recurring.delete')}

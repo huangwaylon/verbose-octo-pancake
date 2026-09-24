@@ -233,6 +233,17 @@ export function hasAnyCell(row) {
 }
 
 /**
+ * Refuse rather than guess: without a tab an entry gets the wrong type or payer, and a tab with no
+ * `type` is `recurring`, whose rows would all decode to null and whose ten columns an entry would
+ * fill with values that mean something else — silently, either way.
+ */
+function assertDataTab(tab, caller) {
+  if (!tab?.columns || !tab.type) {
+    throw new TypeError(`${caller} needs a data tab descriptor, got ${String(tab?.title ?? tab)}`)
+  }
+}
+
+/**
  * Map a raw sheet row to an entry object. The tab carries what the row cannot: its type, and an
  * expenses tab's payer. The row's POSITION is deliberately not part of the result.
  *
@@ -241,12 +252,7 @@ export function hasAnyCell(row) {
  * @returns {object|null} null for a blank or structurally invalid row
  */
 export function rowToEntry(row, tab) {
-  // Refuse rather than guess: a caller that cannot name the tab produces entries with the wrong
-  // type or payer, and a tab with no `type` is `recurring`, whose rows would all decode to null
-  // here — silently, which is the problem.
-  if (!tab?.columns || !tab.type) {
-    throw new TypeError(`rowToEntry needs a data tab descriptor, got ${String(tab?.title ?? tab)}`)
-  }
+  assertDataTab(tab, 'rowToEntry')
   if (!Array.isArray(row)) return null
 
   // A field the layout does not carry reads as blank, so one decoder serves both tabs.
@@ -296,11 +302,7 @@ function rowFromFields(tab, byField) {
 
 /** An entry as its tab's row: a field that tab does not carry is simply not written. */
 export function entryToRow(entry, tab) {
-  // A tab with no `type` holds no entries, so writing one would fill six of the `recurring` tab's
-  // ten columns with values that mean something else entirely.
-  if (!tab?.columns || !tab.type) {
-    throw new TypeError(`entryToRow needs a data tab descriptor, got ${String(tab?.title ?? tab)}`)
-  }
+  assertDataTab(tab, 'entryToRow')
   const byField = {
     id: entry.id,
     date: entry.date,

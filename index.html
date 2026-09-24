@@ -8,70 +8,36 @@
     />
     <meta name="theme-color" content="#f7f5f2" />
     <meta name="color-scheme" content="light" />
-    <!--
-      An inline data-URI favicon rather than a file: it costs no request at all,
-      and without one every page load logs a 404 for /favicon.ico. Covered by
-      `img-src 'self' data:` in the CSP below.
-    -->
+    <!-- Inline, so it costs no request and there is no /favicon.ico 404. -->
     <link
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%233d4e8b'/%3E%3Cpath d='M10 9l6 7 6-7' stroke='white' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M10.5 17.5h11M10.5 21h11M16 16v7' stroke='white' stroke-width='2.5' stroke-linecap='round'/%3E%3C/svg%3E"
     />
     <!--
-      Home Screen install (iOS Safari 26+): Share -> Add to Home Screen. The
-      service worker is generated into dist/ by scripts/build-sw.js and
-      registered from main.jsx in production only — it is what makes a cold
-      launch do no network work, since Pages serves even content-hashed assets
-      with max-age=600. `apple-touch-icon` (not the SVG favicon) is what iOS
-      actually uses for the home screen tile and splash flash; PNGs live in
-      `public/`.
+      Plain absolute paths: Vite's dev server prepends `base` once, and %BASE_URL%
+      would double it. iOS uses apple-touch-icon, not the favicon, for the tile.
     -->
-    <!-- Plain absolute paths, like the script tag below: Vite's dev server
-         prepends `base` to a leading-slash href exactly once. %BASE_URL%
-         already resolves to the base itself, so using it here would double
-         it (`/verbose-octo-pancake/verbose-octo-pancake/...`) in dev. -->
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="apple-touch-icon" href="/icons/icon-180.png" />
-    <!-- Safari still only recognizes the apple- prefixed tag; the unprefixed
-         one is the standards-track name Chromium now asks for instead.
-         Harmless to ship both. -->
+    <!-- Safari reads only the apple- prefixed tag; Chromium asks for the other. -->
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Finances" />
     <!--
-      Warm the sockets for the three hosts a fresh launch talks to, in the order it
-      talks to them: the token endpoint, the origin its /exec 302 lands on, and the
-      Sheets API. All three are strictly serialized after JS boot — the token has to
-      exist before the batchGet — so on cellular their handshakes are several hundred
-      ms of the wait for fresh data. Starting them at parse time overlaps that with
-      the bundle's own parse and compile.
-
-      This does not touch first paint, which is already cached and network-free; it
-      only shortens the gap to the server's copy. `crossorigin` is load-bearing: the
-      real requests are anonymous CORS, and without it the warmed socket belongs to
-      the credentialed pool and is not reused. No CSP change — all three are already
-      in `connect-src`, and a preconnect is a hint rather than a fetch.
+      The three hosts a launch talks to, in order, each serialized behind the last:
+      warming them at parse time overlaps the handshakes with the bundle's boot.
+      `crossorigin` is load-bearing: the real requests are anonymous CORS, and a
+      credentialed socket sits in a pool they never reuse.
     -->
     <link rel="preconnect" href="https://script.google.com" crossorigin />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
     <link rel="preconnect" href="https://sheets.googleapis.com" crossorigin />
     <!--
-      An allowlist, not boilerplate. No third-party JavaScript executes in this
-      app at all: `script-src 'self'` is possible because there is no Google
-      Identity Services script and no Picker iframe any more — the token comes
-      from our own Apps Script endpoint over `fetch`.
-
-      `script.googleusercontent.com` looks redundant next to `script.google.com`,
-      and is not: `/exec` answers with a 302 to it. Current Chrome does not
-      re-check `connect-src` against a redirect target, but browsers have differed
-      and Safari is the primary target here, so it stays.
-
-      Note this tag does NOT cover the service worker's own execution context —
-      a worker's CSP comes from the headers served with its script, and GitHub
-      Pages sends none. That is why the service worker never intercepts a
-      cross-origin request: it must not end up an uncovered proxy in front of the
-      hosts below.
+      `script-src 'self'`: no third-party script runs; the token comes over fetch.
+      script.googleusercontent.com is where /exec 302s to, and browsers differ on
+      checking connect-src against a redirect. This tag does not cover the service
+      worker, which is why it never intercepts a cross-origin request.
     -->
     <meta
       http-equiv="Content-Security-Policy"

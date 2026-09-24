@@ -287,6 +287,10 @@
 }
 
 .segmented__option {
+  /* The hidden input's containing block, as `.swatch` is: otherwise it is placed
+     against an ancestor outside the sheet's scroller, and VoiceOver's cursor and
+     the sheet's scroll-into-view both chase a stale position. */
+  position: relative;
   display: flex;
   flex: 1 1 0;
   align-items: center;

@@ -151,7 +151,7 @@ export function isShare(value) {
 
 /**
  * Read a share — a `payer_share` cell, or a `default_split_p*` row — into a fraction in [0,1].
- * Anything above 1 is a percentage, and a trailing `%` is accepted, because a spreadsheet is where
+ * Anything above 1 is a percentage, as is anything with a trailing `%`, because a spreadsheet is where
  * people write 50 rather than 0.5; with two readings of that rule the same `50` would mean "half"
  * in the config tab and "the payer covers all of it" in `payer_share`. The WHOLE string has to be a
  * number, hence not `parseFloat`: that reads `'0,5'` as 0 — the payer covering nothing.
@@ -161,17 +161,21 @@ export function isShare(value) {
  */
 export function parseShare(value) {
   let raw
+  let percent = false
   if (typeof value === 'number') {
     raw = value
   } else if (typeof value === 'string') {
-    const text = value.trim().replace(/%$/, '')
+    const trimmed = value.trim()
+    percent = trimmed.endsWith('%')
+    const text = percent ? trimmed.slice(0, -1) : trimmed
     if (!SHARE_TEXT.test(text)) return null
     raw = Number(text)
   } else {
     return null
   }
   if (!Number.isFinite(raw) || raw < 0) return null
-  const fraction = raw > 1 ? raw / 100 : raw
+  // A `%` is always a percentage: `1%` is a hundredth, not the whole.
+  const fraction = percent || raw > 1 ? raw / 100 : raw
   return Math.min(1, Math.max(0, fraction))
 }
 

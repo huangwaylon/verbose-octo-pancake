@@ -24,6 +24,7 @@ import { TemplateFormSheet } from '../src/components/TemplateFormSheet.jsx'
 import { ConfirmDeleteSheet } from '../src/components/ConfirmDeleteSheet.jsx'
 import { ConfirmSheet } from '../src/components/ConfirmSheet.jsx'
 import { DeletedList } from '../src/components/DeletedList.jsx'
+import { SheetFormFooter } from '../src/components/SheetFormFooter.jsx'
 
 /**
  * The DECISIONS a component makes rather than whether it renders at all: field order, which mode
@@ -308,6 +309,38 @@ describe('entry form', () => {
     expect(render({}, {}, { mode: 'add' })).not.toContain('Delete this entry')
   })
 
+  // A form cancelled back to from its delete confirmation remounts, so it resumes from what was
+  // TYPED. From the parsed entry an amount mid-edit comes back blank, and the next Save is a
+  // different number from the one on screen a moment ago.
+  it('resumes the fields as typed, amount and split included, when handed them back', () => {
+    const typed = {
+      amount: '12,3x',
+      payer: PERSON.P2,
+      date: '2026-08-09',
+      category: 'Dining',
+      description: 'Ozeki ',
+      // Custom on exactly the even share: rebuilt from a share, this would come back as Even.
+      split: { mode: 'custom', percent: 50, share: 0.5 },
+    }
+    const markup = renderToStaticMarkup(
+      <EntryFormSheet
+        draft={{ ...draft({ amountYen: 900, payerShare: 0.5 }, 'edit'), typed }}
+        config={{ ...config, categories: ['Groceries', 'Dining'] }}
+        me={PERSON.P1}
+        onSubmit={noop}
+        onDelete={noop}
+        onClose={noop}
+      />,
+    )
+    expect(markup).toContain('value="12,3x"')
+    expect(markup).toContain('value="Ozeki "')
+    expect(markup).toContain('value="2026-08-09"')
+    expect(markup).toContain('<option value="Dining" selected="">Dining</option>')
+    expect(markup).toContain('name="payer" checked="" value="p2"')
+    expect(markup).toContain('name="split" checked="" value="custom"')
+    expect(markup).not.toContain('value="900"')
+  })
+
   it('points the footer’s submit button at the form it sits outside of', () => {
     // Save sits in the footer, outside the <form>: break this pair and it silently does nothing.
     const markup = render({})
@@ -359,11 +392,33 @@ describe('recurring form', () => {
     expect(render()).toContain('sheet__panel--full')
   })
 
-  it('keeps the day inside the 1-31 a month can name', () => {
-    // The validator refuses the rest; a native min/max is what stops it being typed.
-    const markup = render()
-    expect(markup).toContain('min="1"')
-    expect(markup).toContain('max="31"')
+  it('takes the day on the digit keypad, and at most two digits of it', () => {
+    // `type="number"` raises iOS's punctuation keyboard, and its min/max bind nothing typed;
+    // `templateFormProblem` judges the string, so the field only has to make digits easy.
+    const day = render().match(/<input id="template-day"[^>]*>/)[0]
+    expect(day).toContain('type="text"')
+    expect(day).toContain('inputMode="numeric"')
+    expect(day).toContain('maxLength="2"')
+  })
+
+  it('resumes the fields as typed, a variable amount included, when handed them back', () => {
+    // The fixed-cost bug: an unparseable amount rebuilt from `amountYen` comes back blank, and
+    // blank is a VALID answer here, so the next Save turns a fixed cost variable.
+    const template = { ...newTemplate(PERSON.P1), description: 'Rent', amountYen: 220000 }
+    const typed = {
+      description: 'Rent (new flat)',
+      amount: '23O000',
+      category: template.category,
+      payer: PERSON.P1,
+      day: '3x',
+      split: null,
+    }
+    const markup = render({ draft: { mode: 'edit', template, typed } })
+    expect(markup).toContain('value="23O000"')
+    expect(markup).toContain('value="Rent (new flat)"')
+    expect(markup).toContain('value="3x"')
+    expect(markup).not.toContain('value="220,000"')
+    expect(markup).not.toContain('value="220000"')
   })
 
   it('is a modal dialog named by its own title', () => {
@@ -391,6 +446,27 @@ describe('recurring form', () => {
     const stale = { ...newTemplate(PERSON.P1), category: 'Renamed' }
     const markup = render({ draft: { mode: 'edit', template: stale } })
     expect(markup).toContain('<option value="Renamed" selected="">Renamed</option>')
+  })
+})
+
+describe('form footer', () => {
+  const render = (props) =>
+    renderToStaticMarkup(<SheetFormFooter formId="f" onCancel={noop} {...props} />)
+
+  it('keeps naming the submit button while a save is in flight', () => {
+    // A spinner INSTEAD of the label is a nameless "button, dimmed", and a narrower button
+    // mid-tap slides Cancel under the thumb.
+    const submit = (markup) => markup.match(/<button type="submit"[\s\S]*?<\/button>/)[0]
+    for (const [editing, label] of [
+      [true, 'Save'],
+      [false, 'Add'],
+    ]) {
+      const busy = submit(render({ busy: true, editing }))
+      expect(busy).toContain('class="spinner"')
+      expect(busy).toContain(`${label}</button>`)
+      expect(busy).toContain('disabled=""')
+      expect(submit(render({ busy: false, editing }))).not.toContain('spinner')
+    }
   })
 })
 

@@ -9,7 +9,9 @@ import {
   hasLoaded,
   isRefreshing,
   blocksReload,
+  entryWriteRefusal,
   compactRefusal,
+  createReadGate,
   entryById,
   entryFromInput,
   hasPendingWrite,
@@ -21,6 +23,7 @@ import {
   noticeKeys,
   reconcileById,
   reverted,
+  sameTemplates,
   settled,
   sheetExtrasFrom,
   shouldRefresh,
@@ -52,10 +55,29 @@ afterEach(() => {
 const entry = (id, over = {}) => expense({ id, ...over })
 
 describe('mergeLoaded', () => {
-  it('hands back the server list itself when nothing is in flight', () => {
-    // Identity, not equality: `applyLoad` passes it to `setEntries` and `writeSnapshot` both.
-    const loaded = [entry('a'), entry('b')]
-    expect(mergeLoaded([entry('a')], loaded)).toBe(loaded)
+  it('takes the server list when nothing is in flight, keeping each unchanged row’s object', () => {
+    // One changed row must re-render one memo'd `EntryRow`, not every row in the ledger.
+    const current = [entry('a'), entry('b', { amountYen: 1000 })]
+    const loaded = [entry('a'), entry('b', { amountYen: 2000 }), entry('c')]
+    const merged = mergeLoaded(current, loaded)
+    expect(merged).toEqual(loaded)
+    expect(merged[0]).toBe(current[0])
+    expect(merged[1]).toBe(loaded[1])
+    expect(merged[2]).toBe(loaded[2])
+  })
+
+  it('keeps each unchanged row’s object beside a pending one, too', () => {
+    const current = [entry('a'), { ...entry('b'), pending: true }, entry('c')]
+    const loaded = [entry('a'), entry('b', { description: 'old' }), entry('c', { amountYen: 5 })]
+    const merged = mergeLoaded(current, loaded)
+    expect(merged[0]).toBe(current[0])
+    expect(merged[1]).toBe(current[1])
+    expect(merged[2]).toBe(loaded[2])
+  })
+
+  it('hands back the list on screen when only pending rows are in it and the read agrees', () => {
+    const current = [entry('a'), { ...entry('new'), pending: true }]
+    expect(mergeLoaded(current, [entry('a')])).toBe(current)
   })
 
   it('hands back the list already on screen when the read changed nothing', () => {
@@ -83,19 +105,25 @@ describe('mergeLoaded', () => {
 
     for (const [field, value] of Object.entries(differences)) {
       const loaded = [{ ...entry('a'), [field]: value }]
-      expect(mergeLoaded([entry('a')], loaded), field).toBe(loaded)
+      const merged = mergeLoaded([entry('a')], loaded)
+      expect(merged[0], field).toBe(loaded[0])
     }
   })
 
   it('takes the server list when a row moved, gained one or lost one', () => {
+    const two = [entry('a'), entry('b')]
     const reordered = [entry('b'), entry('a')]
-    expect(mergeLoaded([entry('a'), entry('b')], reordered)).toBe(reordered)
+    expect(mergeLoaded(two, reordered)).toEqual(reordered)
+    expect(mergeLoaded(two, reordered)).not.toBe(two)
 
+    const one = [entry('a')]
     const gained = [entry('a'), entry('b')]
-    expect(mergeLoaded([entry('a')], gained)).toBe(gained)
+    expect(mergeLoaded(one, gained)).toEqual(gained)
+    expect(mergeLoaded(one, gained)).not.toBe(one)
 
     const lost = [entry('a')]
-    expect(mergeLoaded([entry('a'), entry('b')], lost)).toBe(lost)
+    expect(mergeLoaded(two, lost)).toEqual(lost)
+    expect(mergeLoaded(two, lost)).not.toBe(two)
   })
 
   it('keeps a pending row the read has not caught up with yet', () => {
@@ -286,17 +314,122 @@ describe('counting tombstones', () => {
 })
 
 describe('status while reading', () => {
-  it('gates the UI on the first read of a session only', () => {
-    // `loading` shows a gate; every later read, a cached launch (`stale`) included, has content.
+  const connectedState = {
+    connectionStatus: 'connected',
+    spreadsheetId: 'sheet-1',
+    connectionFailed: false,
+    me: PERSON.P1,
+  }
+
+  it('gates the UI until something has been shown', () => {
+    // `loading` shows a gate; every read with content on screen, a cached launch included, does not.
     expect(statusOnLoadStart('idle')).toBe('loading')
     expect(statusOnLoadStart('stale')).toBe('refreshing')
     expect(statusOnLoadStart('ready')).toBe('refreshing')
-    expect(statusOnLoadStart('error')).toBe('refreshing')
+    expect(statusOnLoadStart('refreshing')).toBe('refreshing')
+  })
+
+  it('keeps the gate up for a Retry from the read-error screen', () => {
+    // `error` means nothing ever loaded: `refreshing` there ungates an empty ledger at ¥0 settled.
+    expect(gateFor({ ...connectedState, ledgerStatus: statusOnLoadStart('error') })).toBe('loading')
+  })
+
+  it('keeps the gate up for a second read begun during the first', () => {
+    expect(gateFor({ ...connectedState, ledgerStatus: statusOnLoadStart('loading') })).toBe(
+      'loading',
+    )
   })
 
   it('keeps cached data on a failure rather than replacing it with an error', () => {
     expect(statusOnLoadFailure(true)).toBe('stale')
     expect(statusOnLoadFailure(false)).toBe('error')
+  })
+})
+
+describe('which read may apply', () => {
+  it('applies a read nothing overtook', () => {
+    const gate = createReadGate()
+    expect(gate.start().verdict()).toBe('apply')
+  })
+
+  it('drops an older read that resolves after a newer one', () => {
+    // Out of order on a flaky connection: the older reply must win neither state nor the cache.
+    const gate = createReadGate()
+    const first = gate.start()
+    const second = gate.start()
+    expect(second.verdict()).toBe('apply')
+    expect(first.verdict()).toBe('drop')
+  })
+
+  it('drops a read in flight when the sheet is left', () => {
+    const gate = createReadGate()
+    const read = gate.start()
+    gate.invalidate()
+    expect(read.verdict()).toBe('drop')
+  })
+
+  it('re-reads rather than apply a read an entry write settled during', () => {
+    // The server answered before the write landed, and `pending` is already cleared.
+    const gate = createReadGate()
+    const read = gate.start()
+    gate.writeSettled()
+    expect(read.verdict()).toBe('reread')
+    // A read begun after the write is not affected by it.
+    expect(gate.start().verdict()).toBe('apply')
+  })
+
+  it('still drops a superseded read, whatever settled meanwhile', () => {
+    // Re-reading from a stale read would race the newer one it lost to.
+    const gate = createReadGate()
+    const read = gate.start()
+    gate.writeSettled()
+    gate.start()
+    expect(read.verdict()).toBe('drop')
+  })
+
+  it('asks for a re-read where applying the stale reply would drop a settled append', () => {
+    // The sequence the gate exists for: a read starts, a tick appends, the append settles, then
+    // the read — answered before the append — returns. Applied, it removes the row.
+    const gate = createReadGate()
+    const read = gate.start()
+    const added = entry('rent#2026-09')
+    let onScreen = withPending([entry('a')], added)
+    onScreen = acknowledge(onScreen, added)
+    gate.writeSettled()
+    const staleReply = [entry('a')]
+    expect(mergeLoaded(onScreen, staleReply).map((item) => item.id)).toEqual(['a'])
+    expect(read.verdict()).toBe('reread')
+  })
+})
+
+describe('sameTemplates', () => {
+  const template = (over = {}) => ({
+    id: 'rent',
+    description: 'Rent',
+    amountYen: 220000,
+    category: 'Housing',
+    payer: 'p1',
+    payerShare: null,
+    months: [1, 7],
+    dayOfMonth: 27,
+    activeFrom: null,
+    activeTo: null,
+    ...over,
+  })
+
+  it('holds for a fresh read of the same declarations, month lists included', () => {
+    expect(sameTemplates([template()], [template()])).toBe(true)
+    expect(sameTemplates([], [])).toBe(true)
+  })
+
+  it('fails on any field, a month, the order or the count', () => {
+    expect(sameTemplates([template()], [template({ activeTo: '2026-09' })])).toBe(false)
+    expect(sameTemplates([template()], [template({ months: [1, 8] })])).toBe(false)
+    expect(sameTemplates([template()], [template({ months: [1] })])).toBe(false)
+    expect(sameTemplates([template()], [template({ months: null })])).toBe(false)
+    const other = template({ id: 'water' })
+    expect(sameTemplates([template(), other], [other, template()])).toBe(false)
+    expect(sameTemplates([template()], [template(), other])).toBe(false)
   })
 })
 
@@ -693,6 +826,15 @@ describe('blocksReload', () => {
     }
   })
 
+  it('blocks while a delete confirmation holds a form to return to', () => {
+    for (const kind of ['entry', 'template']) {
+      const overlay = { kind: 'confirmEntry', returnTo: { kind } }
+      expect(blocksReload({ overlay, entries: settledList, writing: false }), kind).toBe(true)
+    }
+    const fromRow = { kind: 'confirmEntry', returnTo: null }
+    expect(blocksReload({ overlay: fromRow, entries: settledList, writing: false })).toBe(false)
+  })
+
   it('blocks while an optimistic entry write is unacknowledged', () => {
     const pending = [{ id: 'a' }, { id: 'b', pending: true }]
     expect(blocksReload({ overlay: null, entries: pending, writing: false })).toBe(true)
@@ -720,6 +862,14 @@ describe('blocksReload', () => {
     expect(
       blocksReload({ overlay: { kind: 'recurring' }, entries: settledList, writing: false }),
     ).toBe(false)
+  })
+})
+
+describe('entryWriteRefusal', () => {
+  it('refuses an entry that has left state, and one whose own write is still in flight', () => {
+    expect(entryWriteRefusal(undefined)).toBe('error.entryGone')
+    expect(entryWriteRefusal({ id: 'a', pending: true })).toBe('error.stillSaving')
+    expect(entryWriteRefusal({ id: 'a' })).toBeNull()
   })
 })
 
@@ -752,6 +902,13 @@ describe('compactRefusal', () => {
 
   it('puts busy ahead of nothing-to-remove, so a pending write is never ignored', () => {
     expect(compactRefusal([{ id: 'a', pending: true }], 0)).toEqual({ removed: 0, busy: true })
+  })
+
+  it('refuses as BUSY while a template write or another compact is in flight', () => {
+    // Two compacts at once each delete by row numbers the other one shifts: live rows go.
+    expect(compactRefusal([gone], 0, 1)).toEqual({ removed: 0, busy: true })
+    expect(compactRefusal([{ id: 'a' }], 1, 2)).toEqual({ removed: 0, busy: true })
+    expect(compactRefusal([gone], 0, 0)).toBe(null)
   })
 })
 

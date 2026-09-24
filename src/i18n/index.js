@@ -99,8 +99,9 @@ export function t(key, vars) {
 
 /**
  * The one way to throw something a person will read. Key and vars stay on the error so
- * `errorMessage` can re-translate rather than render a bare `{count}`. `sheets.js` and
- * `connection.js` deliberately keep English and attach an `i18nKey` instead.
+ * `errorMessage` can re-translate rather than render a bare `{count}`. A failed HTTP request is the
+ * exception — `sheets.js`'s `request` and `connection.js` keep the API's English on `.message`
+ * and attach an `i18nKey` beside it.
  */
 export function i18nError(key, vars) {
   const error = new Error(translate(store.get(), key, vars))

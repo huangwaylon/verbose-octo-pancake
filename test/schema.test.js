@@ -505,12 +505,6 @@ describe('rowToEntry / entryToRow round trip', () => {
 })
 
 describe('makeEntry', () => {
-  it('is deterministic for the same input', () => {
-    const a = makeEntry({ id: 'fixed', amountYen: 100 })
-    const b = makeEntry({ id: 'fixed', amountYen: 100 })
-    expect(a).toEqual(b)
-  })
-
   // An entry reads no clock, so a fixture needs nothing injected to be reproducible. `deletedAt`
   // is the one timestamp left, and whoever performs the delete stamps it.
   it('reads no clock, and claims no timestamps', () => {

@@ -117,7 +117,7 @@ export function IdentityGate({ config, onPick }) {
 
 export function LoadingGate({ label }) {
   return (
-    <div className="gate" aria-busy="true">
+    <div className="gate" role="status" aria-busy="true">
       <span className="spinner spinner--lg" />
       <span className="visually-hidden">{label}</span>
     </div>

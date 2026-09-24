@@ -86,7 +86,9 @@ describe('gates render', () => {
   it('announces the wait with the label the caller supplies', () => {
     // The caller says what is loading, so one spinner serves the sheet, the config and the rows.
     const markup = renderToStaticMarkup(<LoadingGate label="Loading your sheet" />)
-    expect(markup).toContain('aria-busy="true"')
+    // A live region on the wrapper, or the visually-hidden label is text nobody is told about:
+    // the gate replaces the screen without a page change.
+    expect(markup).toContain('<div class="gate" role="status" aria-busy="true">')
     expect(markup).toContain('Loading your sheet')
   })
 })
@@ -691,6 +693,13 @@ describe('settings renders', () => {
     expect(markup).toMatch(/<button[^>]*disabled/)
   })
 
+  it('keeps the compact button its own width, and its outcome outside the row', () => {
+    // Directly in the column-flex `.field` it stretches the full width of the sheet.
+    expect(render({ tombstoneCount: 2 })).toMatch(
+      /<div class="row"><button type="button" class="btn btn--danger btn--sm">Permanently remove 2 rows/,
+    )
+  })
+
   it('says how many rows compacting would remove, pluralised', () => {
     expect(render({ tombstoneCount: 1 })).toContain('Permanently remove 1 row')
     expect(render({ tombstoneCount: 4 })).toContain('Permanently remove 4 rows')
@@ -705,8 +714,12 @@ describe('settings renders', () => {
   it('names the accent presets for a screen reader, not by swatch colour alone', () => {
     const markup = render()
     // The swatch list specifically: a bare `role="radiogroup"` check passes on the two
-    // Segmented groups above it.
-    expect(markup).toContain('<div class="swatches" role="radiogroup" aria-label="Accent">')
+    // Segmented groups above it. Named by the VISIBLE label, so the name has to resolve.
+    const labelledBy = markup.match(
+      /<div class="swatches" role="radiogroup" aria-labelledby="([^"]+)">/,
+    )?.[1]
+    expect(labelledBy).toBeTruthy()
+    expect(markup).toContain(`<span class="field__label" id="${labelledBy}">Accent</span>`)
     for (const preset of ['Indigo', 'Pine', 'Teal', 'Plum', 'Sepia']) {
       expect(markup).toContain(preset)
     }

@@ -252,6 +252,7 @@ export default {
   'error.notOurSheet':
     'That spreadsheet already has other tabs and none of this app’s, so it is probably not the ledger. Check the SHEET_ID script property.',
   'error.entryGone': 'That entry is no longer in the sheet. Refresh to see the latest data.',
+  'error.stillSaving': 'That entry is still saving. Try again in a moment.',
   // Thrown for whichever tab a write needed, not the expenses ones alone, so it names none.
   'error.missingTabs': 'Could not find that tab in the sheet.',
   'error.badKey': 'That app key was rejected. Check it, or ask for the current one.',

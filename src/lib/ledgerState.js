@@ -44,14 +44,22 @@ function supersedes(entry, kept) {
 }
 
 /**
- * Whether two entries are the same row, field for field. Key-driven rather than a hand-written
- * field list, so a field added to `rowToEntry` is covered: a list that missed one would report two
- * different rows as equal and freeze the newer one off the screen.
+ * Whether two entries — or two templates — are the same row, field for field. Key-driven rather
+ * than a hand-written field list, so a field added to `rowToEntry` is covered: a list that missed
+ * one would report two different rows as equal and freeze the newer one off the screen. An array
+ * field (a template's `months`) compares by its items.
  */
 function sameEntry(a, b) {
   const keys = Object.keys(a)
   if (keys.length !== Object.keys(b).length) return false
-  return keys.every((key) => a[key] === b[key])
+  return keys.every((key) => {
+    const x = a[key]
+    const y = b[key]
+    if (Array.isArray(x) && Array.isArray(y)) {
+      return x.length === y.length && x.every((item, index) => item === y[index])
+    }
+    return x === y
+  })
 }
 
 /**
@@ -65,25 +73,29 @@ function sameEntry(a, b) {
  * Rows the sheet no longer has and that are not pending leave. Order follows the sheet, appends
  * last.
  *
- * A read that changed nothing returns the list ALREADY ON SCREEN, so `setEntries` can bail out; a
- * fresh array would re-run every memo and re-serialize the snapshot to find the bytes match. Safe
- * only because `sameEntry` is exact.
+ * Every row the read did not change keeps its on-screen OBJECT, so one edit re-renders one memo'd
+ * row, and a read that changed nothing returns the list already on screen, so `setEntries` bails.
+ * Safe only because `sameEntry` is exact.
  */
 export function mergeLoaded(current, loaded) {
   const pending = new Map()
-  for (const entry of current) if (entry.pending) pending.set(entry.id, entry)
-  if (pending.size === 0) {
-    const unchanged =
-      current.length === loaded.length &&
-      current.every((entry, index) => sameEntry(entry, loaded[index]))
-    return unchanged ? current : loaded
-  }
+  const onScreen = new Map()
+  for (const entry of current) (entry.pending ? pending : onScreen).set(entry.id, entry)
 
-  const merged = loaded.map((entry) => pending.get(entry.id) ?? entry)
-  const appended = [...pending.values()].filter(
-    (entry) => !loaded.some((item) => item.id === entry.id),
-  )
-  return appended.length ? [...merged, ...appended] : merged
+  let merged = loaded.map((entry) => {
+    const mine = pending.get(entry.id)
+    if (mine) return mine
+    const shown = onScreen.get(entry.id)
+    return shown && sameEntry(shown, entry) ? shown : entry
+  })
+  if (pending.size) {
+    const loadedIds = new Set(loaded.map((entry) => entry.id))
+    const appended = [...pending.values()].filter((entry) => !loadedIds.has(entry.id))
+    if (appended.length) merged = [...merged, ...appended]
+  }
+  const unchanged =
+    merged.length === current.length && merged.every((entry, index) => entry === current[index])
+  return unchanged ? current : merged
 }
 
 /** The entry with this id, or undefined. What a failed write reverts to. */
@@ -171,27 +183,47 @@ export function hasPendingWrite(entries) {
  *
  * Three inputs, because `pending` cannot cover them all:
  *
- * - An open FORM, since a reload throws away what is half-typed.
+ * - An open FORM, or one a delete confirmation will return to, since a reload throws away what is
+ *   half-typed.
  * - An unacknowledged optimistic entry write (`hasPendingWrite`).
  * - A write carrying no optimistic flag: `saveTemplate`, `deleteTemplate` and `compact`, which sit
  *   outside `mergeLoaded` and change or leave the overlay BEFORE awaiting. The hard deletes are also
  *   irreversible, and reloading mid-`batchUpdate` leaves one half-reported.
  */
 export function blocksReload({ overlay, entries, writing }) {
-  const editing = overlay?.kind === 'entry' || overlay?.kind === 'template'
-  return editing || Boolean(writing) || hasPendingWrite(entries)
+  return (
+    isForm(overlay) || isForm(overlay?.returnTo) || Boolean(writing) || hasPendingWrite(entries)
+  )
+}
+
+/** A delete confirmation opened from a form holds that form's typed fields in `returnTo`. */
+function isForm(overlay) {
+  return overlay?.kind === 'entry' || overlay?.kind === 'template'
+}
+
+/**
+ * Why a write to an existing entry is refused before it starts, as an i18n key, or null. A row
+ * still pending may not be in the tab its payer names yet, and `updateEntry`/`setDeletedAt` resolve
+ * the row from that payer.
+ */
+export function entryWriteRefusal(previous) {
+  if (!previous) return 'error.entryGone'
+  if (previous.pending) return 'error.stillSaving'
+  return null
 }
 
 /**
  * Why `compact` will not run, or null if it can.
  *
  * Never while a write is in flight: deleting rows shifts every row below, and a pending
- * `updateEntry`/`setDeletedAt` already resolved its target row number. That reports `busy`, not a
- * `{removed: 0}` that would be a lie when there are rows to remove. `supersededRows` counts,
- * because those tombstones are real rows `reconcileById` hid behind a live one.
+ * `updateEntry`/`setDeletedAt` already resolved its target row number — and never beside another
+ * compact, whose row numbers this one would shift. `writing` counts the writes with no optimistic
+ * flag, a compact among them. That reports `busy`, not a `{removed: 0}` that would be a lie when
+ * there are rows to remove. `supersededRows` counts, because those tombstones are real rows
+ * `reconcileById` hid behind a live one.
  */
-export function compactRefusal(entries, supersededRows) {
-  if (hasPendingWrite(entries)) return { removed: 0, busy: true }
+export function compactRefusal(entries, supersededRows, writing = 0) {
+  if (writing > 0 || hasPendingWrite(entries)) return { removed: 0, busy: true }
   if (!tombstoneCount(entries) && !supersededRows) return { removed: 0 }
   return null
 }
@@ -216,12 +248,14 @@ export function newDraftEntry(person) {
 }
 
 /**
- * `loading` is the first read of a session and gates the UI; `refreshing` is every later one and
- * does not, because there is already something on screen — including a cached launch, which starts
- * at `stale`.
+ * `loading` gates the UI and `refreshing` does not, because there is already something on screen —
+ * including a cached launch, which starts at `stale`. `error` is only reached when nothing ever
+ * loaded, so its Retry is a first read too, and a read begun during `loading` still has nothing.
  */
 export function statusOnLoadStart(current) {
-  return current === 'idle' ? 'loading' : 'refreshing'
+  return current === 'idle' || current === 'loading' || current === 'error'
+    ? 'loading'
+    : 'refreshing'
 }
 
 /** Whether a read is in flight with something already on screen — the header's spinner. */
@@ -231,8 +265,8 @@ export function isRefreshing(status) {
 
 /**
  * Whether the sheet has actually been read this session, which is NOT "not loading": `stale` is a
- * cached launch, where the recurring page must say so rather than offer a Record for a month it
- * cannot see, and posting a cost twice is what that would cost.
+ * cached launch, holding no templates, where the recurring page must say it has not loaded rather
+ * than claim there are no recurring costs.
  */
 export function hasLoaded(status) {
   return status === 'ready' || isRefreshing(status)
@@ -247,6 +281,47 @@ export function statusOnLoadFailure(everLoaded) {
 }
 
 /**
+ * Which reads may apply. Only the NEWEST: two reads on a flaky connection can resolve out of order,
+ * and one in flight when the key is forgotten would repopulate a sheet the app has left. And none
+ * that an entry write SETTLED during: the server may have answered before the write landed, and
+ * with `pending` already cleared `mergeLoaded` would take that copy and undo the write on screen —
+ * a recurring tick's draft back, one tap from a duplicate. That read is re-read instead.
+ *
+ * @returns {{start: () => {verdict: () => 'apply'|'reread'|'drop'}, invalidate: () => void,
+ *   writeSettled: () => void}}
+ */
+export function createReadGate() {
+  let generation = 0
+  let writes = 0
+  return {
+    start() {
+      const startedAt = (generation += 1)
+      const writesAtStart = writes
+      return {
+        verdict() {
+          if (startedAt !== generation) return 'drop'
+          return writesAtStart === writes ? 'apply' : 'reread'
+        },
+      }
+    },
+    invalidate() {
+      generation += 1
+    },
+    writeSettled() {
+      writes += 1
+    },
+  }
+}
+
+/**
+ * Whether two template lists say the same thing, so a read that changed none keeps the array on
+ * screen and every memo keyed on it holds.
+ */
+export function sameTemplates(a, b) {
+  return a.length === b.length && a.every((template, index) => sameEntry(template, b[index]))
+}
+
+/**
  * Focus-triggered reads have a floor: window switching is constant and every refresh spends
  * per-user quota. `lastAt` of 0 means "never refreshed" and always passes — stated rather than
  * left to arithmetic, which would work only by accident of the epoch being 1970.
@@ -257,9 +332,8 @@ export function shouldRefresh(now, lastAt, floorMs) {
 }
 
 /**
- * Whether a hard delete can run: a gid still missing after a fresh `readSheetGids` is what makes
- * the caller refuse loudly rather than skip a tab and under-report what it removed. Takes the
- * tabs, because `compact` covers `DATA_TABS` and `deleteTemplate` the recurring one alone.
+ * Whether a fresh `readSheetGids` left any of these tabs unnamed, which `requireGids` refuses loudly
+ * rather than skip a tab — an append, `compact` or `deleteTemplate` acting on gid 0 instead.
  */
 export function missingGid(sheetGids, tabs) {
   return tabs.some((tab) => sheetGids?.[tab.title] == null)

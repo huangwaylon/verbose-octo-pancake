@@ -590,7 +590,9 @@ describe('monthKeysPresent', () => {
       expense('a', 100, { date: '2026-02-01' }),
       expense('b', 100, { date: '2025-11-30' }),
     ]
-    for (const key of monthKeysPresent(entries)) {
+    const keys = monthKeysPresent(entries)
+    expect(keys).toHaveLength(2)
+    for (const key of keys) {
       expect(filterByMonth(entries, key).length).toBeGreaterThan(0)
     }
   })

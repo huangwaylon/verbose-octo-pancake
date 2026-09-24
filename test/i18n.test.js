@@ -163,46 +163,20 @@ describe('catalog usage', () => {
     expect(referenced.size).toBeGreaterThan(60)
   })
 
-  it('names every accent preset, in every locale', () => {
-    // Same runtime-key blind spot: an added preset would show an empty swatch label.
+  // Every key below is built at runtime, invisible to the scans above: a new code reaches a person
+  // as the bare string "badAmount", and an added preset as an empty swatch label. The connection
+  // codes are attached to an error rather than passed to t(), so no usage scan can see them either.
+  it.each([
+    ['entry validation code', 'error.', Object.values(ENTRY_ERROR)],
+    ['template validation code', 'error.', Object.values(TEMPLATE_ERROR)],
+    ['connection failure code', 'error.', Object.values(CONNECTION_ERROR)],
+    ['accent preset', 'accent.', ACCENTS],
+  ])('translates every %s, in every locale', (_, prefix, codes) => {
+    expect(codes.length).toBeGreaterThan(0)
     const untranslated = []
-    for (const preset of ACCENTS) {
+    for (const code of codes) {
       for (const tag of SUPPORTED) {
-        if (!(`accent.${preset}` in CATALOGS[tag])) untranslated.push(`${tag}: accent.${preset}`)
-      }
-    }
-    expect(untranslated).toEqual([])
-  })
-
-  it('translates every validation code, in every locale', () => {
-    // `error.<code>` is built at runtime, invisible to the scans above: a new code reaches a
-    // person as the bare string "badAmount".
-    const untranslated = []
-    for (const code of Object.values(ENTRY_ERROR)) {
-      for (const tag of SUPPORTED) {
-        if (!(`error.${code}` in CATALOGS[tag])) untranslated.push(`${tag}: error.${code}`)
-      }
-    }
-    expect(untranslated).toEqual([])
-  })
-
-  it('translates every template validation code, in every locale', () => {
-    const untranslated = []
-    for (const code of Object.values(TEMPLATE_ERROR)) {
-      for (const tag of SUPPORTED) {
-        if (!(`error.${code}` in CATALOGS[tag])) untranslated.push(`${tag}: error.${code}`)
-      }
-    }
-    expect(untranslated).toEqual([])
-  })
-
-  it('translates every connection failure code, in every locale', () => {
-    // Worse still: attached to an error rather than passed to t(), so the usage scan above
-    // cannot see them either.
-    const untranslated = []
-    for (const code of Object.values(CONNECTION_ERROR)) {
-      for (const tag of SUPPORTED) {
-        if (!(`error.${code}` in CATALOGS[tag])) untranslated.push(`${tag}: error.${code}`)
+        if (!(`${prefix}${code}` in CATALOGS[tag])) untranslated.push(`${tag}: ${prefix}${code}`)
       }
     }
     expect(untranslated).toEqual([])

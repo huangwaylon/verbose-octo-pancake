@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
 import { defaultSplitFor, percentOf } from '../lib/split.js'
@@ -23,6 +23,7 @@ export function SettingsSheet({
   onClose,
 }) {
   const { t, locale, setLocale } = useT()
+  const accentLabelId = useId()
   const tn = useTNodes()
   const { name } = usePeopleLabels(config, me)
   const accent = useAccent()
@@ -85,8 +86,9 @@ export function SettingsSheet({
           hint={t('settings.languageHint')}
         />
 
-        <Field label={t('settings.accent')} hint={t('settings.accentHint')}>
-          <div className="swatches" role="radiogroup" aria-label={t('settings.accent')}>
+        {/* Named by the visible label, as `Segmented` is, rather than a second copy of it. */}
+        <Field label={t('settings.accent')} labelId={accentLabelId} hint={t('settings.accentHint')}>
+          <div className="swatches" role="radiogroup" aria-labelledby={accentLabelId}>
             {ACCENTS.map((preset) => (
               <label className="swatch" key={preset}>
                 <input
@@ -164,17 +166,19 @@ export function SettingsSheet({
         </Field>
 
         <Field label={t('settings.deletedRows')} description={t('settings.deletedRowsHint')}>
-          <button
-            type="button"
-            className="btn btn--danger btn--sm"
-            onClick={handleCompact}
-            disabled={busy || !tombstoneCount}
-          >
-            {busy ? <span className="spinner" /> : null}
-            {tombstoneCount
-              ? t('settings.removeRows', { count: tombstoneCount })
-              : t('settings.nothingToRemove')}
-          </button>
+          <div className="row">
+            <button
+              type="button"
+              className="btn btn--danger btn--sm"
+              onClick={handleCompact}
+              disabled={busy || !tombstoneCount}
+            >
+              {busy ? <span className="spinner" /> : null}
+              {tombstoneCount
+                ? t('settings.removeRows', { count: tombstoneCount })
+                : t('settings.nothingToRemove')}
+            </button>
+          </div>
           {/* Its outcome is a number nobody can infer, so it is spoken, not just shown. */}
           {message && (
             <p className="field__hint" role="status">

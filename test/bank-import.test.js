@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync, readFileSync, existsSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import { EXPENSE_COLUMNS, SETTLEMENT_COLUMNS } from '../src/schema.js'
 import { asFields } from './support/entries.js'
@@ -46,18 +46,28 @@ const python = (() => {
   return null
 })()
 
-/** Runs the importer over `STATEMENT` and returns both files as field maps. */
-function importStatement(args = []) {
+const tempDirs = []
+afterAll(() => {
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true })
+})
+
+/** Writes `statement` to a fresh temp dir and runs the importer over it. */
+function runImporter(statement, args) {
   const dir = mkdtempSync(join(tmpdir(), 'bank-'))
+  tempDirs.push(dir)
   const input = join(dir, 'statement.tsv')
   const output = join(dir, 'out.csv')
-  writeFileSync(input, `${STATEMENT}\n`, 'utf8')
-
+  writeFileSync(input, `${statement}\n`, 'utf8')
   execFileSync(python, ['scripts/bank_to_ledger.py', input, '-o', output, ...args], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   })
+  return output
+}
 
+/** Runs the importer over `STATEMENT` and returns both files as field maps. */
+function importStatement(args = []) {
+  const output = runImporter(STATEMENT, args)
   const read = (path) => {
     if (!existsSync(path)) return null
     const lines = readFileSync(path, 'utf8').trim().split('\n')
@@ -66,14 +76,23 @@ function importStatement(args = []) {
   return { expenses: read(output), settlements: read(output.replace(/\.csv$/, '.settlements.csv')) }
 }
 
-// The script pins `requires-python = ">=3.11"`, and a machine without one must say so rather than
-// report a pass: this is the only thing in the repo that executes those 670 lines.
+// The script pins `requires-python = ">=3.11"`. This is the only thing in the repo that executes
+// it, so CI must fail rather than skip; a machine without one says so rather than report a pass.
+if (!python && process.env.CI) throw new Error('bank_to_ledger: CI needs python >= 3.11')
 const when = python ? describe : describe.skip
 if (!python) console.warn('bank_to_ledger: no python >= 3.11 found, skipping')
 
 when('the bank importer', () => {
+  // Each distinct import runs once: spawning Python dominates this file's time.
+  let imported, reimported, headerless
+  beforeAll(() => {
+    imported = importStatement()
+    reimported = importStatement()
+    headerless = runImporter(STATEMENT, ['--no-header'])
+  })
+
   it('emits every value under its own heading, in the schema’s order', () => {
-    const { expenses } = importStatement()
+    const { expenses } = imported
 
     expect(expenses.header).toEqual(EXPENSE_COLUMNS)
     const first = asFields(expenses.rows[0], EXPENSE_COLUMNS)
@@ -90,7 +109,7 @@ when('the bank importer', () => {
   })
 
   it('writes whole yen, so the bank’s own decimals are not a 100x error', () => {
-    const { expenses } = importStatement()
+    const { expenses } = imported
     const amounts = expenses.rows.map((cells) => asFields(cells, EXPENSE_COLUMNS).amount)
 
     // '1400.000000' in the statement: ¥1400, not ¥140000 and not '1400.0'.
@@ -99,7 +118,7 @@ when('the bank importer', () => {
   })
 
   it('files an unmatched merchant as a shared Other rather than dropping it', () => {
-    const { expenses } = importStatement()
+    const { expenses } = imported
     const unmatched = expenses.rows
       .map((cells) => asFields(cells, EXPENSE_COLUMNS))
       .find((fields) => fields.description === 'ナニカベツノミセ')
@@ -108,7 +127,7 @@ when('the bank importer', () => {
   })
 
   it('sends a settlement to its own file, at its own layout', () => {
-    const { expenses, settlements } = importStatement()
+    const { expenses, settlements } = imported
 
     expect(settlements.header).toEqual(SETTLEMENT_COLUMNS)
     expect(settlements.rows).toHaveLength(1)
@@ -130,33 +149,15 @@ when('the bank importer', () => {
     const idsOf = ({ expenses }) =>
       expenses.rows.map((cells) => asFields(cells, EXPENSE_COLUMNS).id)
 
-    expect(idsOf(importStatement())).toEqual(idsOf(importStatement()))
+    expect(idsOf(reimported)).toEqual(idsOf(imported))
   })
 
   it('leaves out the header row when asked, since the sheet already has one', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bank-'))
-    const input = join(dir, 'statement.tsv')
-    const output = join(dir, 'out.csv')
-    writeFileSync(input, `${STATEMENT}\n`, 'utf8')
-    execFileSync(python, ['scripts/bank_to_ledger.py', input, '-o', output, '--no-header'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-
-    const first = readFileSync(output, 'utf8').trim().split('\n')[0].split(',')
+    const first = readFileSync(headerless, 'utf8').trim().split('\n')[0].split(',')
     expect(first[0]).toBe('2026-09-01')
   })
 
   it('refuses a currency that is not yen rather than converting it', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'bank-'))
-    const input = join(dir, 'statement.tsv')
-    writeFileSync(input, `2026年9月1日\tSOMETHING\tUSD\t\t100\t900\n`, 'utf8')
-
-    expect(() =>
-      execFileSync(python, ['scripts/bank_to_ledger.py', input, '-o', '-'], {
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      }),
-    ).toThrow()
+    expect(() => runImporter('2026年9月1日\tSOMETHING\tUSD\t\t100\t900', [])).toThrow()
   })
 })

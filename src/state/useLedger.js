@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { mergeConfig } from '../config.js'
 import { i18nError } from '../i18n/index.js'
-import { DATA_TABS, RECURRING, tabOf } from '../schema.js'
+import { tabOf } from '../schema.js'
 import * as sheets from '../lib/sheets.js'
+import { takeLaunchRead } from '../lib/launchRead.js'
 import {
   acknowledge,
   compactRefusal,
+  createReadGate,
   entryById,
+  entryWriteRefusal,
   entryFromInput,
   hasPendingWrite,
   looksUninitialized,
   mergeLoaded,
-  missingGid,
   NO_SHEET_EXTRAS,
+  sameTemplates,
   sheetExtrasFrom,
   reverted,
   settled,
@@ -54,12 +57,7 @@ export function useLedger(spreadsheetId) {
   const [config, setConfig] = useState(() => mergeConfig(seed?.config))
   const [status, setStatus] = useState(() => (seed ? 'stale' : 'idle'))
   const [error, setError] = useState(null)
-  /**
-   * The `recurring` tab as read. Deliberately NOT in the launch snapshot: that is the one input
-   * never decoded through a schema reader and it is restored in a `useState` initializer, so one
-   * bad cached row white-screens the first render — and a reminder loses nothing by arriving a
-   * round trip late.
-   */
+  /** The `recurring` tab as read. Not in the snapshot: a declaration loses nothing arriving late. */
   const [templates, setTemplates] = useState([])
   /**
    * What the last read found in the sheet and could not put in `entries`. None can be recovered
@@ -72,20 +70,28 @@ export function useLedger(spreadsheetId) {
   const everLoaded = useRef(Boolean(seed))
 
   /**
-   * How many writes carrying no optimistic flag are in flight — `saveTemplate`, `deleteTemplate`
-   * and `compact`. A COUNT, so two overlapping writes cannot have the first to finish declare the
-   * second done. It exists for `blocksReload`, since nothing in the entry list can see one of
-   * these.
+   * How many writes with no optimistic flag are in flight, which nothing in `entries` can see. A
+   * count, so the first of two to finish cannot declare both done; the ref is what `compact` reads,
+   * since the state lags a render behind.
    */
+  const writesRef = useRef(0)
   const [writesInFlight, setWritesInFlight] = useState(0)
   const tracked = useCallback(async (write) => {
-    setWritesInFlight((count) => count + 1)
+    writesRef.current += 1
+    setWritesInFlight(writesRef.current)
     try {
       return await write()
     } finally {
-      setWritesInFlight((count) => count - 1)
+      writesRef.current -= 1
+      setWritesInFlight(writesRef.current)
     }
   }, [])
+
+  /**
+   * The running `sheets.compact`. An edit or delete waits it out before resolving its row, since the
+   * compact shifts row numbers; an append has none to resolve.
+   */
+  const compactRun = useRef(null)
 
   /**
    * `entries` as of the last render, so a write can read the entry it is about to replace WITHOUT
@@ -122,13 +128,13 @@ export function useLedger(spreadsheetId) {
 
   const applyLoad = useCallback((data) => {
     setEntries((current) => mergeLoaded(current, data.entries ?? []))
-    // Kept as the SAME object when the tab said the same thing, because the config's identity is
-    // what every `memo` keyed on it compares. `mergeConfig` clones, so this cannot alias the
-    // previous merge's arrays either.
+    // The config and the templates stay the SAME objects when the read said the same thing,
+    // because identity is what every `memo` keyed on them compares.
     const changed = !sameSheetConfig(sheetConfigRef.current, data.sheetConfig)
     sheetConfigRef.current = data.sheetConfig
     if (changed) setConfig(mergeConfig(data.sheetConfig))
-    setTemplates(data.templates ?? [])
+    const templates = data.templates ?? []
+    setTemplates((current) => (sameTemplates(current, templates) ? current : templates))
     setSheetExtras(sheetExtrasFrom(data))
     setError(null)
     setStatus('ready')
@@ -136,17 +142,9 @@ export function useLedger(spreadsheetId) {
   }, [])
 
   /**
-   * Persist whatever is on screen, once nothing is in flight.
-   *
-   * Driven by the list rather than by each write, because a refresh that started before a delete
-   * returns the row still live and persisting that read puts a deleted expense back into the next
-   * cold launch's balance. Waiting for `pending` to clear is what keeps an unacknowledged row out
-   * of the cache.
-   *
-   * `config` is in the deps although the ref is what gets written, and it has to be: a read where
-   * only the CONFIG tab changed leaves `entries` at the same reference, so keyed on the list alone
-   * this never runs and the cache keeps a stale name, category list and `default_split_p*` — the
-   * one config value that moves money.
+   * Persist whatever is on screen once nothing is pending, so no unacknowledged row reaches the
+   * cache. `config` is a dep although the ref is what is written: a read that changed only the
+   * config tab leaves `entries` untouched.
    */
   useEffect(() => {
     if (!spreadsheetId || !everLoaded.current) return
@@ -154,20 +152,15 @@ export function useLedger(spreadsheetId) {
     persist(spreadsheetId, entries, sheetConfigRef.current)
   }, [spreadsheetId, entries, config, persist])
 
-  /**
-   * Counts every read started, so a reply that is not the newest can be dropped: two taps on a
-   * flaky connection can resolve out of order and the older reply would win both `setEntries` and
-   * the debounced `persist`. A read in flight when the key is forgotten would likewise repopulate
-   * state for a sheet the app has left, so the spreadsheet id is checked as well.
-   */
-  const loadGeneration = useRef(0)
+  /** Which read may apply: `createReadGate` holds the rule. */
+  const [readGate] = useState(createReadGate)
   /** When the sheet was last read, which is what the focus throttle is about. */
   const lastRefresh = useRef(0)
 
   const load = useCallback(
-    async (id) => {
-      const generation = (loadGeneration.current += 1)
-      const isCurrent = () => generation === loadGeneration.current
+    async function read(id) {
+      const gate = readGate.start()
+      const isCurrent = () => gate.verdict() !== 'drop'
       // Every read counts against the focus floor, this one included, or the launch read is
       // followed by a window switch spending a second read for the same data seconds later.
       lastRefresh.current = Date.now()
@@ -180,32 +173,31 @@ export function useLedger(spreadsheetId) {
         setError(cause)
         setStatus(statusOnLoadFailure(everLoaded.current))
       }
-      const apply = (data) => {
-        if (isCurrent()) applyLoad(data)
-      }
 
+      let data
       try {
-        apply(await sheets.loadAll(id))
+        data = await (takeLaunchRead(id) ?? sheets.loadAll(id))
       } catch (cause) {
         // A sheet never used has no tabs yet: set it up and retry once, the only path that builds
         // structure.
-        if (looksUninitialized(cause)) {
-          try {
-            // Checked BEFORE the write as well as after: this is the only path that adds tabs to
-            // somebody's spreadsheet, and by now the app may have been pointed at another one.
-            if (!isCurrent()) return
-            await sheets.ensureStructure(id)
-            if (!isCurrent()) return
-            apply(await sheets.loadAll(id))
-          } catch (secondCause) {
-            fail(secondCause)
-          }
-          return
+        if (!looksUninitialized(cause)) return fail(cause)
+        try {
+          // Checked BEFORE the write as well as after: this is the only path that adds tabs to
+          // somebody's spreadsheet, and by now the app may have been pointed at another one.
+          if (!isCurrent()) return
+          await sheets.ensureStructure(id)
+          if (!isCurrent()) return
+          data = await sheets.loadAll(id)
+        } catch (secondCause) {
+          return fail(secondCause)
         }
-        fail(cause)
       }
+
+      const verdict = gate.verdict()
+      if (verdict === 'apply') applyLoad(data)
+      else if (verdict === 'reread') await read(id)
     },
-    [applyLoad],
+    [applyLoad, readGate],
   )
 
   useEffect(() => {
@@ -218,7 +210,7 @@ export function useLedger(spreadsheetId) {
       // `loadedFor` is cleared so reconnecting to the same sheet still triggers a read. Bumping
       // the generation stops a read in flight repopulating state, and the snapshot, for the sheet
       // just left.
-      loadGeneration.current += 1
+      readGate.invalidate()
       loadedFor.current = null
       everLoaded.current = false
       sheetConfigRef.current = undefined
@@ -233,7 +225,7 @@ export function useLedger(spreadsheetId) {
     if (loadedFor.current === spreadsheetId) return
     loadedFor.current = spreadsheetId
     load(spreadsheetId)
-  }, [spreadsheetId, load])
+  }, [spreadsheetId, load, readGate])
 
   const refresh = useCallback(() => {
     if (!spreadsheetId) return Promise.resolve()
@@ -274,37 +266,37 @@ export function useLedger(spreadsheetId) {
       } catch (cause) {
         setEntries((current) => without(current, entry.id))
         throw cause
+      } finally {
+        readGate.writeSettled()
       }
     },
-    [spreadsheetId],
+    [spreadsheetId, readGate],
   )
 
   const editEntry = useCallback(
     async (input) => {
       const entry = entryFromInput(input)
 
-      /**
-       * `previous.payer` is the row's CURRENT tab, which `updateEntry` needs before it can move
-       * the row. Passing `undefined` takes the payer-changed branch: a second row appended and the
-       * original looked for in whichever tab it guessed — a duplicate expense, silently.
-       *
-       * The entry can genuinely be gone: the other person deleted it and a focus refresh dropped
-       * it while this form was open.
-       */
+      // `previous.payer` is the row's CURRENT tab, which `updateEntry` needs to move it. Gone is
+      // real: the other person deleted it and a refresh dropped it while this form was open.
       const previous = entryById(entriesRef.current, entry.id)
-      if (!previous) throw i18nError('error.entryGone')
+      const refusal = entryWriteRefusal(previous)
+      if (refusal) throw i18nError(refusal)
 
       setEntries((current) => withPendingEdit(current, entry))
       try {
+        await compactRun.current?.catch(() => {})
         await sheets.updateEntry(spreadsheetId, entry, previous.payer)
         setEntries((current) => settled(current, entry.id))
         return entry
       } catch (cause) {
         setEntries((current) => reverted(current, entry.id, previous))
         throw cause
+      } finally {
+        readGate.writeSettled()
       }
     },
-    [spreadsheetId],
+    [spreadsheetId, readGate],
   )
 
   const setDeleted = useCallback(
@@ -312,30 +304,28 @@ export function useLedger(spreadsheetId) {
       // The row's CURRENT tab comes from local state, as `editEntry` takes it, and absent is
       // refused rather than guessed. There is deliberately no payer parameter.
       const previous = entryById(entriesRef.current, id)
-      if (!previous) throw i18nError('error.entryGone')
+      const refusal = entryWriteRefusal(previous)
+      if (refusal) throw i18nError(refusal)
 
       setEntries((current) => withPendingDeletedAt(current, id, deletedAt))
       try {
+        await compactRun.current?.catch(() => {})
         await sheets.setDeletedAt(spreadsheetId, tabOf(previous), id, deletedAt)
         setEntries((current) => settled(current, id))
       } catch (cause) {
         setEntries((current) => reverted(current, id, previous))
         throw cause
+      } finally {
+        readGate.writeSettled()
       }
     },
-    [spreadsheetId],
+    [spreadsheetId, readGate],
   )
 
   const removeEntry = useCallback((id) => setDeleted(id, new Date().toISOString()), [setDeleted])
   const restoreEntry = useCallback((id) => setDeleted(id, null), [setDeleted])
 
-  /**
-   * The `recurring` tab's ONE write, and deliberately NOT optimistic: write, then re-read, as
-   * `compact` does. A template is written a handful of times a year, and the cost of a spinner on
-   * Save buys templates needing no place in the snapshot, no `pending` field and no revert path.
-   *
-   * Add, edit and retire are all this one call, which is what makes a retried add idempotent.
-   */
+  /** Add, edit and retire, all one call. Not optimistic: write, then re-read, as `compact` does. */
   const saveTemplate = useCallback(
     async (input) => {
       await tracked(async () => {
@@ -346,18 +336,10 @@ export function useLedger(spreadsheetId) {
     [spreadsheetId, refresh, tracked],
   )
 
-  /**
-   * Remove a recurring cost's row for good. Reads the gids fresh through `readSheetGids`, never
-   * `ensureStructure`, which WRITES and would re-seed a deleted config tab with this build's
-   * defaults. Loud rather than a silent no-op when the gid is missing, since there is no guess to
-   * make.
-   */
   const deleteTemplate = useCallback(
     async (template) => {
       await tracked(async () => {
-        const gids = await sheets.readSheetGids(spreadsheetId)
-        if (missingGid(gids, [RECURRING])) throw i18nError('error.missingTabs')
-        await sheets.deleteTemplate(spreadsheetId, gids[RECURRING.title], template.id)
+        await sheets.deleteTemplate(spreadsheetId, template.id)
         await refresh()
       })
     },
@@ -368,18 +350,22 @@ export function useLedger(spreadsheetId) {
   const compact = useCallback(async () => {
     // Both refusals — a write in flight, and nothing to remove — live in `lib`; this owns the
     // order.
-    const refusal = compactRefusal(entriesRef.current, sheetExtras.supersededRows)
+    const refusal = compactRefusal(
+      entriesRef.current,
+      sheetExtras.supersededRows,
+      writesRef.current,
+    )
     if (refusal) return refusal
 
     return tracked(async () => {
-      // Read the gids, never `ensureStructure`, which writes and would re-seed a deleted config
-      // tab. `values.batchGet` cannot carry a gid, so this read happens every time.
-      const gids = await sheets.readSheetGids(spreadsheetId)
-      // Loud rather than a silently half-compacted sheet: `sheets.compact` skips a tab it cannot
-      // name, which is right for it and wrong to leave unsaid here.
-      if (missingGid(gids, DATA_TABS)) throw i18nError('error.missingTabs')
-
-      const result = await sheets.compact(spreadsheetId, gids)
+      const run = sheets.compact(spreadsheetId)
+      compactRun.current = run
+      let result
+      try {
+        result = await run
+      } finally {
+        if (compactRun.current === run) compactRun.current = null
+      }
       await refresh()
       return result
     })

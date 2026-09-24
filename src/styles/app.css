@@ -240,10 +240,8 @@
   border-top: 1px solid var(--line);
 }
 
-/* A row is a row, not text: the same touch and selection rules `button.entry__main`
-   carries, so a long press on an edit affordance does not raise iOS's selection
-   magnifier. Unlike there, this class is only ever a button, so it needs no element
-   qualifier — which is also why the two blocks are one. */
+/* A row is a row, not text: its touch, selection and press rules are shared with
+   `button.entry__main`, below. */
 .recurring__main {
   display: flex;
   flex-direction: column;
@@ -251,27 +249,14 @@
   gap: var(--space-1);
   /* A form control's `width: auto` is FIT-CONTENT in WebKit, not fill-available, so without this
      a row whose name and meta are short is a 48px tap target in a full-width row — invisible
-     until the finger misses. It used to come from the grid track this row no longer needs. */
-  width: 100%;
+     until the finger misses. Wider by BOTH bleeds, so the press background overhangs the text
+     evenly; the sheet body's padding is wider than the bleed, so nothing clips. */
+  width: calc(100% + 2 * var(--space-2));
   min-height: var(--tap-target);
   margin-inline-start: calc(var(--space-2) * -1);
   padding: var(--space-2);
   border-radius: var(--radius-sm);
   text-align: left;
-  touch-action: manipulation;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-@media (hover: hover) {
-  .recurring__main:hover {
-    background-color: var(--sunken);
-  }
-}
-
-.recurring__main:active {
-  background-color: var(--sunken);
 }
 
 /* `overflow-wrap` rather than an ellipsis, for the reason at the top of this block.
@@ -612,14 +597,26 @@
   text-align: left;
 }
 
-button.entry__main {
+/* The two row affordances, so a long press raises no selection magnifier. The entry
+   one stays ELEMENT-qualified, for the inert span above; the recurring one is only
+   ever a button. */
+button.entry__main,
+.recurring__main {
   touch-action: manipulation;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
 }
 
-button.entry__main:active {
+@media (hover: hover) {
+  button.entry__main:hover,
+  .recurring__main:hover {
+    background-color: var(--sunken);
+  }
+}
+
+button.entry__main:active,
+.recurring__main:active {
   background-color: var(--sunken);
 }
 

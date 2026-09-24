@@ -47,7 +47,8 @@ export function BottomSheet({ title, full = false, onClose, children, footer }) 
     return () => {
       root.style.overflow = previous.root
       document.body.style.overflow = previous.body
-      // The opener is often gone by now: confirming a delete unmounts the row it came from.
+      // The opener is often gone by now: confirming a delete unmounts the row it came from. The add
+      // action is the fallback because it is the one control the signed-in screen always has.
       const fallback = document.querySelector('.add-action')
       const restore = opener?.isConnected ? opener : fallback
       restore?.focus?.({ preventScroll: true })

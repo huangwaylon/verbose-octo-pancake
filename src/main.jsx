@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import { syncDocumentLocale } from './i18n/index.js'
 import { syncDocumentAccent } from './lib/theme.js'
-import { getAccessToken, hasKey } from './lib/connection.js'
+import { getAccessToken, getSpreadsheetId, hasKey } from './lib/connection.js'
+import { startLaunchRead } from './lib/launchRead.js'
 import { registerServiceWorker } from './lib/serviceWorker.js'
 
 import './styles/tokens.css'
@@ -18,14 +19,19 @@ syncDocumentLocale()
 syncDocumentAccent()
 
 /**
- * Start the token before React. Everything after it is serialized, so every millisecond here is added
- * to the wait in full: from an effect it waits for the whole first render to commit — 90ms behind a
- * 120-entry snapshot, 165ms behind 400, on a 4x-throttled CPU.
+ * Start the launch read — or, with no sheet id yet, the token — before React. Everything after it
+ * is serialized, so from an effect it would wait for the whole first render to commit: 90ms behind
+ * a 120-entry snapshot, 165ms behind 400, on a 4x-throttled CPU.
  *
- * `tokenAtLeast` shares the single in-flight mint, and the rejection is swallowed because every other
- * caller reports it with a retry. Prod-only: these modules must not reach the network under vitest.
+ * The first `load` for the same sheet takes the read; the read mints through the single in-flight
+ * mint. A rejected mint is swallowed because every other caller reports it with a retry. Prod-only:
+ * these modules must not reach the network under vitest.
  */
-if (import.meta.env.PROD && hasKey()) getAccessToken().catch(() => {})
+if (import.meta.env.PROD && hasKey()) {
+  const spreadsheetId = getSpreadsheetId()
+  if (spreadsheetId) startLaunchRead(spreadsheetId)
+  else getAccessToken().catch(() => {})
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -121,7 +121,13 @@ export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
   // been considered and the answer holds until a reference changes.
   lastSource = { spreadsheetId, entries, config: sheetConfig }
   if (payload === lastPayload) return
-  if (payload.length > MAX_CHARS) return
+  // Too large is cleared rather than left: the old snapshot would paint an ever-staler balance on
+  // every cold launch.
+  if (payload.length > MAX_CHARS) {
+    lastPayload = null
+    writeStored(STORAGE_KEYS.snapshot, null)
+    return
+  }
   lastPayload = payload
   writeStored(STORAGE_KEYS.snapshot, payload)
 }

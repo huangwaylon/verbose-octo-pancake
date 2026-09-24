@@ -1,7 +1,8 @@
 {
   "name": "Shared Finances",
   "short_name": "Finances",
-  "description": "Groceries and food, split between two people.",
+  "description": "Everyday spending and recurring costs, split between two people.",
+  "id": ".",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",

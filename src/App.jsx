@@ -77,7 +77,15 @@ export default function App() {
 
   /** Both stable, or `EntryList`'s memo dies on every toast. */
   const openEntry = useCallback((entry) => setOverlay({ kind: 'entry', mode: 'edit', entry }), [])
-  const confirmDeleteEntry = useCallback((entry) => setOverlay({ kind: 'confirmEntry', entry }), [])
+  /**
+   * A confirmation opened from a form carries `returnTo`, that form's overlay with what was typed,
+   * so Cancel goes back to it; from a row's trash control there is none, and Cancel closes. One
+   * mechanism for entries and templates, and still one `overlay`.
+   */
+  const confirmDeleteEntry = useCallback(
+    (entry, returnTo = null) => setOverlay({ kind: 'confirmEntry', entry, returnTo }),
+    [],
+  )
 
   /**
    * Record a recurring cost the month is missing: one tap for a cost that needs nothing typed, the
@@ -234,7 +242,7 @@ export default function App() {
         <ConfirmDeleteSheet
           entry={overlay.entry}
           onConfirm={() => deleteEntry(overlay.entry)}
-          onClose={closeOverlay}
+          onClose={() => setOverlay(overlay.returnTo)}
         />
       )}
 
@@ -279,8 +287,9 @@ export default function App() {
           }
           onRetire={retire}
           onRestore={restore}
-          /* The EDITED template, so the confirmation names what is on screen. */
-          onDelete={(template) => setOverlay({ kind: 'confirmTemplate', template })}
+          onDelete={(template, returnTo) =>
+            setOverlay({ kind: 'confirmTemplate', template, returnTo })
+          }
           onClose={openRecurring}
         />
       )}
@@ -294,7 +303,7 @@ export default function App() {
           })}
           confirmLabel={t('recurring.delete')}
           onConfirm={() => deleteTemplate(overlay.template)}
-          onClose={() => openTemplate('edit', overlay.template)}
+          onClose={() => setOverlay(overlay.returnTo)}
         />
       )}
 

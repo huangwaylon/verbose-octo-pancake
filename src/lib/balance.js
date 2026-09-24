@@ -7,7 +7,7 @@
  * special-cases the type.
  */
 
-import { PERSON, ENTRY_TYPE, isActive, otherPerson } from '../schema.js'
+import { PEOPLE, PERSON, isActive, isSettlement, otherPerson } from '../schema.js'
 import { splitYen, sumYen } from './money.js'
 import { isMonthKey } from './dates.js'
 import { isRecurringInstance } from './recurring.js'
@@ -27,8 +27,9 @@ function activeEntries(entries) {
   return Array.isArray(entries) ? entries.filter(isActive) : []
 }
 
-function isExpense(entry) {
-  return entry.type === ENTRY_TYPE.EXPENSE
+/** What every spend figure counts: settlements are transfers, so they are in none of them. */
+function activeExpenses(entries) {
+  return activeEntries(entries).filter((entry) => !isSettlement(entry))
 }
 
 /** An ISO date we can safely take a 'YYYY-MM' prefix from. */
@@ -77,8 +78,7 @@ export function computeBalance(entries) {
  * money already counted as the original expense.
  */
 export function totalSpend(entries) {
-  const expenses = activeEntries(entries).filter(isExpense)
-  return sumYen(expenses.map((entry) => entry.amountYen))
+  return sumYen(activeExpenses(entries).map((entry) => entry.amountYen))
 }
 
 /**
@@ -88,15 +88,15 @@ export function totalSpend(entries) {
  * @returns {{category: string, totalYen: number}[]}
  */
 export function spendByCategory(entries) {
-  const totals = new Map()
-  for (const entry of activeEntries(entries)) {
-    if (!isExpense(entry)) continue
+  const amounts = new Map()
+  for (const entry of activeExpenses(entries)) {
     const key = entry.category || UNCATEGORIZED
-    totals.set(key, (totals.get(key) ?? 0) + entry.amountYen)
+    if (!amounts.has(key)) amounts.set(key, [])
+    amounts.get(key).push(entry.amountYen)
   }
   return (
-    [...totals.entries()]
-      .map(([category, totalYen]) => ({ category, totalYen }))
+    [...amounts.entries()]
+      .map(([category, list]) => ({ category, totalYen: sumYen(list) }))
       // Ties by CODEPOINT, through the one comparator with its arguments flipped for A-Z.
       // `localeCompare` with no locale reads the RUNTIME's, so two phones would disagree.
       .sort((a, b) => b.totalYen - a.totalYen || descending(b.category, a.category))
@@ -110,13 +110,13 @@ export function spendByCategory(entries) {
  * @returns {{p1: number, p2: number}}
  */
 export function spendByPerson(entries) {
-  const totals = { [PERSON.P1]: 0, [PERSON.P2]: 0 }
-  for (const entry of activeEntries(entries)) {
-    if (!isExpense(entry)) continue
-    if (entry.payer === PERSON.P2) totals[PERSON.P2] += entry.amountYen
-    else totals[PERSON.P1] += entry.amountYen
-  }
-  return totals
+  const expenses = activeExpenses(entries)
+  return Object.fromEntries(
+    PEOPLE.map((person) => [
+      person,
+      sumYen(expenses.filter((entry) => entry.payer === person).map((entry) => entry.amountYen)),
+    ]),
+  )
 }
 
 /**
@@ -129,8 +129,7 @@ export function spendByPerson(entries) {
  */
 export function shareByPerson(entries) {
   const totals = { [PERSON.P1]: 0, [PERSON.P2]: 0 }
-  for (const entry of activeEntries(entries)) {
-    if (!isExpense(entry)) continue
+  for (const entry of activeExpenses(entries)) {
     const { payerYen, otherYen } = splitYen(entry.amountYen, entry.payerShare)
     totals[entry.payer] += payerYen
     totals[otherPerson(entry.payer)] += otherYen

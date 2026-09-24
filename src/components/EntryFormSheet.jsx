@@ -23,23 +23,28 @@ import { TrashIcon } from './icons.jsx'
  */
 export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose }) {
   const { t } = useT()
-  const { mode, entry } = draft
+  const { mode, entry, typed } = draft
   const isSettlement = isTransfer(entry)
 
-  const [amount, setAmount] = useState(entry.amountYen ? yenToSheetString(entry.amountYen) : '')
+  // `typed` is the fields as a previous mount left them — see `resumeDraft`.
+  const [amount, setAmount] = useState(
+    () => typed?.amount ?? (entry.amountYen ? yenToSheetString(entry.amountYen) : ''),
+  )
   // `||`, not `??`: `makeEntry` writes '' for an unset payer, and `??` would keep it — no path
   // reaches here with one today, so this is the guard and not a fix.
-  const [payer, setPayer] = useState(entry.payer || me || PERSON.P1)
-  const [date, setDate] = useState(entry.date)
-  const [category, setCategory] = useState(entry.category || config.categories[0] || '')
-  const [description, setDescription] = useState(entry.description ?? '')
+  const [payer, setPayer] = useState(typed?.payer ?? (entry.payer || me || PERSON.P1))
+  const [date, setDate] = useState(typed?.date ?? entry.date)
+  const [category, setCategory] = useState(
+    typed?.category ?? (entry.category || config.categories[0] || ''),
+  )
+  const [description, setDescription] = useState(typed?.description ?? entry.description ?? '')
   const [rejected, setRejected] = useState(null)
   const { busy, saveError, clearError, save } = useSheetSave(onClose)
   const amountErrorId = useId()
   const saveErrorId = useId()
   const amountInput = useRef(null)
 
-  const split = useEntrySplit(entry, config, payer)
+  const split = useEntrySplit(entry, config, payer, { held: typed?.split })
   const yen = parseAmountToYen(amount)
   const payerShare = isSettlement ? 0 : split.payerShare
 
@@ -79,6 +84,16 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
     )
   }
 
+  /**
+   * This draft with the fields exactly as typed, for the confirmation to hand back if the delete is
+   * cancelled: the form unmounts under it, and one `overlay` means nothing else holds them. Raw
+   * strings, never the parsed entry — an amount mid-edit parses to null and would come back blank.
+   */
+  const resumeDraft = () => ({
+    ...draft,
+    typed: { amount, payer, date, category, description, split: split.held },
+  })
+
   /** Keyed on the type too: a settlement under "Edit expense" contradicts the sentence below it. */
   const title = isSettlement
     ? t('form.editSettlementTitle')
@@ -104,7 +119,8 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
                 type="button"
                 /* push-end puts the destructive action at the far left, away from Save. */
                 className="btn btn--icon push-end"
-                onClick={() => onDelete(entry)}
+                /* The STORED entry, since that is the row a delete removes. */
+                onClick={() => onDelete(entry, resumeDraft())}
                 disabled={busy}
                 aria-label={t('form.deleteEntry')}
               >

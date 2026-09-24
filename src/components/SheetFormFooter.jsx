@@ -58,7 +58,10 @@ export function SheetFormFooter({ formId, busy, editing, onCancel, leading = nul
         disabled={busy}
         aria-describedby={describedBy}
       >
-        {busy ? <span className="spinner" /> : editing ? t('common.save') : t('common.add')}
+        {/* Beside the label, never instead of it: alone it names the button nothing and
+            narrows it mid-tap, sliding Cancel under the thumb. */}
+        {busy ? <span className="spinner" /> : null}
+        {editing ? t('common.save') : t('common.add')}
       </button>
     </>
   )

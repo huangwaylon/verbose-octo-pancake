@@ -157,6 +157,21 @@ describe('what gets ignored', () => {
     expect(store.has('sf.snapshot')).toBe(false)
   })
 
+  it('clears the old snapshot when the ledger outgrows the cap', async () => {
+    // Left in place, the last one that fit paints an ever-staler balance on every cold launch.
+    const { store, snapshot } = await load()
+    snapshot.writeSnapshot(SHEET, [entry()], {})
+    expect(store.has('sf.snapshot')).toBe(true)
+    const overCap = Array.from({ length: 5_400 }, (_unused, index) => entry({ id: `e${index}` }))
+    snapshot.writeSnapshot(SHEET, overCap, {})
+    expect(store.has('sf.snapshot')).toBe(false)
+    expect(snapshot.readSnapshot(SHEET)).toBe(null)
+
+    // And shrinking back under the cap writes again, the earlier payload forgotten.
+    snapshot.writeSnapshot(SHEET, [entry()], {})
+    expect(snapshot.readSnapshot(SHEET).entries).toHaveLength(1)
+  })
+
   it('clears on request, for forgetting the key', async () => {
     const { store, snapshot } = await load()
     snapshot.writeSnapshot(SHEET, [entry()], {})

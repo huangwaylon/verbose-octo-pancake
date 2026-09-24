@@ -224,6 +224,14 @@ describe('parseShare', () => {
     expect(parseShare(-1)).toBeNull()
   })
 
+  it('reads anything with a percent sign as a percentage, however small', () => {
+    // Under the above-1 rule alone, '1%' is 1: the payer covering everything.
+    expect(parseShare('1%')).toBe(0.01)
+    expect(parseShare('0.5%')).toBe(0.005)
+    expect(parseShare('100%')).toBe(1)
+    expect(parseShare('150%')).toBe(1)
+  })
+
   it('tolerates the whitespace a cell carries', () => {
     expect(parseShare(' 0.5 ')).toBe(0.5)
     expect(parseShare(' 80 ')).toBe(0.8)

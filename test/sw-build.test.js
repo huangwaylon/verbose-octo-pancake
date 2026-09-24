@@ -1,7 +1,9 @@
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { fileURLToPath } from 'node:url'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 
 import { buildFromDist, precachePaths } from '../scripts/build-sw.js'
 import { DEFAULT_BASE, resolveBase } from '../base.js'
@@ -13,10 +15,17 @@ import { DEFAULT_BASE, resolveBase } from '../base.js'
  */
 
 const BASE = DEFAULT_BASE
+const ORIGIN = 'https://example.github.io'
+
+const tempDirs = []
+afterAll(() => {
+  for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true })
+})
 
 /** The shape a real `dist` has: a hashed bundle plus verbatim `public/` files. */
 function fixture() {
   const dir = mkdtempSync(join(tmpdir(), 'sf-dist-'))
+  tempDirs.push(dir)
   mkdirSync(join(dir, 'assets'))
   mkdirSync(join(dir, 'icons'))
   writeFileSync(join(dir, 'index.html'), '<!doctype html><title>Shared Finances</title>')
@@ -73,33 +82,119 @@ describe('the build id', () => {
   })
 })
 
+/**
+ * Evaluates a generated worker against fakes of the three globals it touches, recording every
+ * call. `Request` is faked too: Node's refuses the relative URLs a worker legitimately uses.
+ */
+function runWorker(source, { hit = null } = {}) {
+  const listeners = {}
+  const calls = { open: [], addAll: [], match: [], deleted: [], fetched: [] }
+  const self = {
+    addEventListener: (type, handler) => {
+      listeners[type] = handler
+    },
+    location: { origin: ORIGIN },
+  }
+  const caches = {
+    open: (name) => {
+      calls.open.push(name)
+      return Promise.resolve({
+        addAll: (requests) => {
+          calls.addAll.push(...requests)
+          return Promise.resolve()
+        },
+      })
+    },
+    match: (key, options) => {
+      calls.match.push({ key, options })
+      return Promise.resolve(hit)
+    },
+    keys: () => Promise.resolve(['sf-oldbuild', 'sf-older', 'other-app-v3', 'workbox-precache']),
+    delete: (key) => {
+      calls.deleted.push(key)
+      return Promise.resolve(true)
+    },
+  }
+  class Request {
+    constructor(url, init = {}) {
+      this.url = url
+      this.cache = init.cache
+    }
+  }
+  const fetch = (request) => {
+    calls.fetched.push(request)
+    return Promise.resolve('network')
+  }
+  new Function('self', 'caches', 'Request', 'fetch', source)(self, caches, Request, fetch)
+  return { listeners, calls }
+}
+
+/** Dispatches a fetch event and resolves to whatever was passed to `respondWith`, or `undefined`. */
+async function dispatchFetch(listeners, request) {
+  let responded
+  listeners.fetch({ request, respondWith: (promise) => (responded = promise) })
+  return responded === undefined ? undefined : { response: await responded }
+}
+
 describe('the generated worker', () => {
   const { source } = buildFromDist(fixture(), BASE)
 
-  it('bails out of cross-origin requests before responding to anything', () => {
+  it('precaches every asset under a prefixed cache name, past the CDN', async () => {
+    // cache:'reload' bypasses the HTTP cache, so a stale edge copy of index.html cannot be paired
+    // with a fresh sw.js.
+    const { listeners, calls } = runWorker(source)
+    let waited
+    listeners.install({ waitUntil: (promise) => (waited = promise) })
+    await waited
+
+    expect(calls.open).toHaveLength(1)
+    expect(calls.open[0]).toMatch(/^sf-[0-9a-f]{12}$/)
+    expect(calls.addAll.map((request) => request.url)).toContain(`${BASE}index.html`)
+    expect(calls.addAll).toHaveLength(5)
+    for (const request of calls.addAll) expect(request.cache).toBe('reload')
+  })
+
+  it('never responds to a cross-origin request', async () => {
     // Scope governs which clients are controlled, not which requests are seen, so the token
     // endpoint and the Sheets API both reach this handler.
-    const bailOut = source.search(/origin !== self\.location\.origin\)\s*return/)
-    const fetchHandler = source.indexOf("addEventListener('fetch'")
-    const firstRespondWith = source.indexOf('respondWith', fetchHandler)
-    expect(bailOut).toBeGreaterThan(fetchHandler)
-    expect(bailOut).toBeLessThan(firstRespondWith)
+    const { listeners, calls } = runWorker(source)
+    const request = { url: 'https://sheets.googleapis.com/v4/x', method: 'GET', mode: 'cors' }
+
+    expect(await dispatchFetch(listeners, request)).toBeUndefined()
+    expect(calls.match).toEqual([])
   })
 
-  it('serves a navigation from the index key rather than the request', () => {
-    // A start_url launch asks for BASE; the precached key is BASE + index.html, so matching
-    // the request itself would miss and fall through to the network.
-    expect(source).toMatch(/mode === 'navigate' \? INDEX :/)
+  it('lets a non-GET request fall through to the network untouched', async () => {
+    const { listeners, calls } = runWorker(source)
+    const request = { url: `${ORIGIN}${BASE}x`, method: 'POST', mode: 'cors' }
+
+    expect(await dispatchFetch(listeners, request)).toBeUndefined()
+    expect(calls.match).toEqual([])
   })
 
-  it('ignores Vary, or the cache silently only works online', () => {
-    // caches.match honours Vary by default, and Pages sends 'Vary: Accept-Encoding' while
-    // vite preview sends 'Vary: Origin' — so a header difference misses and hits the network.
-    expect(source).toContain('ignoreVary: true')
+  it('serves a navigation from the index key, ignoring Vary', async () => {
+    // A start_url launch asks for BASE; the precached key is BASE + index.html. And caches.match
+    // honours Vary by default, which Pages and vite preview both send, so without ignoreVary the
+    // cache silently only works online.
+    const { listeners, calls } = runWorker(source, { hit: 'cached' })
+    const request = { url: `${ORIGIN}${BASE}`, method: 'GET', mode: 'navigate' }
+
+    expect(await dispatchFetch(listeners, request)).toEqual({ response: 'cached' })
+    expect(calls.match).toEqual([{ key: `${BASE}index.html`, options: { ignoreVary: true } }])
+    expect(calls.fetched).toEqual([])
   })
 
-  it('precaches past the CDN, so a stale edge copy cannot be paired with a fresh one', () => {
-    expect(source).toContain("{ cache: 'reload' }")
+  it('matches any other request by itself, and falls back to the network on a miss', async () => {
+    const { listeners, calls } = runWorker(source)
+    const request = {
+      url: `${ORIGIN}${BASE}assets/index-AAAA1111.js`,
+      method: 'GET',
+      mode: 'no-cors',
+    }
+
+    expect(await dispatchFetch(listeners, request)).toEqual({ response: 'network' })
+    expect(calls.match).toEqual([{ key: request, options: { ignoreVary: true } }])
+    expect(calls.fetched).toEqual([request])
   })
 
   it('does not claim control on its own', () => {
@@ -108,32 +203,16 @@ describe('the generated worker', () => {
     expect(source).toContain("event.data.type === 'SKIP_WAITING'")
   })
 
-  // RUN rather than grepped: the interesting half is which keys SURVIVE. `caches.keys()` is
-  // scoped to the ORIGIN and every project Pages site under one account shares
-  // `<user>.github.io`, so a sweep of "not this build" wipes every other app's precache.
+  // The interesting half is which keys SURVIVE. `caches.keys()` is scoped to the ORIGIN and every
+  // project Pages site under one account shares `<user>.github.io`, so a sweep of "not this
+  // build" wipes every other app's precache.
   it('deletes only its own superseded caches, not everything on the origin', async () => {
-    const deleted = []
-    const listeners = {}
-    const self = {
-      addEventListener: (type, handler) => {
-        listeners[type] = handler
-      },
-      location: { origin: 'https://example.github.io' },
-    }
-    const caches = {
-      keys: () => Promise.resolve(['sf-oldbuild', 'sf-older', 'other-app-v3', 'workbox-precache']),
-      delete: (key) => {
-        deleted.push(key)
-        return Promise.resolve(true)
-      },
-    }
-
+    const { listeners, calls } = runWorker(source)
     let waited
-    new Function('self', 'caches', source)(self, caches)
     listeners.activate({ waitUntil: (promise) => (waited = promise) })
     await waited
 
-    expect(deleted.sort()).toEqual(['sf-oldbuild', 'sf-older'])
+    expect(calls.deleted.sort()).toEqual(['sf-oldbuild', 'sf-older'])
   })
 })
 
@@ -145,20 +224,40 @@ describe('the build wiring', () => {
   })
 
   it('emits a worker that is valid JavaScript', () => {
-    // Every other assertion here is a substring check, which a typo inside the template
-    // literal satisfies while producing an invalid sw.js: green suite, no worker activates.
+    // Compiled on its own, so a typo inside the template literal is named as a syntax error
+    // rather than as a listener that never ran.
     const { source } = buildFromDist(fixture(), BASE)
     expect(() => new Function(source)).not.toThrow()
   })
 
-  it('builds the bundle and the worker against the same base path', () => {
-    // Vite writes asset URLs under its `base` and the worker precaches BASE + path: two
-    // prefixes means every precached URL 404s and no worker ever activates.
-    const viteConfig = readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8')
-    expect(viteConfig).toContain('resolveBase')
-    const builder = readFileSync(new URL('../scripts/build-sw.js', import.meta.url), 'utf8')
-    expect(builder).toContain('resolveBase')
-    expect(resolveBase({ VITE_BASE: '/' })).toBe('/')
-    expect(resolveBase({})).toBe(DEFAULT_BASE)
+  it('builds the bundle and the worker against the same base path', async () => {
+    // Vite writes asset URLs under its `base` and the worker precaches BASE + path: two prefixes
+    // means every precached URL 404s and no worker ever activates. A base other than the default
+    // proves each side reads the environment rather than a constant of its own.
+    const base = '/sf-test-base/'
+    vi.stubEnv('VITE_BASE', base)
+    vi.resetModules()
+    try {
+      const { default: viteConfig } = await import('../vite.config.js')
+      expect(viteConfig.base).toBe(resolveBase())
+      expect(viteConfig.base).toBe(base)
+
+      // Run the builder as `npm run build` does, from a cwd holding `dist/`.
+      const root = mkdtempSync(join(tmpdir(), 'sf-build-'))
+      tempDirs.push(root)
+      const dist = join(root, 'dist')
+      mkdirSync(dist)
+      writeFileSync(join(dist, 'index.html'), '<!doctype html>')
+      const script = fileURLToPath(new URL('../scripts/build-sw.js', import.meta.url))
+      execFileSync(process.execPath, [script], { cwd: root, env: process.env, stdio: 'pipe' })
+
+      const { listeners, calls } = runWorker(readFileSync(join(dist, 'sw.js'), 'utf8'))
+      let waited
+      listeners.install({ waitUntil: (promise) => (waited = promise) })
+      await waited
+      expect(calls.addAll.map((request) => request.url)).toEqual([`${viteConfig.base}index.html`])
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

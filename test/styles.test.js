@@ -107,17 +107,21 @@ describe('shared rules keep the declarations of the rules they replaced', () => 
     expect(declares(FILES.app, selector, 'color')).toBe(true)
   })
 
-  it.each(['.segmented__option input', '.swatch input'])(
-    '%s stays hidden but focusable',
-    (selector) => {
-      const css = FILES.primitives
-      expect(declares(css, selector, 'position')).toBe(true)
-      expect(declares(css, selector, 'opacity')).toBe(true)
-      // `display: none` or `visibility: hidden` takes the radio out of the focus order.
-      expect(declares(css, selector, 'display')).toBe(false)
-      expect(declares(css, selector, 'visibility')).toBe(false)
-    },
-  )
+  it.each([
+    ['.segmented__option input', '.segmented__option'],
+    ['.swatch input', '.swatch'],
+  ])('%s stays hidden but focusable, placed inside its own label', (selector, label) => {
+    const css = FILES.primitives
+    expect(declares(css, selector, 'position')).toBe(true)
+    // An absolute input is placed against its nearest POSITIONED ancestor. Without one on the
+    // label that is outside the sheet's scroller, so VoiceOver's cursor and `scrollIntoView`
+    // chase a position the sheet body's scroll never moves.
+    expect(blocksFor(css, label).some((body) => /position\s*:\s*relative/.test(body))).toBe(true)
+    expect(declares(css, selector, 'opacity')).toBe(true)
+    // `display: none` or `visibility: hidden` takes the radio out of the focus order.
+    expect(declares(css, selector, 'display')).toBe(false)
+    expect(declares(css, selector, 'visibility')).toBe(false)
+  })
 })
 
 describe('rules the docs promise', () => {

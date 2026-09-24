@@ -75,21 +75,22 @@ function discardToken() {
 function restoreToken() {
   const raw = readStored(STORAGE_KEYS.token)
   if (!raw) return
+  let saved = null
   try {
-    const saved = JSON.parse(raw)
-    if (typeof saved?.accessToken !== 'string' || typeof saved?.expiresAt !== 'number') {
-      writeStored(STORAGE_KEYS.token, null)
-      return
-    }
-    if (Date.now() >= saved.expiresAt - REFRESH_MARGIN_MS) {
-      writeStored(STORAGE_KEYS.token, null)
-      return
-    }
-    accessToken = saved.accessToken
-    expiresAt = saved.expiresAt
+    saved = JSON.parse(raw)
   } catch {
-    writeStored(STORAGE_KEYS.token, null)
+    // Malformed: discarded below with every other unusable value.
   }
+  const usable =
+    typeof saved?.accessToken === 'string' &&
+    typeof saved?.expiresAt === 'number' &&
+    Date.now() < saved.expiresAt - REFRESH_MARGIN_MS
+  if (!usable) {
+    discardToken()
+    return
+  }
+  accessToken = saved.accessToken
+  expiresAt = saved.expiresAt
 }
 
 restoreToken()
