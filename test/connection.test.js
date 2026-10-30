@@ -138,9 +138,64 @@ describe('telling a bad key from a bad connection', () => {
       () => null,
       (cause) => cause,
     )
-    await vi.advanceTimersByTimeAsync(15_000)
+    // The hedged second attempt starts at 4s and has its own 15s.
+    await vi.advanceTimersByTimeAsync(19_000)
     const error = await settled
     expect(error.i18nKey).toBe('error.offline')
+    expect(c.isKeySuspect()).toBe(false)
+  })
+
+  // Headers in, body stalled: with the timer already cleared, the mint never settled, and every
+  // request waiting on `pending` hung with it.
+  it('times out a body that never arrives, as transient', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url, init) => ({
+        // Rejects only when aborted, as a real body read does; never resolves.
+        text: () =>
+          new Promise((_resolve, reject) => {
+            init.signal.addEventListener('abort', () =>
+              reject(new DOMException('aborted', 'AbortError')),
+            )
+          }),
+      })),
+    )
+
+    const c = await load({ 'sf.appKey': 'k' })
+    const settled = c.getAccessToken().then(
+      () => null,
+      (cause) => cause,
+    )
+    await vi.advanceTimersByTimeAsync(19_000)
+    const error = await Promise.race([settled, 'still pending'])
+    expect(error).toMatchObject({ i18nKey: 'error.offline' })
+    expect(c.isKeySuspect()).toBe(false)
+  })
+
+  // `forgetKey` while a request is still waiting for a token: posting `{"key":null}` came back
+  // `unauthorized`, and the key screen said a key nobody had entered was rejected.
+  it('refuses to mint with no key, rather than calling the missing key rejected', async () => {
+    let release
+    const first = new Promise((resolve) => {
+      release = () => resolve(ok())
+    })
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockResolvedValue(reply({ error: 'unauthorized' }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const c = await load({ 'sf.appKey': 'k' })
+    const inFlight = c.getAccessToken()
+    c.forgetKey()
+    // Newer than the forget, so it waits out the first mint and then needs its own.
+    const after = c.getAccessToken()
+    release()
+
+    await inFlight
+    await expect(after).rejects.toMatchObject({ i18nKey: 'error.keyRequired' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(c.isKeySuspect()).toBe(false)
   })
 
@@ -176,6 +231,84 @@ describe('telling a bad key from a bad connection', () => {
       expect(c.getSpreadsheetId()).toBe(null)
       expect(cause).toMatchObject({ i18nKey: 'error.scriptMisconfigured' })
     }
+  })
+})
+
+describe('a slow mint', () => {
+  /** Answers the first POST at `firstAt` ms and every later one at once; records each signal. */
+  function slowFirst(firstAt) {
+    const signals = []
+    const fetchMock = vi.fn((_url, init) => {
+      signals.push(init.signal)
+      if (signals.length > 1)
+        return Promise.resolve(reply({ token: 'second', spreadsheetId: SHEET_ID }))
+      return new Promise((resolve, reject) => {
+        setTimeout(() => resolve(reply({ token: 'first', spreadsheetId: SHEET_ID })), firstAt)
+        init.signal.addEventListener('abort', () =>
+          reject(new DOMException('aborted', 'AbortError')),
+        )
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    return { fetchMock, signals }
+  }
+
+  it('sends one POST when the reply comes in under 4s', async () => {
+    vi.useFakeTimers()
+    const { fetchMock } = slowFirst(3_900)
+
+    const c = await load({ 'sf.appKey': 'k' })
+    const token = c.getAccessToken()
+    await vi.advanceTimersByTimeAsync(30_000)
+
+    expect(await token).toBe('first')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends exactly one more, with the same key, and takes whichever answers first', async () => {
+    vi.useFakeTimers()
+    const { fetchMock, signals } = slowFirst(10_000)
+
+    const c = await load({ 'sf.appKey': 'secret' })
+    // Two callers still share the one mint: hedging happens inside it.
+    const tokens = Promise.all([c.getAccessToken(), c.getAccessToken()])
+    await vi.advanceTimersByTimeAsync(4_000)
+
+    expect(await tokens).toEqual(['second', 'second'])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body))).toEqual([
+      { key: 'secret' },
+      { key: 'secret' },
+    ])
+    expect(signals[0].aborted).toBe(true)
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  // The copy is part of the same mint, so it carries the key that mint began with: re-read after
+  // a `forgetKey`, it posts `{"key":null}`, and its `unauthorized` flags a key nobody entered.
+  it('sends the copy with the key the mint started with, even once that key is forgotten', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockImplementationOnce(async (_url, init) =>
+        JSON.parse(init.body).key ? ok() : reply({ error: 'unauthorized' }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const c = await load({ 'sf.appKey': 'k' })
+    const token = c.getAccessToken().catch(() => {})
+    await vi.advanceTimersByTimeAsync(1_000)
+    c.forgetKey()
+    await vi.advanceTimersByTimeAsync(3_000)
+    await token
+
+    expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(init.body))).toEqual([
+      { key: 'k' },
+      { key: 'k' },
+    ])
+    expect(c.isKeySuspect()).toBe(false)
   })
 })
 

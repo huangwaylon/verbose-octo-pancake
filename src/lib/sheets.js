@@ -26,6 +26,7 @@ import {
 import { missingGid, missingRangeOrSheet, reconcileById, tombstoneCount } from './ledgerState.js'
 import { parseAmountToYen } from './money.js'
 import { getAccessToken, refreshToken } from './connection.js'
+import { hedge } from './hedge.js'
 import { reconcileTemplates } from './recurring.js'
 import { defaultConfigRows, parseConfigRows } from './sheetConfig.js'
 import { i18nError } from '../i18n/index.js'
@@ -38,6 +39,12 @@ const BASE_URL = 'https://sheets.googleapis.com/v4/spreadsheets'
  * that times out may still land — `addWriteKind` is what makes the retry of one safe.
  */
 const REQUEST_TIMEOUT_MS = 30_000
+
+/**
+ * When a second copy of a slow read starts. `values:batchGet` measured 0.25–0.65s, so a read still
+ * out at 3s is in the tail, not merely on slow data.
+ */
+const READ_HEDGE_MS = 3_000
 const RAW = 'RAW'
 
 /**
@@ -91,30 +98,31 @@ function buildQuery(params) {
 async function request(path, { method = 'GET', params, body, allowRetry = true } = {}) {
   const token = await getAccessToken()
   const query = buildQuery(params)
+  const url = `${BASE_URL}${path}${query ? `?${query}` : ''}`
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
-  let response
-  let payload
-  try {
-    response = await fetch(`${BASE_URL}${path}${query ? `?${query}` : ''}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        ...(body ? { 'Content-Type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-      signal: controller.signal,
-    })
-    // Inside the timeout too: the headers can arrive and the body stall. A body cut off by the
-    // timeout rethrows — read as "no JSON" it is an empty ledger reported as a successful read.
-    payload = await response.json().catch((cause) => {
-      if (controller.signal.aborted) throw cause
-      return null
-    })
-  } finally {
-    clearTimeout(timer)
-  }
+  // Only a GET is hedged: a duplicated write can land twice. Hedged or not, one response comes
+  // back, so two attempts both answering 401 still make one retry.
+  const { response, payload } = await hedge(
+    async (signal) => {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(body ? { 'Content-Type': 'application/json' } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal,
+      })
+      // Inside the timeout too: the headers can arrive and the body stall. A body cut off by the
+      // timeout rethrows — read as "no JSON" it is an empty ledger reported as a successful read.
+      const payload = await response.json().catch((cause) => {
+        if (signal.aborted) throw cause
+        return null
+      })
+      return { response, payload }
+    },
+    { timeoutMs: REQUEST_TIMEOUT_MS, delayMs: method === 'GET' ? READ_HEDGE_MS : null },
+  )
 
   if (response.ok) return payload ?? {}
 

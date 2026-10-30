@@ -25,6 +25,7 @@ import {
   installSheets,
   removeSheets,
   rangesOf,
+  sheetStub,
   stubSheets,
   values,
   writes,
@@ -178,7 +179,8 @@ describe('a stalled request', () => {
     globalThis.fetch = vi.fn((url, { signal }) => stalls(signal))
     const read = sheets.loadAll(SHEET)
     const outcome = expect(read).rejects.toThrow()
-    await vi.advanceTimersByTimeAsync(30_000)
+    // A read's hedged copy starts at 3s with its own 30s.
+    await vi.advanceTimersByTimeAsync(33_000)
     await outcome
   })
 
@@ -188,8 +190,95 @@ describe('a stalled request', () => {
     globalThis.fetch = vi.fn(async (url, { signal }) => ({ ok: true, json: () => stalls(signal) }))
     const read = sheets.loadAll(SHEET)
     const outcome = expect(read).rejects.toThrow()
-    await vi.advanceTimersByTimeAsync(30_000)
+    // A read's hedged copy starts at 3s with its own 30s.
+    await vi.advanceTimersByTimeAsync(33_000)
     await outcome
+  })
+})
+
+// A read may be sent twice, since a duplicate changes nothing; a write may not, since it lands twice.
+describe('hedging the slow tail', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /**
+   * Wraps the stub so the calls matching `isSlow` answer only after `slowMs` (or never, unless
+   * aborted). Returns every call SENT, with its signal — the stub records only those answered.
+   */
+  function slow(handler, isSlow, slowMs = Infinity) {
+    installSheets(handler)
+    const answer = globalThis.fetch
+    const sent = []
+    globalThis.fetch = vi.fn((url, init = {}) => {
+      const call = { method: init.method ?? 'GET', url: decodeURIComponent(String(url)), init }
+      sent.push(call)
+      if (!isSlow(call, sent)) return answer(url, init)
+      return new Promise((resolve, reject) => {
+        if (slowMs !== Infinity) setTimeout(() => resolve(answer(url, init)), slowMs)
+        init.signal.addEventListener('abort', () => reject(new Error('aborted')))
+      })
+    })
+    return sent
+  }
+
+  it('sends a fast read once', async () => {
+    vi.useFakeTimers()
+    const sent = slow(
+      () => EMPTY_RANGES,
+      () => false,
+    )
+    await sheets.loadAll(SHEET)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(sent).toHaveLength(1)
+  })
+
+  it('sends exactly one duplicate of a slow read, and takes the copy that answers', async () => {
+    vi.useFakeTimers()
+    const sent = slow(
+      () => EMPTY_RANGES,
+      (_call, all) => all.length === 1,
+    )
+    const read = sheets.loadAll(SHEET)
+    await vi.advanceTimersByTimeAsync(3_000)
+    await read
+
+    expect(sent.map((call) => call.url)).toEqual([sent[0].url, sent[0].url])
+    expect(sent[0].url).toContain('values:batchGet')
+    expect(sent[0].init.signal.aborted).toBe(true)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(sent).toHaveLength(2)
+  })
+
+  it('never sends a slow write twice', async () => {
+    vi.useFakeTimers()
+    const sent = slow(sheetStub({ gids: true }), (call) => call.method !== 'GET')
+    const append = sheets.appendEntry(SHEET, entry())
+    const outcome = expect(append).rejects.toThrow()
+
+    await vi.advanceTimersByTimeAsync(29_999)
+    expect(writes(sent)).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(1)
+    await outcome
+    expect(writes(sent)).toHaveLength(1)
+  })
+
+  // Both copies out and both answering 401: one response comes back, so one re-mint, one retry.
+  it('re-mints once when both copies of a read are rejected', async () => {
+    vi.useFakeTimers()
+    const sent = slow(
+      () => ({ __status: 401 }),
+      () => true,
+      3_500,
+    )
+    const read = sheets.loadAll(SHEET)
+    const outcome = expect(read).rejects.toThrow(/HTTP 401/)
+    await vi.advanceTimersByTimeAsync(10_000)
+    await outcome
+
+    expect(connection.refreshToken).toHaveBeenCalledTimes(1)
+    // The read and its copy, then the retry and its copy.
+    expect(sent).toHaveLength(4)
   })
 })
 

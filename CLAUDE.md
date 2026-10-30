@@ -101,6 +101,8 @@ A tab of DECLARATIONS, edited through `RecurringSheet`/`TemplateFormSheet` and h
 - **The token endpoint always answers HTTP 200** — branch on the body. `connection.js` holds the taxonomy: `unauthorized` terminal, the rest transient; a rejected key is flagged, not deleted.
 - **The mint is `Content-Type: text/plain` and its method is never forced through the redirect**, keeping it a CORS simple request — hence no `doOptions`.
 - **`doPost` must be incapable of throwing, and is the whole of `Code.gs`** — a throw returns HTML, read as transient forever. The script writes NOTHING: no `SpreadsheetApp`, no trigger.
+- **Only a request harmless to send twice is hedged** (`lib/hedge.js`): the mint, since `Code.gs` writes nothing, and a Sheets `GET` — never a write. Each attempt reads its body inside its own timeout; `hedge` returns one response, so the 401 retry stays outside it and happens once.
+- **`mint()` posts the key it started with and refuses to post none** — `KEY_REQUIRED`, never `{"key":null}`, whose `unauthorized` would flag a key nobody entered.
 - **The refresh margin is performance; the 401 retry is correctness.** `refreshToken` counts generations and the retry cannot retry.
 - **A failure retrying cannot fix is not transient** (a lost share, `unavailable`); a 403 is both, so `isUnreachable` reads the reason.
 - **The launch read starts before the first React render** (`startLaunchRead`, taken once by the first `load` for that sheet; the bare mint when no id is stored), because everything after it is serialized.

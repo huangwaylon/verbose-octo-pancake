@@ -10,6 +10,7 @@
  */
 
 import { SCRIPT_URL, STORAGE_KEYS, isConfigured, readStored, writeStored } from '../config.js'
+import { hedge } from './hedge.js'
 import { clearSnapshot } from './snapshot.js'
 
 /**
@@ -25,8 +26,15 @@ const REFRESH_MARGIN_MS = 5 * 60_000
  */
 const TOKEN_LIFETIME_MS = 3600_000
 
-/** An Apps Script round trip is ~1s, with outliers past 3s. */
+/** An Apps Script round trip is ~1s, with outliers past 3s. Per attempt. */
 const MINT_TIMEOUT_MS = 15_000
+
+/**
+ * When a second mint starts beside a slow first. A warm mint measured 0.8–2.0s over ~25 calls, so
+ * 4s is twice the slowest seen: room for phone data before an ordinary mint is sent twice, and
+ * still far short of the 15s a stalled one would otherwise take.
+ */
+const MINT_HEDGE_MS = 4_000
 
 let appKey = readStored(STORAGE_KEYS.appKey)
 let spreadsheetId = readStored(STORAGE_KEYS.spreadsheetId)
@@ -126,36 +134,47 @@ function badKeyError() {
   return error
 }
 
-/** One POST to the script. Three details here are load-bearing. */
+/**
+ * One POST to the script, hedged: the script writes nothing, so a duplicate is harmless. Three
+ * details here are load-bearing.
+ */
 async function mint() {
   // Unreachable through the UI — `useConnection` reports `unconfigured` — so this is a build
   // mistake rather than a state worth translating.
   if (!SCRIPT_URL) throw new Error('Missing VITE_SCRIPT_URL. See SETUP.md.')
 
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), MINT_TIMEOUT_MS)
-
-  let response
-  try {
-    response = await fetch(SCRIPT_URL, {
-      method: 'POST',
-      // `text/plain` keeps this a CORS simple request: a preflight would be answered with the 302
-      // below and die, and the script deliberately has no doOptions. Never application/json.
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ key: appKey }),
-      signal: controller.signal,
-      // The method is deliberately NOT forced across the redirect: /exec answers 302 to
-      // script.googleusercontent.com, and forcing POST through the hop returns "page not found".
-    })
-  } catch {
-    throw connectionError(CONNECTION_ERROR.OFFLINE, 'Could not reach the token endpoint.')
-  } finally {
-    clearTimeout(timer)
-  }
+  // `forgetKey` can run while a request still needs a token. Posted, `{"key":null}` comes back
+  // `unauthorized` and the key screen would call a key nobody entered rejected.
+  const key = appKey
+  if (!key) throw connectionError(CONNECTION_ERROR.KEY_REQUIRED, 'No app key is stored.')
 
   // No `response.ok` check: ContentService always answers HTTP 200, even for a rejection, so
-  // branching on `ok` would report a rotated key as success.
-  const body = await response.text().catch(() => '')
+  // branching on `ok` would report a rotated key as success. The body is read inside the attempt,
+  // under its timeout: headers can arrive and the body stall, and a mint that never settles holds
+  // `pending` — and so every request — for good.
+  const body = await hedge(
+    async (signal) => {
+      try {
+        const response = await fetch(SCRIPT_URL, {
+          method: 'POST',
+          // `text/plain` keeps this a CORS simple request: a preflight would be answered with the
+          // 302 below and die, and the script deliberately has no doOptions. Never
+          // application/json.
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ key }),
+          signal,
+          // The method is deliberately NOT forced across the redirect: /exec answers 302 to
+          // script.googleusercontent.com, and forcing POST through the hop returns "page not found".
+        })
+        return await response.text()
+      } catch {
+        // A body cut off is the same lost connection as headers that never came, so it is the
+        // same transient code — read as an empty body it would blame the script instead.
+        throw connectionError(CONNECTION_ERROR.OFFLINE, 'Could not reach the token endpoint.')
+      }
+    },
+    { timeoutMs: MINT_TIMEOUT_MS, delayMs: MINT_HEDGE_MS },
+  )
 
   let payload
   try {
