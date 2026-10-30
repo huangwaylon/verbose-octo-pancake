@@ -2,8 +2,8 @@
  * Service worker registration, and the update policy that makes it deliverable. An installed iOS
  * web app resumed from the app switcher does not navigate, so the browser never rechecks `sw.js`
  * and a worker that reached `waiting` can sit there for weeks. So: look for an update on
- * foreground, and activate as soon as activating cannot lose anything — never while an entry is
- * half-typed or a write is in flight.
+ * foreground, and activate once activating cannot lose anything — never while an entry is
+ * half-typed or a write is in flight — and only where the reload it causes goes unseen.
  */
 
 import { shouldRefresh } from './ledgerState.js'
@@ -26,14 +26,31 @@ export function setSafeToReload(predicate) {
 }
 
 /**
- * Take over now if a worker is waiting and nothing would be lost. Exported because a worker
- * refused while a form was open gets no `focus` or `visibilitychange` to ask again, and for an
- * installed web app the next backgrounding can be days away.
+ * Activating reloads the page, so it waits for the page to be out of sight: a worker installed
+ * during a session would otherwise reload a ledger someone is reading, seconds after launch. The
+ * one visible exception is registration, before anyone has touched the page — a worker left
+ * waiting by a session killed while hidden.
+ */
+export function shouldActivate({ waiting, safe, hidden, registering }) {
+  return waiting && safe && (hidden || registering)
+}
+
+function activateIfDue(registering = false) {
+  const due = shouldActivate({
+    waiting: Boolean(registration?.waiting),
+    safe: safeToReload(),
+    hidden: document.visibilityState === 'hidden',
+    registering,
+  })
+  if (due) registration.waiting.postMessage({ type: 'SKIP_WAITING' })
+}
+
+/**
+ * Take over if `shouldActivate` allows it. Exported because a worker refused while a form was
+ * open must be asked again once it closes, and the next backgrounding re-asks too.
  */
 export function reconsiderUpdate() {
-  if (registration?.waiting && safeToReload()) {
-    registration.waiting.postMessage({ type: 'SKIP_WAITING' })
-  }
+  activateIfDue()
 }
 
 export function registerServiceWorker() {
@@ -51,9 +68,9 @@ export function registerServiceWorker() {
     (registered) => {
       registration = registered
 
-      const onForeground = () => {
-        if (document.visibilityState !== 'visible') return
+      const onVisibility = () => {
         reconsiderUpdate()
+        if (document.visibilityState !== 'visible') return
         // The same floor as a focus-triggered sheet read: a resumed app fires both events
         // constantly.
         if (!shouldRefresh(Date.now(), lastCheck, UPDATE_CHECK_FLOOR_MS)) return
@@ -62,20 +79,20 @@ export function registerServiceWorker() {
       }
 
       lastCheck = Date.now()
-      reconsiderUpdate()
+      activateIfDue(true)
 
       // `register()` runs its own update check, so a new worker can already be INSTALLING before
-      // the `updatefound` listener exists. Unhooked, that one gets no `statechange`, and
-      // `reconsiderUpdate` only looks at `waiting`, so for somebody who stays in the app nothing
-      // ever asks again. Idempotent, since `reconsiderUpdate` re-reads the registration.
+      // the `updatefound` listener exists. Unhooked, one that finishes installing after the page
+      // was hidden is not asked until the next backgrounding. Idempotent, since
+      // `reconsiderUpdate` re-reads the registration.
       registered.installing?.addEventListener('statechange', reconsiderUpdate)
 
       registered.addEventListener('updatefound', () => {
         registered.installing?.addEventListener('statechange', reconsiderUpdate)
       })
 
-      document.addEventListener('visibilitychange', onForeground)
-      window.addEventListener('focus', onForeground)
+      document.addEventListener('visibilitychange', onVisibility)
+      window.addEventListener('focus', onVisibility)
     },
     () => {
       // Not worth surfacing: without a worker the app still works, just without the instant
