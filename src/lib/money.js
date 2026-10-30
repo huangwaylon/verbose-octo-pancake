@@ -112,12 +112,15 @@ export function yenToSheetString(yen) {
  */
 const FORMATTERS = new Map()
 
+/** Never `undefined`, which Intl reads as the DEVICE's locale: an en-NZ phone would show "JP¥". */
+const DEFAULT_LOCALE = 'en'
+
 function formatterFor(locale) {
   return cached(
     FORMATTERS,
-    locale ?? '',
+    locale ?? DEFAULT_LOCALE,
     () =>
-      new Intl.NumberFormat(locale, {
+      new Intl.NumberFormat(locale ?? DEFAULT_LOCALE, {
         style: 'currency',
         currency: 'JPY',
         // Stated rather than left to ICU: what a person reads must not vary with the ICU version.

@@ -17,6 +17,9 @@ const EN_DAY_LABELS = { today: 'Today', yesterday: 'Yesterday', none: 'No date' 
  */
 const DATE_FORMATS = new Map()
 
+/** Never `undefined`, which Intl reads as the DEVICE's locale rather than the English default. */
+const DEFAULT_LOCALE = 'en'
+
 function dateFormatter(locale, options) {
   // Every option, sorted, so a shape added later cannot collide with an existing key and silently
   // render in the wrong one.
@@ -26,8 +29,8 @@ function dateFormatter(locale, options) {
     .join(',')
   return cached(
     DATE_FORMATS,
-    `${locale ?? ''}|${shape}`,
-    () => new Intl.DateTimeFormat(locale, options),
+    `${locale ?? DEFAULT_LOCALE}|${shape}`,
+    () => new Intl.DateTimeFormat(locale ?? DEFAULT_LOCALE, options),
   )
 }
 
