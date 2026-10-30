@@ -46,7 +46,7 @@ export default {
   'balance.settled': 'All settled up',
 
   // --- month summary --------------------------------------------------------
-  'summary.title': 'This month',
+  'summary.spent': 'Spent',
   'summary.perPerson': 'Per person',
   'summary.paidToggle': 'Paid',
   'summary.byCategory': 'By category',

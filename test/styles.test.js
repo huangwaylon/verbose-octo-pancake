@@ -179,15 +179,16 @@ describe('the rules an installed iOS web app depends on', () => {
     // The platform tap highlight is cleared in base.css, so :active is the only press feedback
     // a finger gets. EVERY selector in a list, not merely the last: a check reading the tail
     // alone would quietly stop covering everything above it.
+    // Anywhere in the selector, not only at its end: `.entry:has(> button.entry__main:hover)`
+    // is a hover rule too, keyed by what is left once the pseudo-class is taken out.
     const styledBy = (pseudo) => {
       const found = new Set()
-      const attached = new RegExp(`^(.*):${pseudo}(?::not\\(\\[disabled\\]\\))?$`)
+      const attached = new RegExp(`:${pseudo}(?::not\\(\\[disabled\\]\\))?(?![\\w-])`)
       for (const rule of all.matchAll(/([^{}]+)\{/g)) {
         // An at-rule prelude is not a selector list, and `@media (hover:hover)` reads as one.
         if (rule[1].trim().startsWith('@')) continue
         for (const part of rule[1].split(',')) {
-          const match = part.trim().match(attached)
-          if (match) found.add(match[1].trim())
+          if (attached.test(part)) found.add(part.trim().replace(attached, ''))
         }
       }
       return found
@@ -260,7 +261,10 @@ describe('the rules an installed iOS web app depends on', () => {
   it('gives the full-screen panel the whole screen, and undoes it for the dialog', () => {
     // PER BLOCK again: with both in one bucket, hoisting `height: auto` out of the media query
     // and deleting the reset satisfies every string on a panel never full screen.
-    const blocks = blocksFor(FILES.primitives, '.sheet__panel--full')
+    // Less its entrance, which is motion rather than geometry.
+    const blocks = blocksFor(FILES.primitives, '.sheet__panel--full').filter(
+      (body) => !/^\s*animation:[^;]*;\s*$/.test(body),
+    )
     expect(blocks).toHaveLength(2)
     const [phone, dialog] = blocks
 
@@ -340,6 +344,24 @@ describe('the rules an installed iOS web app depends on', () => {
       expect(declares(FILES[file], selector, 'touch-action')).toBe(true)
     }
     expect(declares(FILES.app, '.entry__main', 'user-select')).toBe(false)
+  })
+
+  it('paints a row press across the whole row, amount included', () => {
+    // `button.entry__main` is the first grid track only, so a highlight on it stopped short of
+    // the amount and the delete — the row looked half-pressed.
+    for (const pseudo of ['hover', 'active']) {
+      const row = `.entry:has(> button.entry__main:${pseudo})`
+      expect(declares(FILES.app, row, 'background-color')).toBe(true)
+      expect(declares(FILES.app, `button.entry__main:${pseudo}`, 'background-color')).toBe(false)
+    }
+  })
+
+  it('keeps the unrecorded mark off the card’s rounded corners', () => {
+    // A border on the row runs straight through the corner the row inherits from the card.
+    expect(declares(FILES.app, '.entry--unpaid', 'border-inline-start')).toBe(false)
+    expect(declares(FILES.app, '.entry--unpaid::after', 'border-inline-start')).toBe(true)
+    expect(declares(FILES.app, '.entry--unpaid:first-child::after', 'inset-block-start')).toBe(true)
+    expect(declares(FILES.app, '.entry--unpaid:last-child::after', 'inset-block-end')).toBe(true)
   })
 
   it('keeps the whole recurring row tappable, not just its text', () => {

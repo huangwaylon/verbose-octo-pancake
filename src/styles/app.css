@@ -422,9 +422,11 @@
   margin: 0;
 }
 
+/* The share has its own end-aligned track, so the yen figures above and below it line
+   up on their last digit whatever width each percentage takes. */
 .chart__item {
   display: grid;
-  grid-template-columns: 0.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 0.5rem minmax(0, 1fr) auto minmax(4ch, auto);
   align-items: baseline;
   gap: var(--space-2);
   font-size: var(--fs-caption);
@@ -444,6 +446,11 @@
 .chart__value {
   color: var(--ink);
   font-weight: 600;
+}
+
+.chart__value,
+.chart__share {
+  justify-self: end;
 }
 
 .chart__share {
@@ -524,6 +531,9 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  transition:
+    background-color var(--transition-fast),
+    opacity var(--transition-base);
 }
 
 .entry:not(:first-child)::before {
@@ -564,9 +574,23 @@
    figure, because it is a row about money that has NOT moved. Never the mark on its
    own — the meta line says "not recorded yet" in words, and --line-input is a 3.1:1
    boundary rather than a colour carrying meaning. */
-.entry--unpaid {
+.entry--unpaid::after {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
   border-inline-start: 2px dashed var(--line-input);
-  padding-inline-start: calc(var(--space-4) - 2px);
+}
+
+/* A border on the row itself would run straight through the card's rounded corner, so
+   the rule is a pseudo-element (`::before` is the hairline) that stops where the curve
+   starts — and stays continuous between two unrecorded rows. */
+.entry--unpaid:first-child::after {
+  inset-block-start: var(--radius-lg);
+}
+
+.entry--unpaid:last-child::after {
+  inset-block-end: var(--radius-lg);
 }
 
 .entry--unpaid .entry__amount {
@@ -600,14 +624,16 @@ button.entry__main,
   user-select: none;
 }
 
+/* The press paints the whole ROW: the button is the first grid track only, and a
+   highlight stopping short of the amount reads as a tap on the text. */
 @media (hover: hover) {
-  button.entry__main:hover,
+  .entry:has(> button.entry__main:hover),
   .recurring__main:hover {
     background-color: var(--sunken);
   }
 }
 
-button.entry__main:active,
+.entry:has(> button.entry__main:active),
 .recurring__main:active {
   background-color: var(--sunken);
 }
@@ -718,6 +744,53 @@ button.entry__main:active,
 
 .deleted .field__hint {
   margin-bottom: var(--space-3);
+}
+
+/* =========================================================================
+   Amount field
+   =========================================================================
+   The figure the form is about, so it is set a step above the other fields, with
+   the currency mark laid over the input's padding rather than beside the box: the
+   field keeps the form's full width at 320px. */
+
+.amount-input {
+  position: relative;
+  min-width: 0;
+}
+
+.amount-input__symbol {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: var(--space-3);
+  display: flex;
+  align-items: center;
+  color: var(--ink-3);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  line-height: var(--lh-tight);
+  pointer-events: none;
+}
+
+.amount-input--trailing .amount-input__symbol {
+  inset-inline-start: auto;
+  inset-inline-end: var(--space-3);
+}
+
+.input--amount {
+  min-width: 0;
+  /* Room for the widest mark the formatter gives: Japanese's is the full-width ￥. */
+  padding-inline-start: calc(var(--space-7) + var(--space-1));
+  font-size: var(--fs-xl);
+  font-weight: 600;
+}
+
+.amount-input--trailing .input--amount {
+  padding-inline: var(--space-3) calc(var(--space-7) + var(--space-1));
+}
+
+/* "Varies" is a hint, not a figure. */
+.input--amount::placeholder {
+  font-weight: 400;
 }
 
 /* =========================================================================

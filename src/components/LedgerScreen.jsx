@@ -60,6 +60,8 @@ export function LedgerScreen({
             </p>
           ))}
 
+          {/* Above the card it scopes, so a month change is seen where it lands. */}
+          <MonthNav monthKey={monthKey} onChange={onMonthChange} />
           <SummaryCard
             monthSpend={view.monthSpend}
             byCategory={view.byCategory}
@@ -71,7 +73,6 @@ export function LedgerScreen({
         </aside>
 
         <section className="layout__main">
-          <MonthNav monthKey={monthKey} onChange={onMonthChange} />
           <EntryList
             groups={view.groups}
             recurring={view.recurring}

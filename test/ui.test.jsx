@@ -655,7 +655,7 @@ describe('Japanese rendering', () => {
     expect(japanese).not.toBe(english)
     // One string from each of the three components, so dropping any of them fails here.
     expect(japanese).toContain('から受け取り')
-    expect(japanese).toContain('今月')
+    expect(japanese).toContain('<h2 class="eyebrow">支出</h2>')
     expect(japanese).toContain('カテゴリー別')
   })
 

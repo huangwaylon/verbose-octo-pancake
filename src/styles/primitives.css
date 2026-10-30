@@ -82,7 +82,8 @@
   transition:
     background-color var(--transition-fast),
     border-color var(--transition-fast),
-    color var(--transition-fast);
+    color var(--transition-fast),
+    transform var(--transition-fast);
 }
 
 .btn[disabled] {
@@ -104,8 +105,11 @@
   }
 }
 
+/* The filled buttons also give a little under the finger: a colour change alone is
+   hidden by the thumb that caused it. */
 .btn--primary:active:not([disabled]) {
   background-color: var(--accent-hover);
+  transform: scale(0.98);
 }
 
 /* Secondary: a real 3:1 boundary, per WCAG 1.4.11. */
@@ -127,6 +131,7 @@
 
 .btn--danger:active:not([disabled]) {
   background-color: var(--danger-hover);
+  transform: scale(0.98);
 }
 
 /* Icon-only buttons are borderless: the glyph at --ink-2 is itself the 3:1
@@ -677,12 +682,21 @@
    Every @keyframes use is wrapped in a no-preference guard rather than relying
    on a universal override, which would need !important to win the cascade. */
 
-/* A fixed length, not a percentage: this keyframe only runs below 48rem, where the
-   panel can be the whole screen, and 6% of an 852px phone is a 51px slide — a band of
-   scrim flashing under the Dynamic Island for the whole transition. */
+/* Fixed lengths, not percentages: these run only below 48rem, where a full panel is
+   the whole screen, and 6% of an 852px phone is a 51px slide — a band of scrim
+   flashing under the Dynamic Island for the whole transition. So the full panel moves
+   1.5rem, and a content-sized one, whose top edge is mid-screen, twice that: at
+   1.5rem it reads as a fade rather than a sheet arriving from the bottom. */
 @keyframes sheet-slide-up {
   from {
     transform: translateY(1.5rem);
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-rise {
+  from {
+    transform: translateY(3rem);
     opacity: 0;
   }
 }
@@ -725,6 +739,10 @@
   }
 
   .sheet__panel {
+    animation: sheet-rise var(--transition-base);
+  }
+
+  .sheet__panel--full {
     animation: sheet-slide-up var(--transition-base);
   }
 

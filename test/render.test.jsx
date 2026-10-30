@@ -259,6 +259,22 @@ describe('summary card renders', () => {
     expect(amounts).toContain('aria-pressed="true"')
   })
 
+  // MonthNav walks back through past months, so the card must not claim to be the current one.
+  it('labels its total without claiming the current month', () => {
+    const markup = renderToStaticMarkup(
+      <SummaryCard
+        monthSpend={totalSpend(entries)}
+        byCategory={spendByCategory(entries)}
+        byPerson={spendByPerson(entries)}
+        byShare={shareByPerson(entries)}
+        config={config}
+        me={PERSON.P1}
+      />,
+    )
+    expect(markup).toContain('<h2 class="eyebrow">Spent</h2>')
+    expect(markup).not.toContain('This month')
+  })
+
   it('renders nothing at all for a month with no spend', () => {
     const markup = renderToStaticMarkup(
       <SummaryCard

@@ -107,10 +107,8 @@ export function DonutChart({ items, formatMoney, label, otherLabel, formatShare 
             />
             {/* No `title`: the name wraps in full, and iOS has no hover to show one. */}
             <span className="chart__name">{slice.label}</span>
-            <span>
-              <span className="chart__value">{formatMoney(slice.valueYen)}</span>{' '}
-              <span className="chart__share">{formatShare(Math.round(slice.share))}</span>
-            </span>
+            <span className="chart__value tnum">{formatMoney(slice.valueYen)}</span>
+            <span className="chart__share tnum">{formatShare(Math.round(slice.share))}</span>
           </li>
         ))}
       </ul>

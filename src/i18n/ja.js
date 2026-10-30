@@ -42,7 +42,7 @@ export default {
   'balance.settled': '精算ずみ',
 
   // --- month summary --------------------------------------------------------
-  'summary.title': '今月',
+  'summary.spent': '支出',
   'summary.perPerson': 'ひとりあたり',
   'summary.paidToggle': '支払い',
   'summary.byCategory': 'カテゴリー別',

@@ -50,7 +50,8 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, m
   return (
     <section className="card summary">
       <div>
-        <h2 className="eyebrow">{t('summary.title')}</h2>
+        {/* MonthNav, directly above, names the month: never "this month", which a past one is not. */}
+        <h2 className="eyebrow">{t('summary.spent')}</h2>
         <p className="summary__total tnum">{money(monthSpend)}</p>
       </div>
 
