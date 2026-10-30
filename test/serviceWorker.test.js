@@ -1,28 +1,29 @@
 import { describe, expect, it } from 'vitest'
-import { shouldActivate } from '../src/lib/serviceWorker.js'
+import { updateStep } from '../src/lib/serviceWorker.js'
 
-/** Activating reloads the page, so each refusal below is a reload someone would have watched. */
-describe('shouldActivate', () => {
-  const due = { waiting: true, safe: true, hidden: true, registering: false }
+/** Both steps end in a reload, so each refusal below is a reload someone would have watched. */
+describe('updateStep', () => {
+  const quiet = { hidden: true, safe: true, reloadDue: false, waiting: true }
 
   it('activates a waiting worker once the page is hidden', () => {
-    expect(shouldActivate(due)).toBe(true)
+    expect(updateStep(quiet)).toBe('activate')
   })
 
-  it('never reloads a page someone is looking at, mid-session', () => {
-    expect(shouldActivate({ ...due, hidden: false })).toBe(false)
+  it('reloads a page a new worker already controls, once it is hidden', () => {
+    expect(updateStep({ ...quiet, reloadDue: true, waiting: false })).toBe('reload')
   })
 
-  it('activates at registration, before the page has been used', () => {
-    expect(shouldActivate({ ...due, hidden: false, registering: true })).toBe(true)
+  it('does nothing in view, even with a new worker already in control', () => {
+    expect(updateStep({ ...quiet, hidden: false })).toBe(null)
+    expect(updateStep({ ...quiet, hidden: false, reloadDue: true })).toBe(null)
   })
 
-  it('never reloads through something a reload would destroy, hidden or not', () => {
-    expect(shouldActivate({ ...due, safe: false })).toBe(false)
-    expect(shouldActivate({ ...due, safe: false, registering: true })).toBe(false)
+  it('does nothing through something a reload would destroy, hidden or not', () => {
+    expect(updateStep({ ...quiet, safe: false })).toBe(null)
+    expect(updateStep({ ...quiet, safe: false, reloadDue: true })).toBe(null)
   })
 
-  it('has nothing to activate without a waiting worker', () => {
-    expect(shouldActivate({ ...due, waiting: false, registering: true })).toBe(false)
+  it('has nothing to do with no worker waiting and none in control', () => {
+    expect(updateStep({ ...quiet, waiting: false })).toBe(null)
   })
 })

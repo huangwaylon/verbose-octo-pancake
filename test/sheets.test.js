@@ -194,6 +194,16 @@ describe('a stalled request', () => {
     await vi.advanceTimersByTimeAsync(33_000)
     await outcome
   })
+
+  // The connection drops mid-body, before any timeout: still a failure, never an empty ledger.
+  it('fails, never reads as empty, when a successful body breaks off', async () => {
+    globalThis.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: () => Promise.reject(new TypeError('Load failed')),
+    }))
+    await expect(sheets.loadAll(SHEET)).rejects.toThrow('Load failed')
+  })
 })
 
 // A read may be sent twice, since a duplicate changes nothing; a write may not, since it lands twice.

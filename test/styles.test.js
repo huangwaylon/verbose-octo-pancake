@@ -30,6 +30,13 @@ function blocksFor(css, selector) {
   return blocks
 }
 
+/** The value `selector` gives `property` in its last block that sets it, or null. */
+function valueOf(css, selector, property) {
+  const pattern = new RegExp(`(?:^|;|\\s)${property}\\s*:\\s*([^;]+)`)
+  const values = blocksFor(css, selector).flatMap((body) => body.match(pattern)?.[1].trim() ?? [])
+  return values.at(-1) ?? null
+}
+
 function declares(css, selector, property) {
   return blocksFor(css, selector).some((body) => new RegExp(`(^|;|\\s)${property}\\s*:`).test(body))
 }
@@ -360,8 +367,12 @@ describe('the rules an installed iOS web app depends on', () => {
     // A border on the row runs straight through the corner the row inherits from the card.
     expect(declares(FILES.app, '.entry--unpaid', 'border-inline-start')).toBe(false)
     expect(declares(FILES.app, '.entry--unpaid::after', 'border-inline-start')).toBe(true)
-    expect(declares(FILES.app, '.entry--unpaid:first-child::after', 'inset-block-start')).toBe(true)
-    expect(declares(FILES.app, '.entry--unpaid:last-child::after', 'inset-block-end')).toBe(true)
+    expect(valueOf(FILES.app, '.entry--unpaid:first-child::after', 'inset-block-start')).toBe(
+      'var(--radius-lg)',
+    )
+    expect(valueOf(FILES.app, '.entry--unpaid:last-child::after', 'inset-block-end')).toBe(
+      'var(--radius-lg)',
+    )
   })
 
   it('keeps the whole recurring row tappable, not just its text', () => {

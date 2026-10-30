@@ -113,10 +113,11 @@ async function request(path, { method = 'GET', params, body, allowRetry = true }
         body: body ? JSON.stringify(body) : undefined,
         signal,
       })
-      // Inside the timeout too: the headers can arrive and the body stall. A body cut off by the
-      // timeout rethrows — read as "no JSON" it is an empty ledger reported as a successful read.
+      // Inside the timeout too: the headers can arrive and the body stall. A success whose body
+      // does not parse — cut off by the timeout or by the connection — rethrows: read as "no JSON"
+      // it is an empty ledger reported as a successful read. Only an error's body may be junk.
       const payload = await response.json().catch((cause) => {
-        if (signal.aborted) throw cause
+        if (signal.aborted || response.ok) throw cause
         return null
       })
       return { response, payload }

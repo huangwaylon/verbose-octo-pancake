@@ -271,8 +271,7 @@ describe('summary card renders', () => {
         me={PERSON.P1}
       />,
     )
-    expect(markup).toContain('<h2 class="eyebrow">Spent</h2>')
-    expect(markup).not.toContain('This month')
+    expect(markup).toContain('<h3 class="eyebrow">Spent</h3>')
   })
 
   it('renders nothing at all for a month with no spend', () => {

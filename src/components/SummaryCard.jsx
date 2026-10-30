@@ -50,14 +50,15 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, m
   return (
     <section className="card summary">
       <div>
-        {/* MonthNav, directly above, names the month: never "this month", which a past one is not. */}
-        <h2 className="eyebrow">{t('summary.spent')}</h2>
+        {/* MonthNav, directly above, names the month — never "this month", which a past one is not —
+            and its <h2> heads everything below, this card's headings included. */}
+        <h3 className="eyebrow">{t('summary.spent')}</h3>
         <p className="summary__total tnum">{money(monthSpend)}</p>
       </div>
 
       <div className="summary__section">
         <div className="summary__heading">
-          <h2 className="eyebrow">{t('summary.perPerson')}</h2>
+          <h3 className="eyebrow">{t('summary.perPerson')}</h3>
           {/* `aria-pressed` rather than a label that flips: a flipping label never says whether
               it names the figure on screen or the one a tap away. */}
           <button
@@ -110,7 +111,7 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, m
 
       {items.length > 0 && (
         <div className="summary__section">
-          <h2 className="eyebrow">{t('summary.byCategory')}</h2>
+          <h3 className="eyebrow">{t('summary.byCategory')}</h3>
           <DonutChart
             items={items}
             formatMoney={money}
