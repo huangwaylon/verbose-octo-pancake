@@ -6,6 +6,7 @@
 
 import { ENTRY_TYPE, PERSON, isActive, isPerson, makeEntry, validateEntryCodes } from '../schema.js'
 import { todayIso } from './dates.js'
+import { sameFields } from './memo.js'
 import { makeTemplate, validateTemplateCodes } from './recurring.js'
 import { i18nError } from '../i18n/index.js'
 
@@ -44,25 +45,6 @@ function supersedes(entry, kept) {
 }
 
 /**
- * Whether two entries — or two templates — are the same row, field for field. Key-driven rather
- * than a hand-written field list, so a field added to `rowToEntry` is covered: a list that missed
- * one would report two different rows as equal and freeze the newer one off the screen. An array
- * field (a template's `months`) compares by its items.
- */
-function sameEntry(a, b) {
-  const keys = Object.keys(a)
-  if (keys.length !== Object.keys(b).length) return false
-  return keys.every((key) => {
-    const x = a[key]
-    const y = b[key]
-    if (Array.isArray(x) && Array.isArray(y)) {
-      return x.length === y.length && x.every((item, index) => item === y[index])
-    }
-    return x === y
-  })
-}
-
-/**
  * Fold a fresh server read into what is on screen, keeping every optimistic row the server has not
  * acknowledged yet — a refresh landing between a tap and its reply is enough to need both halves.
  * An in-flight APPEND is absent from `loaded`, and the snapshot is written from that list, so the
@@ -75,7 +57,7 @@ function sameEntry(a, b) {
  *
  * Every row the read did not change keeps its on-screen OBJECT, so one edit re-renders one memo'd
  * row, and a read that changed nothing returns the list already on screen, so `setEntries` bails.
- * Safe only because `sameEntry` is exact.
+ * Safe only because `sameFields` is exact.
  */
 export function mergeLoaded(current, loaded) {
   const pending = new Map()
@@ -86,7 +68,7 @@ export function mergeLoaded(current, loaded) {
     const mine = pending.get(entry.id)
     if (mine) return mine
     const shown = onScreen.get(entry.id)
-    return shown && sameEntry(shown, entry) ? shown : entry
+    return shown && sameFields(shown, entry) ? shown : entry
   })
   if (pending.size) {
     const loadedIds = new Set(loaded.map((entry) => entry.id))
@@ -137,7 +119,7 @@ export function withPendingDeletedAt(entries, id, deletedAt) {
  * The write landed. `acknowledge` swaps in the canonical entry, for an append; `settled` only drops
  * the flag, leaving fields an edit did not touch alone.
  *
- * DROPS it rather than setting it false, because `sameEntry` compares key COUNTS: a row carrying a
+ * DROPS it rather than setting it false, because `sameFields` compares key COUNTS: a row carrying a
  * tenth key can never equal the sheet's copy, so `mergeLoaded` stops recognising a read that
  * changed nothing and every later read re-runs every memo and re-serialises the snapshot.
  */
@@ -163,8 +145,8 @@ export function without(entries, id) {
  * The edit or delete failed: put back exactly what was there before, rather than clearing
  * `pending` and leaving the optimistic values on screen as if saved.
  *
- * `pending` is stripped whatever `previous` carries. `entryWriteRefusal` keeps a pending copy from
- * reaching here today, but left set the flag is permanent: `mergeLoaded` keeps a pending row over
+ * `pending` is stripped whatever `previous` carries, even though `entryWriteRefusal` keeps a pending
+ * copy from reaching here: left set, the flag is permanent — `mergeLoaded` keeps a pending row over
  * the server's, so the row would freeze and block `compact` for the life of the install.
  */
 export function reverted(entries, id, previous) {
@@ -335,7 +317,7 @@ export function createReadGate() {
  * screen and every memo keyed on it holds.
  */
 export function sameTemplates(a, b) {
-  return a.length === b.length && a.every((template, index) => sameEntry(template, b[index]))
+  return a.length === b.length && a.every((template, index) => sameFields(template, b[index]))
 }
 
 /**

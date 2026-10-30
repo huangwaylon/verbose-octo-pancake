@@ -53,7 +53,7 @@ A tab of DECLARATIONS, edited through `RecurringSheet`/`TemplateFormSheet` and h
 
 ## Optimistic state
 - **A pending row always beats the server's copy** (`mergeLoaded`), so `pending` is never left set with no write in flight — `reverted` strips it.
-- **A read that changed nothing returns the array on screen, and every unchanged row keeps its object** — resting on `sameEntry` comparing by key. `applyLoad` likewise holds the config's and templates' (`sameTemplates`) identity; every `memo` compares identity.
+- **A read that changed nothing returns the array on screen, and every unchanged row keeps its object** — resting on `sameFields` comparing by key. `applyLoad` likewise holds the config's and templates' (`sameTemplates`) identity; every `memo` compares identity.
 - **Only the newest read may apply, and none an entry write settled during** — that one is re-read. `createReadGate` owns both, including a read in flight when the key is forgotten.
 - **The persist effect watches the CONFIG as well as the list**, or a config-only change never reaches the cache and a stale `default_split_p*` moves money next launch.
 - **`writeSnapshot`'s reference guard names the SHEET too, and `useLedger` resets on an id CHANGE**, not just on losing one.

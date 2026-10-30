@@ -20,8 +20,8 @@ export function defaultSplitFor(config, person) {
 }
 
 /**
- * A share as a whole percent, for display. The one home of that rounding: three components used to
- * repeat it, so a change of rule had to be found in files nothing points at.
+ * A share as a whole percent, for display — the one home of that rounding, so a change of rule
+ * cannot miss a copy.
  */
 export function percentOf(share) {
   return Math.round(share * 100)

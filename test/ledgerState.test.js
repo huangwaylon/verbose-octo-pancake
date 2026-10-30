@@ -228,7 +228,7 @@ describe('an edit', () => {
   it('clears only the flag on success, leaving fields the edit did not touch', () => {
     const pendingRow = withPendingEdit([original], edited)
     const [next] = settled(pendingRow, 'a')
-    // Gone, not false: `sameEntry` counts keys, so a settled row has to be able to EQUAL the
+    // Gone, not false: `sameFields` counts keys, so a settled row has to be able to EQUAL the
     // sheet's copy — otherwise `mergeLoaded` never recognises a read that changed nothing again.
     expect('pending' in next).toBe(false)
     expect(next.description).toBe('Ozeki')

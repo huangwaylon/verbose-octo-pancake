@@ -6,6 +6,7 @@
 
 import { DEFAULT_CONFIG } from '../config.js'
 import { cellText } from '../schema.js'
+import { sameFields } from './memo.js'
 import { parseShare } from './money.js'
 
 /**
@@ -74,27 +75,10 @@ export function parseConfigRows(rows) {
  * Whether two partial configs say the same thing. `parseConfigRows` builds a fresh object per read,
  * so without this the config's IDENTITY changes on every refresh even though the tab almost never
  * does — and identity is what every `memo` keyed on the config compares, so a resume would
- * re-render the whole ledger to arrive at the same screen. Arrays compare element-wise; anything
- * else falls through to `===` and merely loses the optimization.
+ * re-render the whole ledger to arrive at the same screen.
  */
 export function sameSheetConfig(a, b) {
-  const left = a ?? {}
-  const right = b ?? {}
-  const keys = Object.keys(left)
-  if (keys.length !== Object.keys(right).length) return false
-  return keys.every((key) => {
-    const one = left[key]
-    const two = right[key]
-    if (Array.isArray(one) || Array.isArray(two)) {
-      return (
-        Array.isArray(one) &&
-        Array.isArray(two) &&
-        one.length === two.length &&
-        one.every((item, index) => item === two[index])
-      )
-    }
-    return one === two
-  })
+  return sameFields(a ?? {}, b ?? {})
 }
 
 /**

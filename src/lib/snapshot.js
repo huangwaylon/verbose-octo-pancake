@@ -13,7 +13,7 @@ import { isPerson } from '../schema.js'
  *
  * Bump it whenever the stored shape changes, and per deploy rather than per field — `isRestorable`
  * checks the id, amount, share and payer only, so a snapshot of a different shape restores, paints
- * one stale frame, and carries extra keys that defeat `sameEntry`'s key-count check.
+ * one stale frame, and carries extra keys that defeat `sameFields`'s key-count check.
  */
 const VERSION = 2
 
@@ -92,10 +92,9 @@ export function readSnapshot(spreadsheetId) {
 }
 
 /**
- * @param {object[]} entries as returned by a successful read. Never the merged list `useLedger`
- *   holds in state: an unacknowledged optimistic row persisted here comes back on the next launch
- *   looking like a saved entry.
- * @param {object} sheetConfig the partial config, pre-merge
+ * `entries` is the list on screen, and only once nothing in it is pending: an unacknowledged
+ * optimistic row persisted here comes back on the next launch looking like a saved entry.
+ * `sheetConfig` is the partial config, pre-merge.
  */
 export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
   if (!spreadsheetId) return

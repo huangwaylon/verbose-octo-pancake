@@ -12,3 +12,22 @@ export function cached(store, key, make) {
   store.set(key, value)
   return value
 }
+
+/**
+ * Whether two flat records hold the same values, key for key; an array value compares by its items.
+ * Key-driven rather than a field list, so a field added later is covered: a list that missed one
+ * would call two different rows equal and freeze the newer off the screen. It decides when a read
+ * may keep the object already on screen, which is the identity every `memo` compares.
+ */
+export function sameFields(a, b) {
+  const keys = Object.keys(a)
+  if (keys.length !== Object.keys(b).length) return false
+  return keys.every((key) => {
+    const x = a[key]
+    const y = b[key]
+    if (Array.isArray(x) && Array.isArray(y)) {
+      return x.length === y.length && x.every((item, index) => item === y[index])
+    }
+    return x === y
+  })
+}
