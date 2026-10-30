@@ -36,6 +36,14 @@ const MINT_TIMEOUT_MS = 15_000
  */
 const MINT_HEDGE_MS = 4_000
 
+/**
+ * A live token this old is renewed beside the request using it. A token's hour counts from its
+ * MINT, so without this a reopen 40 minutes after the last use can still wait on `/exec`: measured
+ * on a throttled phone profile, fresh data lands at ~0.4s with a live token and ~1.8s with a mint
+ * in front. Renewed on use, a reopen within about 50 minutes of the last one skips the mint.
+ */
+const RENEW_AFTER_MS = 10 * 60_000
+
 let appKey = readStored(STORAGE_KEYS.appKey)
 let spreadsheetId = readStored(STORAGE_KEYS.spreadsheetId)
 let accessToken = null
@@ -324,9 +332,16 @@ export async function connect(key) {
   notify()
 }
 
-/** Every Sheets request goes through this. */
+/**
+ * Every Sheets request goes through this. A renewal never delays the caller, and its failure is
+ * nobody's: the live token still works, and a rejected key is flagged by `startMint` either way.
+ */
 export async function getAccessToken() {
-  if (accessToken && Date.now() < expiresAt - REFRESH_MARGIN_MS) return accessToken
+  if (accessToken && Date.now() < expiresAt - REFRESH_MARGIN_MS) {
+    const mintedAt = expiresAt - TOKEN_LIFETIME_MS
+    if (!pending && Date.now() - mintedAt >= RENEW_AFTER_MS) startMint().catch(() => {})
+    return accessToken
+  }
   return tokenAtLeast(generation)
 }
 

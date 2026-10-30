@@ -379,6 +379,62 @@ describe('the 401 retry path', () => {
   })
 })
 
+/** A token counts its hour from the mint, so use renews it — beside the request, never before. */
+describe('renewing a token on use', () => {
+  const minted = (token) => reply({ token, spreadsheetId: SHEET_ID })
+
+  it('hands back the live token at once and renews it beside the request once it is old', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(minted('first'))
+      .mockResolvedValueOnce(minted('second'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const c = await load({ 'sf.appKey': 'k' })
+    expect(await c.getAccessToken()).toBe('first')
+    vi.advanceTimersByTime(9 * 60_000)
+    expect(await c.getAccessToken()).toBe('first')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    vi.advanceTimersByTime(60_000)
+    expect(await c.getAccessToken()).toBe('first')
+    // A second request while the renewal is out shares it.
+    expect(await c.getAccessToken()).toBe('first')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    await vi.runAllTimersAsync()
+    expect(await c.getAccessToken()).toBe('second')
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('renews a stored token too, so a relaunch within the hour skips the mint next time', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(minted('renewed'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const c = await load({
+      'sf.appKey': 'k',
+      'sf.token': JSON.stringify({ accessToken: 'stored', expiresAt: Date.now() + 30 * 60_000 }),
+    })
+    expect(await c.getAccessToken()).toBe('stored')
+    await vi.waitFor(() => expect(c.getAccessToken()).resolves.toBe('renewed'))
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps serving the live token when a renewal fails', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError('Load failed'))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const c = await load({
+      'sf.appKey': 'k',
+      'sf.token': JSON.stringify({ accessToken: 'stored', expiresAt: Date.now() + 30 * 60_000 }),
+    })
+    expect(await c.getAccessToken()).toBe('stored')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    expect(await c.getAccessToken()).toBe('stored')
+    expect(c.connectionStatus()).toBe('connected')
+  })
+})
+
 describe('the persisted token', () => {
   it('is reused across a reload while it has life left', async () => {
     const fetchMock = vi.fn().mockResolvedValue(ok())

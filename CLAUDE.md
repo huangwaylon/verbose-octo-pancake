@@ -103,6 +103,7 @@ A tab of DECLARATIONS, edited through `RecurringSheet`/`TemplateFormSheet` and h
 - **`doPost` must be incapable of throwing, and is the whole of `Code.gs`** — a throw returns HTML, read as transient forever. The script writes NOTHING: no `SpreadsheetApp`, no trigger.
 - **Only a request harmless to send twice is hedged** (`lib/hedge.js`): the mint, since `Code.gs` writes nothing, and a Sheets `GET` — never a write. Each attempt reads its body inside its own timeout; `hedge` returns one response, so the 401 retry stays outside it and happens once.
 - **`mint()` posts the key it started with and refuses to post none** — `KEY_REQUIRED`, never `{"key":null}`, whose `unauthorized` would flag a key nobody entered.
+- **A live token over 10 minutes old is renewed BESIDE the request using it, never in front of it** (`RENEW_AFTER_MS`): a token's hour counts from its mint, so renewing on use is what lets a reopen skip `/exec`.
 - **The refresh margin is performance; the 401 retry is correctness.** `refreshToken` counts generations and the retry cannot retry.
 - **A failure retrying cannot fix is not transient** (a lost share, `unavailable`); a 403 is both, so `isUnreachable` reads the reason.
 - **The launch read starts before the first React render** (`startLaunchRead`, taken once by the first `load` for that sheet; the bare mint when no id is stored), because everything after it is serialized.
