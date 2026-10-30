@@ -55,13 +55,19 @@ export function SettingsSheet({
   return (
     <BottomSheet
       title={t('settings.title')}
+      busy={busy}
       onClose={onClose}
       footer={
         /**
          * A close button, not the destructive one: the footer is the only control reliably in
          * reach, so "Forget key" there is the easiest target to hit by accident.
          */
-        <button type="button" className="btn btn--primary btn--block" onClick={onClose}>
+        <button
+          type="button"
+          className="btn btn--primary btn--block"
+          onClick={onClose}
+          disabled={busy}
+        >
           {t('common.close')}
         </button>
       }
@@ -116,7 +122,12 @@ export function SettingsSheet({
         {/* A count rather than a reminder: a reminder is what the balance must not carry. */}
         <Field label={t('recurring.title')} description={t('settings.recurringHint')}>
           <div className="row">
-            <button type="button" className="btn btn--ghost btn--sm" onClick={onOpenRecurring}>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              onClick={onOpenRecurring}
+              disabled={busy}
+            >
               {templateCount
                 ? t('settings.recurringCount', { count: templateCount })
                 : t('settings.recurringEmpty')}
@@ -190,7 +201,12 @@ export function SettingsSheet({
         {/* Last in the body: reachable, explained, not where a thumb lands by default. */}
         <Field label={t('settings.forgetKeyTitle')} description={t('settings.forgetKeyHint')}>
           <div className="row">
-            <button type="button" className="btn btn--danger btn--sm" onClick={onForget}>
+            <button
+              type="button"
+              className="btn btn--danger btn--sm"
+              onClick={onForget}
+              disabled={busy}
+            >
               {t('settings.forgetKey')}
             </button>
           </div>

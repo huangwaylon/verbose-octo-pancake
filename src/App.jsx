@@ -92,15 +92,18 @@ export default function App() {
   /**
    * `useLedger` has already reverted the optimistic change, so there is nothing to undo here. Stable,
    * with `toasts.push`/`toasts.error` as deps rather than the object they hang off, which is fresh
-   * on every render — `recordDraft` below takes it into `EntryList`'s memo.
+   * on every render — `recordDraft` below takes it into `EntryList`'s memo. Resolves whether the
+   * write landed, and never rejects: the toast has reported it.
    */
   const report = useCallback(
     async (write, okKey, failKey) => {
       try {
         await write()
         toasts.push(t(okKey))
+        return true
       } catch (cause) {
         toasts.error(errorMessage(cause, failKey))
+        return false
       }
     },
     [toasts.push, toasts.error, t],
@@ -161,11 +164,17 @@ export default function App() {
   /**
    * Irreversible, and reported by toast because no form is left. The confirmation stays up until the
    * delete and its re-read land: back on the recurring page early, the template is still listed, and
-   * saving it would append it again.
+   * saving it would append it again. A failure goes back to whatever opened the confirmation, so a
+   * form keeps what was typed.
    */
-  const deleteTemplate = async (template) => {
-    await report(() => ledger.deleteTemplate(template), 'toast.deleted', 'toast.deleteFailed')
-    openRecurring()
+  const deleteTemplate = async (template, returnTo) => {
+    const deleted = await report(
+      () => ledger.deleteTemplate(template),
+      'toast.deleted',
+      'toast.deleteFailed',
+    )
+    if (deleted || !returnTo) openRecurring()
+    else setOverlay(returnTo)
   }
 
   const forgetKey = () => {
@@ -307,7 +316,7 @@ export default function App() {
             name: templateTitle(overlay.template, t('entry.expense')),
           })}
           confirmLabel={t('recurring.delete')}
-          onConfirm={() => deleteTemplate(overlay.template)}
+          onConfirm={() => deleteTemplate(overlay.template, overlay.returnTo)}
           onClose={() => setOverlay(overlay.returnTo)}
         />
       )}
