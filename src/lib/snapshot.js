@@ -113,7 +113,7 @@ export function writeSnapshot(spreadsheetId, entries, sheetConfig) {
     v: VERSION,
     spreadsheetId,
     config: sheetConfig ?? {},
-    // `pending` is stripped as a second line of defence behind that @param.
+    // `pending` is stripped as a second line of defence behind "only once nothing is pending".
     entries: entries.map(({ pending, ...entry }) => entry),
   })
   // Remembered before the two refusals below: stored or too large to store, this exact list has

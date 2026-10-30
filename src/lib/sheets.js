@@ -243,6 +243,27 @@ function deleteRowRequest(sheetGid, rowNumber) {
 }
 
 /**
+ * One data row as an entry, or not, and which of `loadAll`'s counts it adds to, if any. A
+ * tombstoned row counts toward none: it is absent from every total by design.
+ */
+function decodeRow(tab, row) {
+  const live = !deletedCell(tab, row)
+  const entry = rowToEntry(row, tab)
+  if (!entry) {
+    // Every row the app writes carries an id, so a row holding anything with NOTHING in the id
+    // column is one whose values are not under the headings — a row that does not start in
+    // column A — and never a tombstone, whatever its `deleted_at` cell holds.
+    if (!idCell(tab, row)) return { entry: null, problem: hasAnyCell(row) ? 'undecodedRows' : null }
+    if (!live) return { entry: null, problem: null }
+    const amountReads = parseAmountToYen(amountCell(tab, row)) != null
+    const problem = tab.has('payer') && amountReads ? 'unattributedRows' : 'undecodedRows'
+    return { entry: null, problem }
+  }
+  const undated = live && !entry.date && dateCell(tab, row)
+  return { entry, problem: undated ? 'undatedRows' : null }
+}
+
+/**
  * Load everything the app needs in one round trip. The counts are how the sheet reports what it
  * holds and the app cannot show; the alternative to each is a wrong number with nothing said.
  *
@@ -283,29 +304,12 @@ export async function loadAll(spreadsheetId) {
   const sheetConfig = parseConfigRows(valueRanges[ranges.length - 1]?.values ?? [])
   const config = mergeConfig(sheetConfig)
 
-  let undecodedRows = 0
-  let undatedRows = 0
-  let unattributedRows = 0
+  const problems = { undecodedRows: 0, undatedRows: 0, unattributedRows: 0 }
   const decoded = DATA_TABS.flatMap((tab, index) =>
     (valueRanges[index]?.values ?? []).flatMap((row) => {
-      // A tombstoned row is absent from every total by design.
-      const counts = !deletedCell(tab, row)
-      const entry = rowToEntry(row, tab)
-      if (!entry) {
-        // Every row the app writes carries an id, so a row holding anything with NOTHING in the
-        // id column is one whose values are not under the headings — a row that does not start in
-        // column A — and never a tombstone, whatever its `deleted_at` cell holds.
-        if (!idCell(tab, row)) {
-          if (hasAnyCell(row)) undecodedRows += 1
-        } else if (counts) {
-          const amountReads = parseAmountToYen(amountCell(tab, row)) != null
-          if (tab.has('payer') && amountReads) unattributedRows += 1
-          else undecodedRows += 1
-        }
-        return []
-      }
-      if (counts && !entry.date && dateCell(tab, row)) undatedRows += 1
-      return [entry]
+      const { entry, problem } = decodeRow(tab, row)
+      if (problem) problems[problem] += 1
+      return entry ? [entry] : []
     }),
   )
 
@@ -327,9 +331,7 @@ export async function loadAll(spreadsheetId) {
     sheetConfig,
     supersededRows,
     duplicateRows,
-    undecodedRows,
-    undatedRows,
-    unattributedRows,
+    ...problems,
     undecodedTemplates,
     configMissing,
   }
