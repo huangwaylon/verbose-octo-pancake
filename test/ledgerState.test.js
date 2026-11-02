@@ -7,6 +7,7 @@ import {
   gateFor,
   acknowledge,
   hasLoaded,
+  landsOnMonth,
   isRefreshing,
   blocksReload,
   entryWriteRefusal,
@@ -720,19 +721,24 @@ describe('what a read carries beside the entries', () => {
  */
 describe('what a status says about the sheet', () => {
   it('separates a cached launch from a sheet actually read', () => {
+    // `lands`: the cached paint chooses the landing month (waiting for `ready` would move it
+    // under someone already switching), and `refreshing` never chooses it twice.
     const EXPECTED = {
-      idle: { loaded: false, refreshing: false },
-      loading: { loaded: false, refreshing: false },
-      stale: { loaded: false, refreshing: false },
-      error: { loaded: false, refreshing: false },
-      ready: { loaded: true, refreshing: false },
-      refreshing: { loaded: true, refreshing: true },
+      idle: { loaded: false, refreshing: false, lands: false },
+      loading: { loaded: false, refreshing: false, lands: false },
+      stale: { loaded: false, refreshing: false, lands: true },
+      error: { loaded: false, refreshing: false, lands: false },
+      ready: { loaded: true, refreshing: false, lands: true },
+      refreshing: { loaded: true, refreshing: true, lands: false },
     }
 
     for (const [status, expected] of Object.entries(EXPECTED)) {
-      expect({ loaded: hasLoaded(status), refreshing: isRefreshing(status) }, status).toEqual(
-        expected,
-      )
+      const reading = {
+        loaded: hasLoaded(status),
+        refreshing: isRefreshing(status),
+        lands: landsOnMonth(status),
+      }
+      expect(reading, status).toEqual(expected)
     }
   })
 })

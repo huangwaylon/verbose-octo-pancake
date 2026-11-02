@@ -272,6 +272,15 @@ export function hasLoaded(status) {
 }
 
 /**
+ * Whether the rows on screen can choose the month a session lands on: a read has finished, or the
+ * cache has painted. Not `refreshing`, which is only ever reached from one of those — the choice
+ * was made there, and making it again would move the month under someone already switching it.
+ */
+export function landsOnMonth(status) {
+  return status === 'ready' || status === 'stale'
+}
+
+/**
  * A failed read with something already on screen is `stale`, not `error`: the sheet has not
  * changed just because we cannot reach it. This is the offline launch.
  */

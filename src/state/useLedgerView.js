@@ -11,6 +11,7 @@ import {
   spendByPerson,
   totalSpend,
 } from '../lib/balance.js'
+import { landsOnMonth } from '../lib/ledgerState.js'
 import { unpaidRecurring } from '../lib/recurring.js'
 import { currentMonthKey } from '../lib/dates.js'
 
@@ -60,7 +61,7 @@ export function useInitialMonth(status, active, setMonthKey) {
 
   useEffect(() => {
     if (jumped.current) return
-    if (status !== 'ready' && status !== 'stale') return
+    if (!landsOnMonth(status)) return
     if (!active.length) return
     jumped.current = true
     const next = initialMonthKey(active, currentMonthKey())
