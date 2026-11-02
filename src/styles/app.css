@@ -305,6 +305,12 @@
   gap: var(--space-3);
 }
 
+/* The toggle keeps its 36px target without making this the tallest heading row in
+   the card: the overhang is half the difference from the eyebrow's line. */
+.summary__heading .btn {
+  margin-block: calc((var(--fs-label) * var(--lh-tight) - var(--tap-target-sm)) / 2);
+}
+
 /* Who-paid is two values, so it is a meter, not a pie. A 2-slice pie is the
    canonical chart anti-pattern: the number is the chart. */
 .summary__meter {
@@ -498,7 +504,8 @@
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
-  padding-inline: var(--space-1);
+  /* On the rows' text edge, card border included, as a grouped list's headers are. */
+  padding-inline: calc(var(--space-5) + 1px);
   color: var(--ink-2);
   font-size: var(--fs-label);
   font-weight: 500;
@@ -514,14 +521,19 @@
 /* The title is a heading so the Headings rotor can reach it, and `font: inherit` is what
    keeps it looking like the band it sits in: base.css gives every heading
    `font-weight: 600`, and that is a direct rule on the child, so it outranks the 500 it
-   would inherit. Flex for the recurring section's leading icon — centred on the text
-   rather than left on the baseline the label aligns the total to, which would sink a
-   15px glyph by its own descender space. */
+   would inherit. Flex for the recurring section's leading icon, on the baseline so the
+   TEXT is what the label aligns the total to — the icon itself is centred below. */
 .entry-section__title {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--space-1);
   font: inherit;
+}
+
+/* The text supplies the title's baseline, so the total beside it lines up with the
+   words rather than with the bottom of the glyph. */
+.entry-section__title svg {
+  align-self: center;
 }
 
 .entry {
@@ -530,7 +542,7 @@
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-5);
   transition:
     background-color var(--transition-fast),
     opacity var(--transition-base);
@@ -540,7 +552,7 @@
   content: '';
   position: absolute;
   top: 0;
-  left: var(--space-4);
+  left: var(--space-5);
   right: 0;
   height: 1px;
   background-color: var(--line);

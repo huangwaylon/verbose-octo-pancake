@@ -203,6 +203,12 @@
   line-height: var(--lh-prose);
 }
 
+/* "optional" inside a label: at the hint's prose line-height it made that label
+   2.4px taller than every other, and the gap to its control with it. */
+.field__label .field__hint {
+  line-height: var(--lh-tight);
+}
+
 .field__error {
   margin: 0;
   color: var(--danger);
@@ -348,6 +354,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
+  /* The first disc on the content edge: its 44px target overhangs the 28px disc. */
+  margin-inline-start: calc((1.75rem - var(--tap-target)) / 2);
 }
 
 /* A tap target of --tap-target with a smaller visible disc inside it, so the
@@ -543,6 +551,12 @@
 
 .sheet__panel--full .sheet__body {
   padding-top: var(--space-3);
+}
+
+/* The leading icon mirrors the header's X: the same inset, so the two glyphs
+   stand the same distance from their edges. */
+.sheet__footer > .btn--icon:first-child {
+  margin-inline-start: calc(var(--space-4) - var(--space-5));
 }
 
 .sheet__footer {

@@ -138,7 +138,8 @@ function UnpaidRow({ draft, money, onRecord }) {
       amount={draft.amountYen ? money(draft.amountYen) : t('recurring.amountVaries')}
       unpaid
     >
-      {/* Identical ticks down a column say nothing about which cost each records. */}
+      {/* Identical ticks down a column say nothing about which cost each records. 20px beside
+          the trash's 18: a tick's single thin stroke reads smaller than a closed outline. */}
       <button
         type="button"
         className="btn btn--icon entry__record"
