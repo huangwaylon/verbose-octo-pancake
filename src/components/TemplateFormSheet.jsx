@@ -2,7 +2,7 @@ import { useId, useRef, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { parseAmountToYen, yenToSheetString } from '../lib/money.js'
 import { isRetired, templateFormProblem } from '../lib/recurring.js'
-import { PERSON, otherPerson } from '../schema.js'
+import { PERSON } from '../schema.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
 import { Field, FieldError, LITERAL_TEXT, describedBy } from './Field.jsx'
 import { AmountField } from './AmountField.jsx'
@@ -61,9 +61,7 @@ export function TemplateFormSheet({
   // Blank is null, the value meaning "variable"; every other unreadable amount is already refused.
   const yen = amount.trim() ? parseAmountToYen(amount) : null
 
-  const { label, possessive } = usePeopleLabels(config, me)
-  const payerLabel = label(payer)
-  const otherLabel = label(otherPerson(payer))
+  const people = usePeopleLabels(config, me)
 
   const refused = rejected && templateFormProblem(rejected)
   const nameError =
@@ -196,7 +194,7 @@ export function TemplateFormSheet({
           onChange={setCategory}
         />
 
-        <PayerField name="template-payer" value={payer} label={label} onChange={setPayer} />
+        <PayerField name="template-payer" value={payer} label={people.label} onChange={setPayer} />
 
         <Field
           htmlFor="template-day"
@@ -225,14 +223,13 @@ export function TemplateFormSheet({
 
         <SplitField
           split={split}
-          payerLabel={payerLabel}
-          payerPossessive={possessive(payer)}
-          otherLabel={otherLabel}
+          people={people}
+          payer={payer}
           amountYen={yen}
           /* `possessive`, not `label`: English inflects, and `label` reads "You’s default". */
           defaultLabel={t('recurring.splitDefault')}
           defaultHint={t('recurring.splitDefaultHint', {
-            owner: possessive(payer),
+            owner: people.possessive(payer),
             percent: split.configuredPercent,
           })}
         />

@@ -386,6 +386,13 @@ describe('the rules an installed iOS web app depends on', () => {
     }
   })
 
+  it('spreads the split presets evenly over the slider, a long name wrapping in its third', () => {
+    expect(valueOf(FILES.app, '.split-control__presets', 'grid-template-columns')).toBe(
+      'repeat(3, minmax(0, 1fr))',
+    )
+    expect(declares(FILES.app, '.split-control__presets .btn', 'overflow-wrap')).toBe(true)
+  })
+
   it('keeps the unrecorded mark off the card’s rounded corners', () => {
     // A border on the row runs straight through the corner the row inherits from the card.
     expect(declares(FILES.app, '.entry--unpaid', 'border-inline-start')).toBe(false)

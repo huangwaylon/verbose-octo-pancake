@@ -186,6 +186,24 @@ describe('entry form', () => {
       />,
     )
 
+  describe('the split presets', () => {
+    const presets = (entry) =>
+      [
+        ...render({}, { payerShare: 0.7, ...entry }).matchAll(
+          /class="btn btn--sm btn--ghost">([^<]+)</g,
+        ),
+      ]
+        .map((match) => match[1])
+        .filter((text) => text.startsWith('All') || text === 'Half')
+
+    it('say whose share all of it is, never "All You"', () => {
+      // The slider beneath is labelled "Your share" / "Sam’s share"; the presets finish that, in
+      // the slider's order — 0% of the payer's share is the track's left end.
+      expect(presets({ payer: PERSON.P1 })).toEqual(['All Sam’s', 'Half', 'All yours'])
+      expect(presets({ payer: PERSON.P2 })).toEqual(['All yours', 'Half', 'All Sam’s'])
+    })
+  })
+
   it('orders the fields by how often each is touched', () => {
     // Amount and note are typed every time; the rest default to something usually right, the
     // category to a guess. Reading order is the design of this form, and nothing else sees it.

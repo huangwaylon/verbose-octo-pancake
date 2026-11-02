@@ -868,10 +868,21 @@ button.entry__main::after {
   color: var(--ink-2);
 }
 
+/* Three equal columns spanning the slider, each over the end it moves it to. A long
+   name wraps inside its own button rather than widening it past its third. */
 .split-control__presets {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
+}
+
+/* The grid's gap separates them, so the inline padding is spent on the label: at
+   320px a third is ~77px, and the button's own --space-3 left "All yours" and
+   「Yukiが全額」 on two lines. */
+.split-control__presets .btn {
+  min-width: 0;
+  padding: var(--space-1);
+  overflow-wrap: anywhere;
 }
 
 /* The label goes on its own line rather than sharing one with the slider: in

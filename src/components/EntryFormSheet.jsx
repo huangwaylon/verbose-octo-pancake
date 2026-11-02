@@ -55,7 +55,8 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
   const amountError =
     rejected != null && amount === rejected ? t('form.amountError', { example: '1250' }) : null
 
-  const { label, possessive } = usePeopleLabels(config, me)
+  const people = usePeopleLabels(config, me)
+  const { label } = people
   const payerLabel = label(payer)
   const otherLabel = label(otherPerson(payer))
 
@@ -180,13 +181,7 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
         </Field>
 
         {!isSettlement && (
-          <SplitField
-            split={split}
-            payerLabel={payerLabel}
-            payerPossessive={possessive(payer)}
-            otherLabel={otherLabel}
-            amountYen={yen}
-          />
+          <SplitField split={split} people={people} payer={payer} amountYen={yen} />
         )}
 
         {/* A save failure belongs directly above the footer that produced it. */}

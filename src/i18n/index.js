@@ -157,6 +157,11 @@ export function usePeopleLabels(config, me) {
         person === me
           ? t('common.yourPossessive')
           : t('common.namePossessive', { name: name(person) }),
+      /** The possessive that ends a phrase rather than leading a noun: "All yours", not "All You". */
+      independent: (person) =>
+        person === me
+          ? t('common.yourIndependent')
+          : t('common.nameIndependent', { name: name(person) }),
     }
     // `locale` is the dependency that matters; `t` derives from it.
   }, [config, me, locale])

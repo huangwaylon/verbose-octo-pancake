@@ -14,9 +14,12 @@ export default {
   'common.you': 'You',
   'common.person1': 'Person 1',
   'common.person2': 'Person 2',
-  // English inflects, so "You" cannot be dropped into the `{name}’s` form.
+  // English inflects, so "You" cannot be dropped into the `{name}’s` form — nor into the
+  // standalone one, which ends a phrase ("All yours") rather than leading a noun.
   'common.yourPossessive': 'Your',
   'common.namePossessive': '{name}’s',
+  'common.yourIndependent': 'yours',
+  'common.nameIndependent': '{name}’s',
   'common.cancel': 'Cancel',
   'common.save': 'Save',
   'common.add': 'Add',
@@ -175,7 +178,8 @@ export default {
   'form.split': 'Split',
   'form.splitEven': 'Even',
   'form.splitCustom': 'Custom',
-  'form.splitAll': 'All {name}',
+  // Whose SHARE, as the slider below it is labelled: "All yours · Half · All Yuki’s".
+  'form.splitAll': 'All {owner}',
   'form.splitHalf': 'Half',
   // The slider's spoken value: a range otherwise announces a bare "70".
   'form.splitValue': '{owner} share, {percent}%',

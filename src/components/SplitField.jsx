@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { EVEN_SHARE } from '../schema.js'
+import { EVEN_SHARE, otherPerson } from '../schema.js'
 import { splitYen } from '../lib/money.js'
 import { defaultSplitFor, nextSplit, percentOf, splitAtPercent, toSplit } from '../lib/split.js'
 import { useMoney, useT } from '../i18n/index.js'
@@ -47,27 +47,25 @@ export function useEntrySplit(entry, config, payer, { allowDefault = false, held
  * Who covers how much. `defaultLabel` opts in the third mode, and is a LABEL rather than a boolean
  * because the option has to name the person and the percentage it would follow. The breakdown is
  * derived HERE: two derivations of "who owes what" lets a template's and an entry's drift apart.
+ *
+ * `people` is the `usePeopleLabels` labeller, and the grammar is chosen here per phrase: the slider
+ * says whose SHARE it sets, so its presets say whose share all of it is ("All yours", "All Yuki’s")
+ * where the bare label would read "All You".
  */
-export function SplitField({
-  split,
-  payerLabel,
-  payerPossessive,
-  otherLabel,
-  amountYen,
-  defaultLabel,
-  defaultHint,
-}) {
+export function SplitField({ split, people, payer, amountYen, defaultLabel, defaultHint }) {
   const { t } = useT()
   const money = useMoney()
+  const other = otherPerson(payer)
+  const payerPossessive = people.possessive(payer)
 
   const shares =
     amountYen == null || split.payerShare == null ? null : splitYen(amountYen, split.payerShare)
   const breakdown =
     shares &&
     t('form.breakdown', {
-      payer: payerLabel,
+      payer: people.label(payer),
       payerAmount: money(shares.payerYen),
-      other: otherLabel,
+      other: people.label(other),
       otherAmount: money(shares.otherYen),
     })
 
@@ -96,9 +94,11 @@ export function SplitField({
         <div className="split-control">
           <div className="split-control__presets">
             {[
-              [100, t('form.splitAll', { name: payerLabel })],
+              /* In the slider's order, 0 to 100 of the payer's share, so each preset sits over
+                 the end of the track it moves the thumb to. */
+              [0, t('form.splitAll', { owner: people.independent(other) })],
               [50, t('form.splitHalf')],
-              [0, t('form.splitAll', { name: otherLabel })],
+              [100, t('form.splitAll', { owner: people.independent(payer) })],
             ].map(([percent, presetLabel]) => (
               <button
                 type="button"
