@@ -1,4 +1,4 @@
-import { useMoney } from '../i18n/index.js'
+import { useMoney, useT } from '../i18n/index.js'
 import { SwapIcon } from './icons.jsx'
 
 /**
@@ -10,6 +10,9 @@ import { SwapIcon } from './icons.jsx'
  *
  * `amount` overrides the figure, for the one row that has none to show: `money(0)` reads "¥0", which
  * is a claim about money nobody has typed.
+ *
+ * A row whose write has not landed says so in place of its meta line: dimming alone is a state
+ * nobody is told about, and the controls it disables would otherwise look merely broken.
  */
 export function EntryLine({
   entry,
@@ -21,6 +24,7 @@ export function EntryLine({
   onOpen,
   children,
 }) {
+  const { t } = useT()
   const money = useMoney()
   const className = [
     'entry',
@@ -38,7 +42,7 @@ export function EntryLine({
         {settlement && <SwapIcon width={16} height={16} />}
         {description}
       </span>
-      <span className="entry__meta">{meta}</span>
+      <span className="entry__meta">{entry.pending ? t('entry.saving') : meta}</span>
     </>
   )
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { useT } from '../i18n/index.js'
 import { BusyLabel } from './BusyLabel.jsx'
@@ -18,6 +18,9 @@ import { BusyLabel } from './BusyLabel.jsx'
 export function ConfirmSheet({ title, body, confirmLabel, onConfirm, onClose }) {
   const { t } = useT()
   const [busy, setBusy] = useState(false)
+  // Focus lands on Cancel, so without this VoiceOver reads the question and the way out and
+  // never what would be lost.
+  const bodyId = useId()
 
   const confirm = async () => {
     setBusy(true)
@@ -32,6 +35,7 @@ export function ConfirmSheet({ title, body, confirmLabel, onConfirm, onClose }) 
     <BottomSheet
       title={title}
       busy={busy}
+      describedBy={bodyId}
       onClose={onClose}
       footer={
         <>
@@ -44,7 +48,9 @@ export function ConfirmSheet({ title, body, confirmLabel, onConfirm, onClose }) 
         </>
       }
     >
-      <p className="confirm__text">{body}</p>
+      <p className="confirm__text" id={bodyId}>
+        {body}
+      </p>
     </BottomSheet>
   )
 }

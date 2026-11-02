@@ -529,6 +529,12 @@ describe('confirm dialog', () => {
     expect(render()).not.toContain('sheet__panel--full')
   })
 
+  it('describes the dialog by its body, which focus on Cancel would otherwise skip', () => {
+    const markup = render({ body: 'Rent goes for good.' })
+    const id = markup.match(/aria-describedby="([^"]+)"/)[1]
+    expect(markup).toContain(`<p class="confirm__text" id="${id}">Rent goes for good.</p>`)
+  })
+
   it('says what the caller gave it, including a custom confirm label', () => {
     const markup = render({ body: 'Rent goes for good.', confirmLabel: 'Delete for good' })
     expect(markup).toContain('Rent goes for good.')

@@ -578,8 +578,10 @@
   border-end-end-radius: var(--radius-lg);
 }
 
-.entry--pending {
-  opacity: 0.55;
+/* Said in words on the meta line ("Saving…"); the lighter figure is the second
+   signal. Not opacity, which took the meta to 2.2:1. */
+.entry--pending .entry__amount {
+  color: var(--ink-3);
 }
 
 /* A recurring cost the month has not recorded: a dashed leading rule and a lighter

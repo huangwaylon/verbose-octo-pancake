@@ -1,6 +1,6 @@
 import { memo } from 'react'
 import { isSettlement as isTransfer } from '../schema.js'
-import { useEntryTitle, useT } from '../i18n/index.js'
+import { useEntryTitle, useMoney, useT } from '../i18n/index.js'
 import { EntryLine } from './EntryLine.jsx'
 import { EntryMeta } from './EntryMeta.jsx'
 import { TrashIcon } from './icons.jsx'
@@ -14,6 +14,7 @@ import { TrashIcon } from './icons.jsx'
  */
 function EntryRowInner({ entry, label, me, onEdit, onDelete }) {
   const { t } = useT()
+  const money = useMoney()
   const description = useEntryTitle(entry)
   const isSettlement = isTransfer(entry)
 
@@ -32,7 +33,13 @@ function EntryRowInner({ entry, label, me, onEdit, onDelete }) {
         className="btn btn--icon entry__delete"
         onClick={() => onDelete(entry)}
         disabled={Boolean(entry.pending)}
-        aria-label={isSettlement ? t('entry.deleteSettlement') : t('entry.delete', { description })}
+        /* Per row, as Restore and Record are: a column of identical names says nothing about
+           which one each removes, and every settlement shares a title. */
+        aria-label={
+          isSettlement
+            ? t('entry.deleteSettlement', { amount: money(entry.amountYen) })
+            : t('entry.delete', { description })
+        }
       >
         <TrashIcon width={18} height={18} />
       </button>

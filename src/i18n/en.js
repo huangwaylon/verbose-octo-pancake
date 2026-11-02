@@ -77,7 +77,8 @@ export default {
   // Always the viewer's share, so no name is needed beside it; `yourShare` is how it is heard.
   'entry.sharePercent': '{percent}%',
   'entry.yourShare': 'your share {percent}%',
-  'entry.deleteSettlement': 'Delete settlement',
+  'entry.deleteSettlement': 'Delete settlement of {amount}',
+  'entry.saving': 'Saving…',
   'entry.delete': 'Delete {description}',
   'entry.metaSeparator': ' · ',
 

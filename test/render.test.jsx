@@ -364,6 +364,8 @@ describe('entry list renders', () => {
       const markup = render(entries.filter(isSettlement))
       expect(seen(markup)).toBe(`${mark('🐻')} → ${mark('🐼')}`)
       expect(heard(markup)).toBe('Sam paid You')
+      // Every settlement is titled "Settled up", so the amount is what tells their deletes apart.
+      expect(markup).toContain('aria-label="Delete settlement of ¥1,000"')
     })
   })
 
@@ -380,6 +382,8 @@ describe('entry list renders', () => {
     )
     expect(markup).toContain('<span class="entry__main">')
     expect(markup).toMatch(/<button[^>]*class="btn btn--icon entry__delete"[^>]*disabled=""/)
+    // In words, in place of the meta line: dimmed controls alone look broken, not busy.
+    expect(markup).toContain('<span class="entry__meta">Saving…</span>')
   })
 
   it('names a day heading from the `today` it is given, not the clock', () => {
@@ -738,6 +742,9 @@ describe('chrome renders', () => {
     const past = renderToStaticMarkup(<MonthNav monthKey="2020-01" onChange={noop} />)
     expect(past).toContain('January')
     expect(past.match(/disabled/g) ?? []).toHaveLength(0)
+
+    // The arrows say nothing themselves, so the heading they change is what announces it.
+    expect(past).toContain('<h2 class="month-nav__label" aria-live="polite">')
 
     // The half that matters: at the current month, forward must be disabled.
     const now = renderToStaticMarkup(<MonthNav monthKey={currentMonthKey()} onChange={noop} />)

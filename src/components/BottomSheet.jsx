@@ -26,6 +26,7 @@ export function BottomSheet({
   full = false,
   busy = false,
   focusField = true,
+  describedBy,
   onClose,
   children,
   footer,
@@ -121,6 +122,7 @@ export function BottomSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        aria-describedby={describedBy}
         tabIndex={-1}
         ref={panel}
       >

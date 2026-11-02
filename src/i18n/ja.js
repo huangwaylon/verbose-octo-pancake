@@ -69,7 +69,8 @@ export default {
   'entry.settlementDirection': '{payer} → {other}',
   'entry.sharePercent': '{percent}%',
   'entry.yourShare': 'あなたの負担{percent}%',
-  'entry.deleteSettlement': '精算を削除',
+  'entry.deleteSettlement': '{amount}の精算を削除',
+  'entry.saving': '保存中…',
   'entry.delete': '{description}を削除',
   'entry.metaSeparator': '・',
 
