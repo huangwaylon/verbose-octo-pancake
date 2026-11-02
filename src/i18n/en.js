@@ -54,7 +54,7 @@ export default {
   'summary.other': 'Other',
   'summary.chartLabel': 'Spending by category',
   // The meter is a role="img", so this sentence IS the chart for a screen reader.
-  'summary.meterLabel': '{name1} {amount1} / {name2} {amount2}',
+  'summary.meterLabel': '{name1} {amount1}, {name2} {amount2}',
   'summary.share': '{percent}%',
 
   // --- dates ----------------------------------------------------------------
@@ -165,7 +165,7 @@ export default {
   'form.editTitle': 'Edit expense',
   'form.editSettlementTitle': 'Edit settlement',
   'form.amount': 'Amount',
-  'form.amountError': 'Enter an amount, like {example}',
+  'form.amountError': 'Enter an amount, like {example}.',
   'form.amountPlaceholder': '0',
   'form.settlementHint': 'Records that {payer} paid {other} back.',
   'form.date': 'Date',

@@ -35,10 +35,10 @@ export default {
   'month.next': '次の月',
 
   // --- balance --------------------------------------------------------------
-  'balance.youOwe': '{name}に支払い',
-  'balance.owesYou': '{name}から受け取り',
-  'balance.youOweAmount': '{name}に{amount}の支払い',
-  'balance.owesYouAmount': '{name}から{amount}の受け取り',
+  'balance.youOwe': '{name}に払う分',
+  'balance.owesYou': '{name}からもらう分',
+  'balance.youOweAmount': '{name}に払う分は{amount}',
+  'balance.owesYouAmount': '{name}からもらう分は{amount}',
   'balance.settled': '精算ずみ',
 
   // --- month summary --------------------------------------------------------
@@ -89,7 +89,7 @@ export default {
   'recurring.notLoaded': 'まだ読み込めていません。シートを読み込んでからお試しください。',
   'recurring.add': '定期の支出を追加',
   'recurring.amountVaries': '金額は変動',
-  'recurring.schedule': '{day}日',
+  'recurring.schedule': '毎月{day}日',
   'recurring.paidBy': '{name}の支払い',
   'recurring.recorded': '記録ずみ',
   'recurring.unpaid': '未記録',
@@ -110,12 +110,12 @@ export default {
   'recurring.sheetOnlyHint':
     '四半期ごと・年ごとの設定はシートの recurring タブにあり、この画面では変更されません。',
   'recurring.editScopeHint': 'すでに記録した月は、記録した時点の金額のままです。',
-  'recurring.retire': 'この支出を止める',
+  'recurring.retire': 'この支出を停止',
   'recurring.restore': 'この支出を再開する',
   'recurring.delete': '完全に削除',
   'recurring.deleteTitle': '停止ではなく削除',
   'recurring.deleteHint':
-    'recurring タブから行を削除します。すでに追加された記録は台帳に残りますが、どの月を記録したかはシートから失われるため、同じ支出を再度追加すると同じ月を二重に記録することがあります。「止める」ならその記録は残ります。',
+    'recurring タブから行を削除します。すでに追加された記録は台帳に残りますが、どの月を記録したかはシートから失われるため、同じ支出を再度追加すると同じ月を二重に記録することがあります。「停止」ならその記録は残ります。',
 
   // --- deleted entries ------------------------------------------------------
   'deleted.title': {
@@ -144,7 +144,7 @@ export default {
   'form.editTitle': '支出を編集',
   'form.editSettlementTitle': '精算を編集',
   'form.amount': '金額',
-  'form.amountError': '{example}のように金額を入力してください',
+  'form.amountError': '{example}のように金額を入力してください。',
   'form.amountPlaceholder': '0',
   'form.settlementHint': '{payer}が{other}に返したことを記録します。',
   'form.date': '日付',
@@ -208,7 +208,7 @@ export default {
     '{setup}に従ってトークン用のエンドポイントを配置し、その URL をローカル開発では{env}に、GitHub Pages ではリポジトリ変数に設定してください。',
   'gate.keyLabel': 'アプリキー',
   'gate.keyPlaceholder': 'アプリキーを貼り付け',
-  'gate.connect': 'つなぐ',
+  'gate.connect': '接続',
   'gate.keyFine':
     'この端末にのみ保存され、次回から聞かれることはありません。同じキーをふたりの端末に入れます。Google のログインはなく、期限切れもありません。',
   'gate.identityTitle': 'あなたはどちらですか？',
@@ -225,7 +225,7 @@ export default {
   'toast.addFailed': '追加できませんでした。',
   'toast.deleteFailed': '削除できませんでした。',
   'toast.restored': '元に戻しました',
-  'toast.retired': '止めました',
+  'toast.retired': '停止しました',
   'toast.restoreFailed': '元に戻せませんでした。',
   'error.readSheet': 'シートを読み込めませんでした。',
   'error.sheetRequest': 'シートが応答しませんでした。少し待ってからもう一度お試しください。',
@@ -233,7 +233,7 @@ export default {
     'このアプリからシートにアクセスできなくなりました。シートの所有アカウントと共有されているか確認してください。',
   'error.notOurSheet':
     'このスプレッドシートには他のタブがあり、このアプリのタブがありません。台帳ではない可能性があります。SHEET_ID プロパティを確認してください。',
-  'error.entryGone': 'この項目はもうシートにありません。更新して最新の状態を確認してください。',
+  'error.entryGone': 'この記録はもうシートにありません。再読み込みして最新の状態を確認してください。',
   'error.stillSaving': 'この項目はまだ保存中です。少し待ってからもう一度お試しください。',
   'error.missingTabs': 'シートにそのタブが見つかりませんでした。',
   'error.badKey':
@@ -248,33 +248,33 @@ export default {
     'トークン用のエンドポイントがシート ID を返しませんでした。SHEET_ID プロパティを確認してください。',
   'error.missingId': 'ID がありません。',
   'error.badDate': '日付は YYYY-MM-DD 形式の実在する日を入力してください。',
-  'error.badAmount': '金額は 0 より大きい値を入力してください。',
+  'error.badAmount': '金額は 0より大きい値を入力してください。',
   'error.badPayer': '支払った人はふたりのどちらかを選んでください。',
   'error.badShare': '分担は 0〜100% の範囲で指定してください。',
   'error.missingCategory': 'カテゴリーを選んでください。',
   'error.missingDescription': '「家賃」のように名前を入力してください。',
   'error.badTemplateAmount': '金額は円単位の整数、または変動する場合は空にしてください。',
-  'error.badDay': '毎月の日付は 1〜31 で指定してください。',
+  'error.badDay': '毎月の日付は 1〜31で指定してください。',
   'error.duplicateTemplate':
     'recurring タブの2行が同じ ID を使っているため、安全に保存できません。シートでどちらかの ID を変更してください。',
   'warning.staleData': '保存したデータを表示しています。シートにつながりませんでした。',
   'warning.configMissing':
     'config タブが見つからないため、名前・カテゴリー・既定の分担は既定値です。シートで復元してください。',
   'warning.undatedRows': {
-    other: 'シートに日付を読み取れない行が {count} 行あるため、どの月にも表示されません。',
+    other: 'シートに日付を読み取れない行が {count}行あるため、どの月にも表示されません。',
   },
   'warning.undecodedRows': {
     other:
-      'シートに読み取れない行が {count} 行あるため、合計に含まれていません。A 列から始まっているか確認してください。',
+      'シートに読み取れない行が {count}行あるため、合計に含まれていません。A 列から始まっているか確認してください。',
   },
   'warning.duplicateRows': {
     other:
-      '他の生きている行と id が同じ行が {count} 行あるため、片方だけが集計されています。シートでどちらかを削除してください。',
+      '削除されていない他の行と ID が同じ行が {count}行あるため、片方だけが集計されています。シートでどちらかを削除してください。',
   },
   'warning.unattributedRows': {
-    other: '支払った人を読み取れない精算が {count} 件あるため、残高に含まれていません。',
+    other: '支払った人を読み取れない精算が {count}件あるため、残高に含まれていません。',
   },
   'warning.undecodedTemplates': {
-    other: 'recurring タブの {count} 行が使えないため、「定期の支出」に表示されません。',
+    other: 'recurring タブの {count}行が使えないため、「定期の支出」に表示されません。',
   },
 }
