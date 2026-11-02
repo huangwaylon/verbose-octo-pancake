@@ -28,6 +28,15 @@ export function percentOf(share) {
 }
 
 /**
+ * The share of an expense `person` bears, whoever paid: the payer's own share, or the rest. The
+ * list states every split from the viewer's side, so the same row reads 80% on one phone and 20%
+ * on the other.
+ */
+export function shareFor(entry, person) {
+  return person === entry.payer ? entry.payerShare : 1 - entry.payerShare
+}
+
+/**
  * A share as the two split controls see it. An even share drives the segmented control to "Even"
  * and hides the slider; anything else opens Custom on that number. A NULL share is the recurring
  * tab's blank `payer_share` — a durable "follow whoever pays, at their default" rather than an

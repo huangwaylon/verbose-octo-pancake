@@ -1,7 +1,8 @@
 import { dayLabel } from '../lib/dates.js'
-import { isSettlement as isTransfer, otherPerson } from '../schema.js'
+import { isSettlement as isTransfer } from '../schema.js'
 import { useDayLabels, useEntryTitle, usePeopleLabels, useT } from '../i18n/index.js'
 import { EntryLine } from './EntryLine.jsx'
+import { EntryMeta } from './EntryMeta.jsx'
 import { ChevronRightIcon } from './icons.jsx'
 
 /**
@@ -30,8 +31,8 @@ export function DeletedList({ entries, today, config, me, onRestore }) {
           <DeletedRow
             key={entry.id}
             entry={entry}
-            payerLabel={label(entry.payer)}
-            otherLabel={label(otherPerson(entry.payer))}
+            label={label}
+            me={me}
             dateLabel={dayLabel(entry.date, { today, locale, labels })}
             onRestore={onRestore}
           />
@@ -46,7 +47,7 @@ export function DeletedList({ entries, today, config, me, onRestore }) {
  * inside the restore button's name. A settlement is marked as `EntryRow` marks one: given the
  * expense treatment, a tombstoned payback loses its direction and reads as an expense.
  */
-function DeletedRow({ entry, payerLabel, otherLabel, dateLabel, onRestore }) {
+function DeletedRow({ entry, label, me, dateLabel, onRestore }) {
   const { t } = useT()
   const description = useEntryTitle(entry)
   const isSettlement = isTransfer(entry)
@@ -55,15 +56,7 @@ function DeletedRow({ entry, payerLabel, otherLabel, dateLabel, onRestore }) {
     <EntryLine
       entry={entry}
       description={description}
-      meta={
-        isSettlement
-          ? t('deleted.settlementMeta', {
-              date: dateLabel,
-              payer: payerLabel,
-              other: otherLabel,
-            })
-          : t('deleted.meta', { date: dateLabel, name: payerLabel })
-      }
+      meta={<EntryMeta entry={entry} label={label} me={me} date={dateLabel} />}
       settlement={isSettlement}
     >
       {/* Text: there is no glyph for "undelete". Identical unlabelled buttons say nothing about

@@ -589,6 +589,14 @@ describe('deleted entries list', () => {
     // Both names, in order — never just "You paid", which is what an expense row says.
     expect(markup).toContain('You paid Sam')
   })
+
+  it('leads a deleted row’s meta line with its date, seen and heard alike', () => {
+    const markup = render([removed('a', { category: 'Dining', description: 'Ramen' })])
+    expect(markup).toMatch(
+      /aria-hidden="true">[^<]+ · <span class="entry__mark">🐼<\/span><span class="entry__meta-category"> · Dining<\/span><\/span>/,
+    )
+    expect(markup).toMatch(/<span class="visually-hidden">[^<]+ · You paid · Dining<\/span>/)
+  })
 })
 
 describe('Japanese rendering', () => {

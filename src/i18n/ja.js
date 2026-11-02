@@ -66,8 +66,9 @@ export default {
   'entry.settled': '精算',
   'entry.paidCategory': '{name}の支払い・{category}',
   'entry.settlementMeta': '{payer}が{other}に支払い',
-  'entry.onlyPerson': '{name}のみ',
-  'entry.splitPercent': '{name}が{percent}%',
+  'entry.settlementDirection': '{payer} → {other}',
+  'entry.sharePercent': '{percent}%',
+  'entry.yourShare': 'あなたの負担{percent}%',
   'entry.deleteSettlement': '精算を削除',
   'entry.delete': '{description}を削除',
   'entry.metaSeparator': '・',
@@ -121,8 +122,7 @@ export default {
   },
   'deleted.hint':
     'この月に削除した記録です。ここで元に戻すか、設定ですべての削除ずみを完全に削除できます。',
-  'deleted.meta': '{date}・{name}の支払い',
-  'deleted.settlementMeta': '{date}・{payer}が{other}に支払い',
+  'deleted.dated': '{date}・{meta}',
   'deleted.restore': '元に戻す',
   'deleted.restoreEntry': '{description}を元に戻す',
 

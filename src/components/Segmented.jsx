@@ -7,7 +7,7 @@ import { Field } from './Field.jsx'
  * `name` must be unique per group: radios sharing one are a single group to the browser.
  *
  * @param {object} props
- * @param {Array<[string, string]>} props.options `[value, label]` pairs
+ * @param {Array<[string, import('react').ReactNode]>} props.options `[value, label]` pairs
  * @param {import('react').ReactNode} [props.children] further controls in the same field, e.g. the
  *   slider the split's Custom option reveals
  */

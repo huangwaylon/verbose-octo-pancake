@@ -638,18 +638,22 @@ button.entry__main,
   background-color: var(--sunken);
 }
 
-/* Deliberately not a flex container. text-overflow only paints on a block box
-   overflowing with inline content, so as a flex box this clips the description
-   mid-glyph with no ellipsis while the meta line right below it truncates
-   correctly. The settlement icon is inline instead. */
+/* Deliberately not a flex container: line-clamp paints its ellipsis only on a
+   -webkit-box of inline content, so a flex box would cut a long note mid-glyph. Two
+   lines, because a note is what tells two same-priced rows apart and one line at 320px
+   is a dozen characters; `anywhere` lets a pasted URL or an unbroken run of kana break.
+   The settlement icon is inline for the same reason. */
 .entry__desc {
+  display: -webkit-box;
   overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   color: var(--ink);
   font-size: var(--fs-label);
   font-weight: 500;
   line-height: var(--lh-tight);
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .entry__desc svg {
@@ -670,6 +674,35 @@ button.entry__main,
    --ink-2 lands at 6.78:1 and holds for every accent preset. */
 .entry--settlement .entry__meta {
   color: var(--ink-2);
+}
+
+/* A row rather than one run of text, so the category alone can truncate and the
+   share after it stays on screen. `pre` keeps the separators' spaces, which flex would
+   otherwise trim from the ends of its anonymous text items. */
+.entry__meta-seen {
+  display: flex;
+  align-items: baseline;
+  white-space: pre;
+}
+
+/* The payer, at the row title's size rather than the caption's: a 13px emoji is a smudge,
+   and the mark is the only thing on the line saying who paid. Flat, a carve-out like
+   `.balance__amount`'s: it only ever holds one emoji, and the meta's line box keeps
+   the larger glyph from growing the row. */
+.entry__mark {
+  font-size: var(--fs-label);
+  line-height: var(--lh-flat);
+}
+
+.entry__meta-category {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entry__mark,
+.entry__meta-share {
+  flex-shrink: 0;
 }
 
 .entry__amount {

@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
 import { EVEN_SHARE, PERSON } from '../src/schema.js'
-import { defaultSplitFor, nextSplit, percentOf, splitAtPercent, toSplit } from '../src/lib/split.js'
+import {
+  defaultSplitFor,
+  nextSplit,
+  percentOf,
+  shareFor,
+  splitAtPercent,
+  toSplit,
+} from '../src/lib/split.js'
 
 // Every fallback here is one step from `splitYen` and a wrong number on somebody's balance.
 // The transitions are pure functions specifically so they can be tested: the control using
@@ -42,6 +49,20 @@ describe('percentOf', () => {
     // The displayed figure only; `toSplit` carries the exact share beside it, because saving
     // `percent / 100` would rewrite a stored 0.335 as 0.34 on an edit that touched the note.
     expect([0, 0.5, 0.334, 0.335, 0.8, 1].map(percentOf)).toEqual([0, 50, 33, 34, 80, 100])
+  })
+})
+
+describe('shareFor', () => {
+  const paidByP1 = { payer: PERSON.P1, payerShare: 0.8 }
+
+  it('is the payer’s own share for the payer, and the rest for the other person', () => {
+    expect(shareFor(paidByP1, PERSON.P1)).toBe(0.8)
+    expect(percentOf(shareFor(paidByP1, PERSON.P2))).toBe(20)
+  })
+
+  it('says a one-person expense is all of the payer’s and none of the other’s', () => {
+    const solo = { payer: PERSON.P2, payerShare: 1 }
+    expect([PERSON.P2, PERSON.P1].map((person) => shareFor(solo, person))).toEqual([1, 0])
   })
 })
 

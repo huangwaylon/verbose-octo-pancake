@@ -42,7 +42,7 @@ function EntryListInner({
     )
   }
 
-  const shared = { money, label, onEdit, onDelete }
+  const shared = { money, label, me, onEdit, onDelete }
 
   return (
     <div>
@@ -82,6 +82,7 @@ function EntrySection({
   totalYen,
   money,
   label,
+  me,
   onEdit,
   onDelete,
   children = null,
@@ -104,6 +105,7 @@ function EntrySection({
             key={entry.id}
             entry={entry}
             label={label}
+            me={me}
             onEdit={onEdit}
             onDelete={onDelete}
           />

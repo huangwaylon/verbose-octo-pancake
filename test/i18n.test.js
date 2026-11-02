@@ -34,6 +34,10 @@ const SAME_IN_BOTH = new Set([
   // prompts with "0", a fullwidth "０" or a word are translation decisions.
   'summary.share',
   'form.amountPlaceholder',
+  // The same figure, and the side of it the sign goes is equally the translation's.
+  'entry.sharePercent',
+  // Two emoji and an arrow; which way it points is still the translation's call.
+  'entry.settlementDirection',
 ])
 
 function placeholdersIn(value) {

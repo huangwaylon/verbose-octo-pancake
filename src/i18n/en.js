@@ -72,8 +72,11 @@ export default {
   'entry.settled': 'Settled up',
   'entry.paidCategory': '{name} paid · {category}',
   'entry.settlementMeta': '{payer} paid {other}',
-  'entry.onlyPerson': '{name} only',
-  'entry.splitPercent': '{percent}% {name}',
+  // Two people's marks, payer first. The sentence above is what a screen reader hears instead.
+  'entry.settlementDirection': '{payer} → {other}',
+  // Always the viewer's share, so no name is needed beside it; `yourShare` is how it is heard.
+  'entry.sharePercent': '{percent}%',
+  'entry.yourShare': 'your share {percent}%',
   'entry.deleteSettlement': 'Delete settlement',
   'entry.delete': 'Delete {description}',
   'entry.metaSeparator': ' · ',
@@ -138,9 +141,8 @@ export default {
   },
   'deleted.hint':
     'Deleted from this month. Restore one here, or clear every deleted row for good in settings.',
-  'deleted.meta': '{date} · {name} paid',
-  // A payback read as an expense loses its direction — the one row where that reverses meaning.
-  'deleted.settlementMeta': '{date} · {payer} paid {other}',
+  // A deleted row's meta line, led by its date: the list spans the month.
+  'deleted.dated': '{date} · {meta}',
   'deleted.restore': 'Restore',
   'deleted.restoreEntry': 'Restore {description}',
 

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { ENTRY_TYPE, PERSON, isSettlement, rowToTemplate } from '../src/schema.js'
+import { ENTRY_TYPE, PEOPLE, PERSON, isSettlement, rowToTemplate } from '../src/schema.js'
 import { config, expense, noop, templateRow } from './support/entries.js'
 import { newTemplate, unpaidRecurring } from '../src/lib/recurring.js'
 import {
@@ -311,18 +311,59 @@ describe('entry list renders', () => {
     expect(markup.match(/M7 10h13l-3-3/g)).toHaveLength(entries.filter(isSettlement).length)
   })
 
-  it('labels a one-person expense rather than implying it was split', () => {
-    const solo = [entry({ id: 'solo', amountYen: 900, category: 'Household', payerShare: 1 })]
-    const markup = renderToStaticMarkup(
-      <EntryList
-        groups={groupByDate(solo)}
-        config={config}
-        me={PERSON.P1}
-        onEdit={noop}
-        onDelete={noop}
-      />,
-    )
-    expect(markup).toContain('You only')
+  describe('the meta line', () => {
+    const render = (list, me = PERSON.P1) =>
+      renderToStaticMarkup(
+        <EntryList
+          groups={groupByDate(list)}
+          config={config}
+          me={me}
+          onEdit={noop}
+          onDelete={noop}
+        />,
+      )
+    const seen = (markup) =>
+      markup.match(
+        /<span class="entry__meta-seen" aria-hidden="true">(.*?)<\/span><span class="visually-hidden">/,
+      )[1]
+    const heard = (markup) => markup.match(/<span class="visually-hidden">(.*?)<\/span>/)[1]
+    const mark = (emoji) => `<span class="entry__mark">${emoji}</span>`
+    const share = (percent) => `<span class="entry__meta-share"> · ${percent}%</span>`
+
+    it('states the split as the viewer’s share, so one row reads differently on each phone', () => {
+      const row = [entry({ id: 'r', amountYen: 900, category: 'Rent', payerShare: 0.8 })]
+      // The separator after the mark too: "🐼 20%" would read as the panda's 20%.
+      expect(seen(render(row, PERSON.P1))).toBe(mark('🐼') + share(80))
+      expect(seen(render(row, PERSON.P2))).toBe(mark('🐼') + share(20))
+      expect(heard(render(row, PERSON.P2))).toBe('Alex paid · your share 20%')
+    })
+
+    it('says 100% of a one-person expense to its payer and 0% to the other', () => {
+      const solo = [entry({ id: 'solo', amountYen: 900, category: 'Household', payerShare: 1 })]
+      expect(seen(render(solo, PERSON.P1))).toBe(mark('🐼') + share(100))
+      expect(seen(render(solo, PERSON.P2))).toBe(mark('🐼') + share(0))
+    })
+
+    it('marks the payer by slot, never by who is looking, and drops the names from sight', () => {
+      const byP2 = [entry({ id: 'p2', amountYen: 900, category: 'Dining', payer: PERSON.P2 })]
+      for (const me of PEOPLE) expect(seen(render(byP2, me))).toBe(mark('🐻'))
+    })
+
+    it('shows the category beside the mark only when the note is the title', () => {
+      const row = { id: 'n', amountYen: 900, category: 'Dining', payerShare: 0.8 }
+      const noted = render([entry({ ...row, description: 'Ramen' })])
+      expect(seen(noted)).toBe(
+        mark('🐼') + '<span class="entry__meta-category"> · Dining</span>' + share(80),
+      )
+      expect(heard(noted)).toBe('You paid · Dining · your share 80%')
+      expect(seen(render([entry(row)]))).toBe(mark('🐼') + share(80))
+    })
+
+    it('draws a settlement as a direction, and says it as a sentence', () => {
+      const markup = render(entries.filter(isSettlement))
+      expect(seen(markup)).toBe(`${mark('🐻')} → ${mark('🐼')}`)
+      expect(heard(markup)).toBe('Sam paid You')
+    })
   })
 
   it('offers no edit or delete on a row still saving, which a write would refuse', () => {

@@ -1,5 +1,6 @@
 import { useId, useState } from 'react'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
+import { PERSON_MARK } from '../lib/identity.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
 import { useKeyboardInset } from '../state/useKeyboardInset.js'
 import { useTNodes } from '../i18n/nodes.jsx'
@@ -106,6 +107,8 @@ export function IdentityGate({ config, onPick }) {
             className="btn btn--primary btn--block"
             onClick={() => onPick(person)}
           >
+            {/* The first place the animal meets the name it stands for in the list. */}
+            <span aria-hidden="true">{PERSON_MARK[person]}</span>
             {name(person)}
           </button>
         ))}

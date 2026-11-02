@@ -25,3 +25,13 @@ export function nameOf(config, person, fallbacks) {
   if (person === PERSON.P2) return config?.person2Name || fallbacks.p2
   return config?.person1Name || fallbacks.p1
 }
+
+/**
+ * Each person's mark in the entry list, where a name per row costs the width a phone does not have.
+ * Keyed on the SLOT, not on who is viewing: the panda is p1 on both phones, so the two people
+ * describing a row to each other see the same animal.
+ */
+export const PERSON_MARK = {
+  [PERSON.P1]: '🐼',
+  [PERSON.P2]: '🐻',
+}

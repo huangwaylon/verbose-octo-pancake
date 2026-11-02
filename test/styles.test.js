@@ -363,6 +363,18 @@ describe('the rules an installed iOS web app depends on', () => {
     }
   })
 
+  it('wraps a long note to two lines and keeps the share on its meta line', () => {
+    // line-clamp paints its ellipsis only on a -webkit-box; as a flex box the note is cut
+    // mid-glyph with none.
+    expect(valueOf(FILES.app, '.entry__desc', 'display')).toBe('-webkit-box')
+    expect(valueOf(FILES.app, '.entry__desc', '-webkit-line-clamp')).toBe('2')
+    // The category is the part that gives way, so a long one cannot push the share off the end.
+    expect(declares(FILES.app, '.entry__meta-category', 'text-overflow')).toBe(true)
+    expect(valueOf(FILES.app, '.entry__meta-share', 'flex-shrink')).toBe('0')
+    // Flex trims the spaces at the ends of its text items, which the separators carry.
+    expect(valueOf(FILES.app, '.entry__meta-seen', 'white-space')).toBe('pre')
+  })
+
   it('keeps the unrecorded mark off the card’s rounded corners', () => {
     // A border on the row runs straight through the corner the row inherits from the card.
     expect(declares(FILES.app, '.entry--unpaid', 'border-inline-start')).toBe(false)

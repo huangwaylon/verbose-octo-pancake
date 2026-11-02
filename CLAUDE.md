@@ -168,7 +168,7 @@ hand-rolled SVG — `stroke-dasharray` on a circle whose circumference is exactl
 - **Light theme only**; no `--success`/`--warning`; state is stated in words and money direction never in hue.
 - **An accent preset is three custom properties under `[data-accent]`**, rings via `color-mix`.
 - **Use the tokens** — `var(--transition-*)` collapses under reduced motion. The two colours in `index.html` and the manifest are pinned to `tokens.css`.
-- **`letter-spacing: 0`, no `text-transform`, and line-height ≥ 1.5 wherever text can be Japanese.** Carve-out: `.balance__amount` (digits, `--lh-flat`). Headings use `--lh-tight` (1.5).
+- **`letter-spacing: 0`, no `text-transform`, and line-height ≥ 1.5 wherever text can be Japanese.** Carve-outs: `.balance__amount` (digits) and `.entry__mark` (one emoji), both `--lh-flat`. Headings use `--lh-tight` (1.5).
 - **Nothing below 13px**; weights `400|500|600` only; **no form control below 16px** (Safari zooms on focus).
 - **No `backdrop-filter`**: the sticky header is solid `--bg`, since Safari re-renders a blur every scroll frame.
 - **Elevations appear in exactly three places** (`--shadow-*`); focus ring, selection ring and hairline are not elevations. **Contrast budgets live in `tokens.css`.**
