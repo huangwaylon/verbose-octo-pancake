@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { CONFIG_TAB, PEOPLE } from '../schema.js'
 import { defaultSplitFor, percentOf } from '../lib/split.js'
@@ -17,6 +17,7 @@ export function SettingsSheet({
   tombstoneCount,
   templateCount,
   onSetMe,
+  compactOutcome,
   onCompact,
   onOpenRecurring,
   onForget,
@@ -27,47 +28,27 @@ export function SettingsSheet({
   const tn = useTNodes()
   const { name } = usePeopleLabels(config, me)
   const accent = useAccent()
-  const [busy, setBusy] = useState(false)
-  /** The outcome, not a sentence: this panel is where the language is chosen. */
-  const [outcome, setOutcome] = useState(null)
 
-  async function handleCompact() {
-    setBusy(true)
-    setOutcome(null)
-    try {
-      setOutcome(await onCompact())
-    } catch (cause) {
-      setOutcome({ cause })
-    } finally {
-      setBusy(false)
-    }
-  }
-
+  // The outcome arrives as a cause, not a sentence: this panel is where the language is chosen.
   // A refusal is not a removal of zero rows: "Removed 0 rows" would be a plain lie.
-  const message = !outcome
+  const message = !compactOutcome
     ? null
-    : outcome.cause
-      ? errorMessage(outcome.cause, 'settings.compactError')
-      : outcome.busy
+    : compactOutcome.cause
+      ? errorMessage(compactOutcome.cause, 'settings.compactError')
+      : compactOutcome.busy
         ? t('settings.compactBusy')
-        : t('settings.removedRows', { count: outcome.removed })
+        : t('settings.removedRows', { count: compactOutcome.removed })
 
   return (
     <BottomSheet
       title={t('settings.title')}
-      busy={busy}
       onClose={onClose}
       footer={
         /**
          * A close button, not the destructive one: the footer is the only control reliably in
          * reach, so "Forget key" there is the easiest target to hit by accident.
          */
-        <button
-          type="button"
-          className="btn btn--primary btn--block"
-          onClick={onClose}
-          disabled={busy}
-        >
+        <button type="button" className="btn btn--primary btn--block" onClick={onClose}>
           {t('common.close')}
         </button>
       }
@@ -122,12 +103,7 @@ export function SettingsSheet({
         {/* A count rather than a reminder: a reminder is what the balance must not carry. */}
         <Field label={t('recurring.title')} description={t('settings.recurringHint')}>
           <div className="row">
-            <button
-              type="button"
-              className="btn btn--ghost btn--sm"
-              onClick={onOpenRecurring}
-              disabled={busy}
-            >
+            <button type="button" className="btn btn--ghost btn--sm" onClick={onOpenRecurring}>
               {templateCount
                 ? t('settings.recurringCount', { count: templateCount })
                 : t('settings.recurringEmpty')}
@@ -181,10 +157,10 @@ export function SettingsSheet({
             <button
               type="button"
               className="btn btn--danger btn--sm"
-              onClick={handleCompact}
-              disabled={busy || !tombstoneCount}
+              /* Through a confirmation: these rows are the only way back for a delete. */
+              onClick={onCompact}
+              disabled={!tombstoneCount}
             >
-              {busy ? <span className="spinner" /> : null}
               {tombstoneCount
                 ? t('settings.removeRows', { count: tombstoneCount })
                 : t('settings.nothingToRemove')}
@@ -201,12 +177,7 @@ export function SettingsSheet({
         {/* Last in the body: reachable, explained, not where a thumb lands by default. */}
         <Field label={t('settings.forgetKeyTitle')} description={t('settings.forgetKeyHint')}>
           <div className="row">
-            <button
-              type="button"
-              className="btn btn--danger btn--sm"
-              onClick={onForget}
-              disabled={busy}
-            >
+            <button type="button" className="btn btn--danger btn--sm" onClick={onForget}>
               {t('settings.forgetKey')}
             </button>
           </div>

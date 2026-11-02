@@ -130,6 +130,10 @@ export default {
   'confirm.deleteTitle': 'この記録を削除しますか？',
   'confirm.deleteBody':
     '{description}・{amount}は下の「削除ずみ」に移ります。そこから元に戻せます。',
+  'confirm.compactTitle': '削除ずみの行を完全に削除しますか？',
+  'confirm.compactBody': {
+    other: '削除ずみの{count}行をシートから消します。元に戻せなくなります。',
+  },
   'confirm.deleteTemplateTitle': 'この定期の支出を削除しますか？',
   'confirm.deleteTemplateBody':
     '{name}を recurring タブから完全に削除します。すでに追加された記録は台帳に残ります。あとで追加し直す場合は、今月がすでに記録されていないか確認してください。',

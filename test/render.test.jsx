@@ -794,6 +794,13 @@ describe('settings renders', () => {
     expect(render({ tombstoneCount: 4 })).toContain('Permanently remove 4 rows')
   })
 
+  it('says what the last compact did, and never a refusal as zero rows removed', () => {
+    expect(render({ compactOutcome: { removed: 3 } })).toContain('Removed 3 deleted rows.')
+    const refused = render({ compactOutcome: { busy: true } })
+    expect(refused).toContain('A change is still saving.')
+    expect(refused).not.toContain('Removed')
+  })
+
   it('shows each person’s own default split rather than one figure', () => {
     const markup = render({ config: { ...config, defaultSplitP1: 0.8, defaultSplitP2: 0.2 } })
     expect(markup).toContain('80%')

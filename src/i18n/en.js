@@ -150,6 +150,11 @@ export default {
   'confirm.deleteTitle': 'Delete this entry?',
   'confirm.deleteBody':
     '{description} · {amount} moves to Deleted at the bottom of the list, where you can restore it.',
+  'confirm.compactTitle': 'Remove deleted rows for good?',
+  'confirm.compactBody': {
+    one: 'The {count} deleted row is cleared from the sheet. It can no longer be restored.',
+    other: 'The {count} deleted rows are cleared from the sheet. They can no longer be restored.',
+  },
   'confirm.deleteTemplateTitle': 'Delete this recurring cost?',
   'confirm.deleteTemplateBody':
     '{name} is removed from the recurring tab for good. The entries it already added stay in your ledger. If you add it again later, check this month has not already been recorded.',

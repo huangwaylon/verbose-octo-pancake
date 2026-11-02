@@ -55,6 +55,8 @@ export default function App() {
    * and the inner one's cleanup clearing `--keyboard-inset` with the outer's keyboard still up.
    */
   const [overlay, setOverlay] = useState(null)
+  /** Here rather than in the settings sheet, which the confirmation unmounts on its way back. */
+  const [compactOutcome, setCompactOutcome] = useState(null)
   const closeOverlay = () => setOverlay(null)
 
   const view = useLedgerView(entries, templates, monthKey)
@@ -127,7 +129,22 @@ export default function App() {
   )
 
   const openAdd = () => setOverlay({ kind: 'entry', mode: 'add', entry: newDraftEntry(me) })
-  const openSettings = () => setOverlay({ kind: 'settings' })
+  const openSettings = () => {
+    setCompactOutcome(null)
+    setOverlay({ kind: 'settings' })
+  }
+
+  /** Not optimistic, so the confirmation stays up and busy until the sheet answers. */
+  const compact = async () => {
+    let outcome
+    try {
+      outcome = await ledger.compact()
+    } catch (cause) {
+      outcome = { cause }
+    }
+    setCompactOutcome(outcome)
+    setOverlay({ kind: 'settings' })
+  }
   const openRecurring = () => setOverlay({ kind: 'recurring' })
   const openTemplate = (mode, template) => setOverlay({ kind: 'template', mode, template })
 
@@ -268,7 +285,8 @@ export default function App() {
           tombstoneCount={ledger.tombstoneCount}
           templateCount={templates.length}
           onSetMe={setMe}
-          onCompact={ledger.compact}
+          compactOutcome={compactOutcome}
+          onCompact={() => setOverlay({ kind: 'confirmCompact' })}
           onOpenRecurring={openRecurring}
           onForget={forgetKey}
           onClose={closeOverlay}
@@ -318,6 +336,16 @@ export default function App() {
           confirmLabel={t('recurring.delete')}
           onConfirm={() => deleteTemplate(overlay.template, overlay.returnTo)}
           onClose={() => setOverlay(overlay.returnTo)}
+        />
+      )}
+
+      {overlay?.kind === 'confirmCompact' && (
+        <ConfirmSheet
+          title={t('confirm.compactTitle')}
+          body={t('confirm.compactBody', { count: ledger.tombstoneCount })}
+          confirmLabel={t('settings.removeRows', { count: ledger.tombstoneCount })}
+          onConfirm={compact}
+          onClose={() => setOverlay({ kind: 'settings' })}
         />
       )}
 
