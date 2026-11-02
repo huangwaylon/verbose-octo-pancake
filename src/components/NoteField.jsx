@@ -1,5 +1,5 @@
 import { useT } from '../i18n/index.js'
-import { Field } from './Field.jsx'
+import { Field, LITERAL_TEXT } from './Field.jsx'
 
 /**
  * The free-text note, with the config tab's frequent shops offered two ways: a datalist keeps the
@@ -16,11 +16,7 @@ export function NoteField({ value, presets, onChange }) {
         className="input"
         type="text"
         autoComplete="off"
-        /* Shop names are exactly what iOS mangles: "Ozeki" capitalised and autocorrected
-           into an English word it recognises. */
-        autoCapitalize="none"
-        autoCorrect="off"
-        spellCheck={false}
+        {...LITERAL_TEXT}
         enterKeyHint="done"
         placeholder={t('form.notePlaceholder')}
         value={value}

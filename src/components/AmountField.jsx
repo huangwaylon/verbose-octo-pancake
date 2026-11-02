@@ -1,6 +1,7 @@
+import { useId } from 'react'
 import { useT } from '../i18n/index.js'
 import { formatYenParts } from '../lib/money.js'
-import { Field, FieldError } from './Field.jsx'
+import { Field, describedBy } from './Field.jsx'
 
 /**
  * The yen field, for both forms that have one.
@@ -15,10 +16,8 @@ import { Field, FieldError } from './Field.jsx'
  * so "220000" reads as money at a glance.
  *
  * The error renders INSIDE the field: at the foot of the form it draws a screen below the input,
- * with nothing scrolling it into view on submit.
- *
- * @param {object} props
- * @param {boolean} [props.optional] blank is a real answer — true only for a template
+ * with nothing scrolling it into view on submit. `optional` is true only for a template, where blank
+ * is a real answer.
  */
 export function AmountField({
   id,
@@ -32,6 +31,7 @@ export function AmountField({
   optional = false,
 }) {
   const { t, locale } = useT()
+  const hintId = useId()
   const parts = formatYenParts(0, { locale })
   const symbolIndex = parts.findIndex((part) => part.type === 'currency')
   const trailing = symbolIndex > parts.findIndex((part) => part.type === 'integer')
@@ -42,6 +42,9 @@ export function AmountField({
       label={t('form.amount')}
       optional={optional ? t('common.optional') : undefined}
       hint={hint}
+      hintId={hintId}
+      error={error}
+      errorId={errorId}
     >
       <div className={`amount-input${trailing ? ' amount-input--trailing' : ''}`}>
         <span className="amount-input__symbol" aria-hidden="true">
@@ -58,10 +61,9 @@ export function AmountField({
           value={value}
           onChange={(event) => onChange(event.target.value)}
           aria-invalid={error ? 'true' : undefined}
-          aria-describedby={error ? errorId : undefined}
+          aria-describedby={describedBy(error && errorId, hint && hintId)}
         />
       </div>
-      {error && <FieldError id={errorId}>{error}</FieldError>}
     </Field>
   )
 }

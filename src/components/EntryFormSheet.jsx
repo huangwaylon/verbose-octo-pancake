@@ -190,7 +190,11 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
         )}
 
         {/* A save failure belongs directly above the footer that produced it. */}
-        {saveError && <FieldError id={saveErrorId}>{saveError}</FieldError>}
+        {saveError && (
+          <FieldError id={saveErrorId} urgent>
+            {saveError}
+          </FieldError>
+        )}
       </form>
     </BottomSheet>
   )

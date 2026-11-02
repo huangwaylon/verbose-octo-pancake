@@ -4,7 +4,7 @@ import { parseAmountToYen, yenToSheetString } from '../lib/money.js'
 import { isRetired, templateFormProblem } from '../lib/recurring.js'
 import { PERSON, otherPerson } from '../schema.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
-import { Field, FieldError } from './Field.jsx'
+import { Field, FieldError, LITERAL_TEXT, describedBy } from './Field.jsx'
 import { AmountField } from './AmountField.jsx'
 import { SheetFormFooter, useSheetSave } from './SheetFormFooter.jsx'
 import { CategoryField } from './CategoryField.jsx'
@@ -50,6 +50,7 @@ export function TemplateFormSheet({
   const nameErrorId = useId()
   const amountErrorId = useId()
   const dayErrorId = useId()
+  const dayHintId = useId()
   const nameInput = useRef(null)
   const amountInput = useRef(null)
   const dayInput = useRef(null)
@@ -153,25 +154,26 @@ export function TemplateFormSheet({
           run(onSubmit)
         }}
       >
-        <Field htmlFor="template-name" label={t('recurring.name')}>
+        {/* Each error inside its own field: at the foot it renders a screen below the input. */}
+        <Field
+          htmlFor="template-name"
+          label={t('recurring.name')}
+          error={nameError}
+          errorId={nameErrorId}
+        >
           <input
             id="template-name"
             ref={nameInput}
             className="input"
             type="text"
             autoComplete="off"
-            /* iOS autocorrects a landlord's name into an English word it recognises. */
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
+            {...LITERAL_TEXT}
             placeholder={t('recurring.namePlaceholder')}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             aria-invalid={nameError ? 'true' : undefined}
-            aria-describedby={nameError ? nameErrorId : undefined}
+            aria-describedby={describedBy(nameError && nameErrorId)}
           />
-          {/* Inside its own field: at the foot it renders a screen below the input. */}
-          {nameError && <FieldError id={nameErrorId}>{nameError}</FieldError>}
         </Field>
 
         <AmountField
@@ -196,7 +198,14 @@ export function TemplateFormSheet({
 
         <PayerField name="template-payer" value={payer} label={label} onChange={setPayer} />
 
-        <Field htmlFor="template-day" label={t('recurring.day')} hint={t('recurring.dayHint')}>
+        <Field
+          htmlFor="template-day"
+          label={t('recurring.day')}
+          hint={t('recurring.dayHint')}
+          hintId={dayHintId}
+          error={dayError}
+          errorId={dayErrorId}
+        >
           <input
             id="template-day"
             ref={dayInput}
@@ -210,9 +219,8 @@ export function TemplateFormSheet({
             value={day}
             onChange={(event) => setDay(event.target.value)}
             aria-invalid={dayError ? 'true' : undefined}
-            aria-describedby={dayError ? dayErrorId : undefined}
+            aria-describedby={describedBy(dayError && dayErrorId, dayHintId)}
           />
-          {dayError && <FieldError id={dayErrorId}>{dayError}</FieldError>}
         </Field>
 
         <SplitField
@@ -256,7 +264,11 @@ export function TemplateFormSheet({
 
         {/* Above the footer that produced it, and below the delete block, or the nearest words
             to a failed save are "Delete for good". */}
-        {saveError && <FieldError id={saveErrorId}>{saveError}</FieldError>}
+        {saveError && (
+          <FieldError id={saveErrorId} urgent>
+            {saveError}
+          </FieldError>
+        )}
       </form>
     </BottomSheet>
   )

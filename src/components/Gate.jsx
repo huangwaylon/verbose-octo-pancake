@@ -4,7 +4,8 @@ import { PERSON_MARK } from '../lib/identity.js'
 import { usePeopleLabels, useT } from '../i18n/index.js'
 import { useKeyboardInset } from '../state/useKeyboardInset.js'
 import { useTNodes } from '../i18n/nodes.jsx'
-import { Field, FieldError } from './Field.jsx'
+import { Field, FieldError, LITERAL_TEXT } from './Field.jsx'
+import { BusyLabel } from './BusyLabel.jsx'
 import { WalletIcon } from './icons.jsx'
 
 function Panel({ title, children }) {
@@ -65,9 +66,7 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
             type="password"
             // So iOS offers the Keychain, which is what makes "typed once per device" true.
             autoComplete="current-password"
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
+            {...LITERAL_TEXT}
             placeholder={t('gate.keyPlaceholder')}
             value={value}
             onChange={(event) => setValue(event.target.value)}
@@ -79,12 +78,15 @@ export function KeyGate({ onConnect, connecting, error, suspect }) {
           disabled={connecting || !value.trim()}
           aria-describedby={failure ? failureId : undefined}
         >
-          {connecting ? <span className="spinner" /> : null}
-          {t('gate.connect')}
+          <BusyLabel busy={connecting}>{t('gate.connect')}</BusyLabel>
         </button>
       </form>
       {/* A rejected key is KEPT, not deleted, so this screen has to say why it came back. */}
-      {failure && <FieldError id={failureId}>{failure}</FieldError>}
+      {failure && (
+        <FieldError id={failureId} urgent>
+          {failure}
+        </FieldError>
+      )}
       <p className="field__hint">{t('gate.keyFine')}</p>
     </Panel>
   )
@@ -120,7 +122,9 @@ export function IdentityGate({ config, onPick }) {
 
 export function LoadingGate({ label }) {
   return (
-    <div className="gate" role="status" aria-busy="true">
+    /* No `aria-busy`: it tells VoiceOver to hold the region's announcement until it clears,
+       and this one clears by unmounting. */
+    <div className="gate" role="status">
       <span className="spinner spinner--lg" />
       <span className="visually-hidden">{label}</span>
     </div>

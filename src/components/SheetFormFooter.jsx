@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react'
 import { errorMessage, useT } from '../i18n/index.js'
+import { BusyLabel } from './BusyLabel.jsx'
 
 /**
  * The save state both forms hold FOR this footer: whether a write is in flight, and the sentence to
@@ -44,11 +45,8 @@ export function useSheetSave(onClose) {
  * document-global, so it can point into a `<form>` this sits outside of.
  *
  * `busy` disables all three, not the submit alone: the leading control writes to the sheet too, and
- * two writes in flight race for one row.
- *
- * @param {object} props
- * @param {string} props.formId the `<form>` this submits, since the button is outside it
- * @param {import('react').ReactNode} [props.leading] the `push-end` control, delete or retire
+ * two writes in flight race for one row. `formId` names the `<form>` this submits, since the button
+ * sits outside it; `leading` is the `push-end` control, delete or retire.
  */
 export function SheetFormFooter({ formId, busy, editing, onCancel, leading = null, describedBy }) {
   const { t } = useT()
@@ -66,10 +64,7 @@ export function SheetFormFooter({ formId, busy, editing, onCancel, leading = nul
         disabled={busy}
         aria-describedby={describedBy}
       >
-        {/* Beside the label, never instead of it: alone it names the button nothing and
-            narrows it mid-tap, sliding Cancel under the thumb. */}
-        {busy ? <span className="spinner" /> : null}
-        {editing ? t('common.save') : t('common.add')}
+        <BusyLabel busy={busy}>{editing ? t('common.save') : t('common.add')}</BusyLabel>
       </button>
     </>
   )

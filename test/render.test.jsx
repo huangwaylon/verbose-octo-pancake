@@ -87,8 +87,9 @@ describe('gates render', () => {
     // The caller says what is loading, so one spinner serves the sheet, the config and the rows.
     const markup = renderToStaticMarkup(<LoadingGate label="Loading your sheet" />)
     // A live region on the wrapper, or the visually-hidden label is text nobody is told about:
-    // the gate replaces the screen without a page change.
-    expect(markup).toContain('<div class="gate" role="status" aria-busy="true">')
+    // the gate replaces the screen without a page change. Never `aria-busy`, which holds the
+    // announcement until the region stops being busy — and this one never does, it unmounts.
+    expect(markup).toContain('<div class="gate" role="status">')
     expect(markup).toContain('Loading your sheet')
   })
 })

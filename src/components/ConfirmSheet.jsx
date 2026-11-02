@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BottomSheet } from './BottomSheet.jsx'
 import { useT } from '../i18n/index.js'
+import { BusyLabel } from './BusyLabel.jsx'
 
 /**
  * The stop between a destructive control and a write, and the one home of that shape.
@@ -38,8 +39,7 @@ export function ConfirmSheet({ title, body, confirmLabel, onConfirm, onClose }) 
             {t('common.cancel')}
           </button>
           <button type="button" className="btn btn--danger" onClick={confirm} disabled={busy}>
-            {busy ? <span className="spinner" /> : null}
-            {confirmLabel ?? t('common.delete')}
+            <BusyLabel busy={busy}>{confirmLabel ?? t('common.delete')}</BusyLabel>
           </button>
         </>
       }
