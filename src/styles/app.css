@@ -711,11 +711,21 @@ button.entry__main,
   font-weight: 600;
 }
 
+/* The amount looks like the widest target on the row, so the edit button's hit area
+   is stretched over the whole row; the trailing control is positioned to sit above
+   it. `.entry` is the containing block. */
+button.entry__main::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+
 /* The row's trailing control, one per row: delete on a recorded entry, record on a
    cost still waiting for one. Both are --tap-target-sm, which is what lets the amount
    beside them keep its width at 320px. */
 .entry__delete,
 .entry__record {
+  position: relative;
   width: var(--tap-target-sm);
   min-width: var(--tap-target-sm);
   height: var(--tap-target-sm);

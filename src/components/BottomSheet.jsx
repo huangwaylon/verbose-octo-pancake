@@ -16,8 +16,20 @@ const FIRST_FIELD = 'input, select, textarea, button:not([data-dismiss])'
  *
  * `busy` makes every way out inert while a write the sheet started is in flight: closed under it, a
  * failure has no form left to say so, and a success's own close lands on whatever sheet came next.
+ *
+ * `focusField` is false for an edit: focus inside a tap raises the iOS keyboard, which is right for
+ * an add — the amount is what gets typed first — and covers half a form opened to change its
+ * category. Focus then goes to the panel, so VoiceOver still lands inside the dialog.
  */
-export function BottomSheet({ title, full = false, busy = false, onClose, children, footer }) {
+export function BottomSheet({
+  title,
+  full = false,
+  busy = false,
+  focusField = true,
+  onClose,
+  children,
+  footer,
+}) {
   const { t } = useT()
   const panel = useRef(null)
   const titleId = useId()
@@ -44,8 +56,8 @@ export function BottomSheet({ title, full = false, busy = false, onClose, childr
     // So closing can put focus back, or the VoiceOver cursor lands on `<body>`.
     const opener = document.activeElement
 
-    const focusable = node?.querySelector(FIRST_FIELD)
-    focusable?.focus({ preventScroll: true })
+    const target = focusField ? node?.querySelector(FIRST_FIELD) : node
+    target?.focus({ preventScroll: true })
 
     return () => {
       root.style.overflow = previous.root
@@ -109,6 +121,7 @@ export function BottomSheet({ title, full = false, busy = false, onClose, childr
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        tabIndex={-1}
         ref={panel}
       >
         <header className="sheet__header">

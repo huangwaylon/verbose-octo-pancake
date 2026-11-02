@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { errorMessage, useT } from '../i18n/index.js'
 
 /**
@@ -10,11 +10,19 @@ import { errorMessage, useT } from '../i18n/index.js'
  * decision each form makes at its own validation point: before the input is judged, or two messages
  * sit on screen at once, one of them about a write that was never attempted.
  *
+ * The failure sits last in a form that can be a phone's height of fields, so it is scrolled to: below
+ * the fold, a failed save is a spinner that stops and nothing else.
+ *
  * A hook beside the control that consumes it, as `useEntrySplit` sits beside `SplitField`.
  */
 export function useSheetSave(onClose) {
   const [busy, setBusy] = useState(false)
   const [saveError, setSaveError] = useState(null)
+  const saveErrorId = useId()
+
+  useEffect(() => {
+    if (saveError) document.getElementById(saveErrorId)?.scrollIntoView({ block: 'nearest' })
+  }, [saveError, saveErrorId])
 
   const save = async (write) => {
     setBusy(true)
@@ -27,7 +35,7 @@ export function useSheetSave(onClose) {
     }
   }
 
-  return { busy, saveError, clearError: () => setSaveError(null), save }
+  return { busy, saveError, saveErrorId, clearError: () => setSaveError(null), save }
 }
 
 /**

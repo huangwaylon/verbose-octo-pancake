@@ -34,8 +34,12 @@ export function useKeyboardInset() {
       // computed style for the whole document — the ledger behind a sheet included — and `scroll`
       // fires every frame while iOS shifts the visual viewport, across which the inset is constant.
       if (inset === published) return
+      const grew = inset > (published ?? 0)
       published = inset
       root.style.setProperty(KEYBOARD_INSET, `${inset}px`)
+      // The sheet's own `focusin` scroll ran against the panel BEFORE this shortened it, so a
+      // lower field was brought into view and then covered by the keyboard it raised.
+      if (grew) document.activeElement?.scrollIntoView?.({ block: 'nearest' })
     }
     sync()
     // `scroll` as well as `resize`: iOS shifts the visual viewport within the layout one to follow

@@ -330,6 +330,11 @@
   box-shadow: var(--shadow-raised);
 }
 
+/* The press, as every other control has one; the checked thumb keeps its own. */
+.segmented__option:active:not(:has(input:checked)) {
+  background-color: var(--line);
+}
+
 .segmented__option:has(input:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -366,6 +371,7 @@
   /* Set inline from the preset's own accent: a CSS var cannot be indexed by an
      attribute value, and each disc must show the color it selects. */
   background-color: var(--accent);
+  transition: transform var(--transition-fast);
 }
 
 /* A ring in the page ground, not a checkmark: the disc is small and a glyph on
@@ -374,6 +380,10 @@
   box-shadow:
     0 0 0 2px var(--bg),
     0 0 0 4px var(--ink);
+}
+
+.swatch:active .swatch__disc {
+  transform: scale(0.92);
 }
 
 .swatch:has(input:focus-visible) {
@@ -454,6 +464,12 @@
   background-color: var(--surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   box-shadow: var(--shadow-overlay);
+}
+
+/* Focused on opening an edit so VoiceOver lands inside the dialog; the panel is not
+   a control, and a ring round the whole sheet says nothing. */
+.sheet__panel:focus-visible {
+  outline: none;
 }
 
 /* A page's worth of form takes the phone's whole screen. Floating it wastes the band

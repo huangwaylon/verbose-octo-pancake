@@ -39,9 +39,8 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
   )
   const [description, setDescription] = useState(typed?.description ?? entry.description ?? '')
   const [rejected, setRejected] = useState(null)
-  const { busy, saveError, clearError, save } = useSheetSave(onClose)
+  const { busy, saveError, saveErrorId, clearError, save } = useSheetSave(onClose)
   const amountErrorId = useId()
-  const saveErrorId = useId()
   const amountInput = useRef(null)
 
   const split = useEntrySplit(entry, config, payer, { held: typed?.split })
@@ -107,6 +106,7 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
       /* A settlement's three remaining fields do not fill a phone. */
       full={!isSettlement}
       busy={busy}
+      focusField={mode !== 'edit'}
       onClose={onClose}
       footer={
         <SheetFormFooter
@@ -173,7 +173,9 @@ export function EntryFormSheet({ draft, config, me, onSubmit, onDelete, onClose 
             className="input"
             type="date"
             value={date}
-            onChange={(event) => setDate(event.target.value)}
+            /* iOS's picker has a Reset that empties the field, which only a save would then
+               refuse, from far below it. A date is never optional, so the last one stays. */
+            onChange={(event) => event.target.value && setDate(event.target.value)}
           />
         </Field>
 

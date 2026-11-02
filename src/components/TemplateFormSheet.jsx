@@ -46,11 +46,10 @@ export function TemplateFormSheet({
   const [day, setDay] = useState(typed?.day ?? String(template.dayOfMonth ?? 1))
   /** The values a submit refused, so each error derives from one; `EntryFormSheet` says why. */
   const [rejected, setRejected] = useState(null)
-  const { busy, saveError, clearError, save } = useSheetSave(onClose)
+  const { busy, saveError, saveErrorId, clearError, save } = useSheetSave(onClose)
   const nameErrorId = useId()
   const amountErrorId = useId()
   const dayErrorId = useId()
-  const saveErrorId = useId()
   const nameInput = useRef(null)
   const amountInput = useRef(null)
   const dayInput = useRef(null)
@@ -117,6 +116,7 @@ export function TemplateFormSheet({
       title={editing ? t('recurring.editTitle') : t('recurring.addTitle')}
       full
       busy={busy}
+      focusField={!editing}
       onClose={onClose}
       footer={
         <SheetFormFooter

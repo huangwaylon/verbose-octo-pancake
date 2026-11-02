@@ -375,6 +375,17 @@ describe('the rules an installed iOS web app depends on', () => {
     expect(valueOf(FILES.app, '.entry__meta-seen', 'white-space')).toBe('pre')
   })
 
+  it('makes the amount part of the row’s edit target, under the delete', () => {
+    // The amount sits outside the button, so without the stretched hit area the widest-looking
+    // part of the row was dead — and, with no touch-action, a double-tap there zoomed the page.
+    expect(valueOf(FILES.app, 'button.entry__main::after', 'position')).toBe('absolute')
+    expect(valueOf(FILES.app, 'button.entry__main::after', 'inset')).toBe('0')
+    expect(valueOf(FILES.app, '.entry', 'position')).toBe('relative')
+    for (const control of ['.entry__delete', '.entry__record']) {
+      expect(valueOf(FILES.app, control, 'position')).toBe('relative')
+    }
+  })
+
   it('keeps the unrecorded mark off the card’s rounded corners', () => {
     // A border on the row runs straight through the corner the row inherits from the card.
     expect(declares(FILES.app, '.entry--unpaid', 'border-inline-start')).toBe(false)
