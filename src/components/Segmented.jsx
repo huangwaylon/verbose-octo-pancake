@@ -6,10 +6,8 @@ import { Field } from './Field.jsx'
  * `role="radiogroup"` plus `aria-labelledby` is what ties the visible `field__label` to it. The
  * `name` must be unique per group: radios sharing one are a single group to the browser.
  *
- * @param {object} props
- * @param {Array<[string, import('react').ReactNode]>} props.options `[value, label]` pairs
- * @param {import('react').ReactNode} [props.children] further controls in the same field, e.g. the
- *   slider the split's Custom option reveals
+ * `options` are `[value, label]` pairs; `children` are further controls in the same field, such as
+ * the slider the split's Custom option reveals.
  */
 export function Segmented({ name, label, value, options, onChange, children, hint }) {
   const labelId = useId()

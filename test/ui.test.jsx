@@ -221,19 +221,20 @@ describe('entry form', () => {
     expectNamedDialog(render({}, { payerShare: EVEN_SHARE }))
   })
 
-  it('offers each configured note as a datalist option and as a chip', () => {
+  it('offers each configured note as a chip saying whether it is the note', () => {
     const markup = render({ notePresets: ['OK Mart', 'Ozeki'] })
-    expect(markup).toContain('id="note-presets"')
-    expect(markup).toContain('list="note-presets"')
     for (const shop of ['OK Mart', 'Ozeki']) {
-      // The chip specifically: a bare `toContain(shop)` passes on the datalist `<option>`
-      // alone, and the chip row exists because a datalist has no affordance on a phone.
-      expect(markup).toContain(`>${shop}</button>`)
+      expect(markup).toMatch(
+        new RegExp(`<button type="button" aria-pressed="false"[^>]*>${shop}</button>`),
+      )
     }
+    // No datalist: where iOS shows one it is a second list repeating the chips under it.
+    expect(markup).not.toContain('<datalist')
   })
 
   it('leaves the note a plain text input when nothing is configured', () => {
-    expect(render({ notePresets: [] })).not.toContain('note-presets')
+    expect(render({ notePresets: ['Ozeki'] })).toContain('role="group"')
+    expect(render({ notePresets: [] })).not.toContain('role="group"')
   })
 
   it('lists the configured categories, with the first preselected', () => {

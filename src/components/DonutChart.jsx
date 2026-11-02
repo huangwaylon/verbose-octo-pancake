@@ -35,11 +35,7 @@ export function foldTail(items, otherLabel) {
   ]
 }
 
-/**
- * @param {object} props
- * @param {{key: string, label: string, valueYen: number}[]} props.items sorted desc
- * @param {string} props.label accessible name for the figure
- */
+/** `items` arrive sorted largest first; `label` is the figure's accessible name. */
 export function DonutChart({ items, formatMoney, label, otherLabel, formatShare }) {
   const slices = foldTail(items, otherLabel)
   const total = slices.reduce((sum, item) => sum + item.valueYen, 0)

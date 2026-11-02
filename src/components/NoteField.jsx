@@ -1,13 +1,14 @@
 import { useT } from '../i18n/index.js'
 import { Field, LITERAL_TEXT } from './Field.jsx'
+import { ToggleButton } from './ToggleButton.jsx'
 
 /**
- * The free-text note, with the config tab's frequent shops offered two ways: a datalist keeps the
- * field free text, and the chips exist because a datalist has no visual affordance on a phone.
+ * The free-text note, with the config tab's frequent shops as chips under it. Chips, not a
+ * `<datalist>`: on a phone a datalist has no visual affordance, and where iOS does show one it
+ * repeats the chips directly below as a second list.
  */
 export function NoteField({ value, presets, onChange }) {
   const { t } = useT()
-  const listId = presets.length ? 'note-presets' : undefined
 
   return (
     <Field htmlFor="entry-note" label={t('form.note')} optional={t('common.optional')}>
@@ -21,31 +22,19 @@ export function NoteField({ value, presets, onChange }) {
         placeholder={t('form.notePlaceholder')}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        list={listId}
       />
-      {listId && (
-        <>
-          <datalist id={listId}>
-            {presets.map((preset) => (
-              <option key={preset} value={preset} />
-            ))}
-          </datalist>
-          <div className="row" role="group" aria-label={t('common.notePresets')}>
-            {presets.map((preset) => (
-              <button
-                key={preset}
-                type="button"
-                /* The chip's selected state is otherwise carried by colour alone —
-                   VoiceOver announces both states identically without this. */
-                aria-pressed={value === preset}
-                className={`btn btn--sm ${value === preset ? 'btn--primary' : 'btn--ghost'}`}
-                onClick={() => onChange(value === preset ? '' : preset)}
-              >
-                {preset}
-              </button>
-            ))}
-          </div>
-        </>
+      {presets.length > 0 && (
+        <div className="row" role="group" aria-label={t('common.notePresets')}>
+          {presets.map((preset) => (
+            <ToggleButton
+              key={preset}
+              pressed={value === preset}
+              onClick={() => onChange(value === preset ? '' : preset)}
+            >
+              {preset}
+            </ToggleButton>
+          ))}
+        </div>
       )}
     </Field>
   )

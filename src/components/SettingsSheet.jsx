@@ -115,13 +115,7 @@ export function SettingsSheet({
           label={t('settings.configTitle')}
           description={tn('settings.configHint', { tab: <code>{CONFIG_TAB}</code> })}
         >
-          <div className="row">
-            {config.categories.map((category) => (
-              <span className="pill pill--muted" key={category}>
-                {category}
-              </span>
-            ))}
-          </div>
+          <PillList items={config.categories} />
         </Field>
 
         <Field label={t('settings.defaultSplit')} hint={t('settings.defaultSplitHint')}>
@@ -138,13 +132,7 @@ export function SettingsSheet({
 
         <Field label={t('common.notePresets')}>
           {config.notePresets?.length ? (
-            <div className="row">
-              {config.notePresets.map((note) => (
-                <span className="pill pill--muted" key={note}>
-                  {note}
-                </span>
-              ))}
-            </div>
+            <PillList items={config.notePresets} />
           ) : (
             <p className="field__hint">
               {tn('settings.notePresetsEmpty', { key: <code>note_presets</code> })}
@@ -184,5 +172,18 @@ export function SettingsSheet({
         </Field>
       </div>
     </BottomSheet>
+  )
+}
+
+/** The config tab's lists, read-only: a muted pill per value, so none reads as tappable. */
+function PillList({ items }) {
+  return (
+    <div className="row">
+      {items.map((item) => (
+        <span className="pill pill--muted" key={item}>
+          {item}
+        </span>
+      ))}
+    </div>
   )
 }

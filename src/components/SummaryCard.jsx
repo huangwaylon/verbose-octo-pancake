@@ -5,6 +5,7 @@ import { storedPreference } from '../lib/preference.js'
 import { UNCATEGORIZED } from '../lib/balance.js'
 import { usePeopleLabels, useMoney, useT } from '../i18n/index.js'
 import { DonutChart } from './DonutChart.jsx'
+import { ToggleButton } from './ToggleButton.jsx'
 
 /**
  * Which of the two per-person figures the card shows. Both matter — cash out of pocket, and what that
@@ -59,16 +60,12 @@ function SummaryCardInner({ monthSpend, byCategory, byPerson, byShare, config, m
       <div className="summary__section">
         <div className="summary__heading">
           <h3 className="eyebrow">{t('summary.perPerson')}</h3>
-          {/* `aria-pressed` rather than a label that flips: a flipping label never says whether
-              it names the figure on screen or the one a tap away. */}
-          <button
-            type="button"
-            className={`btn btn--sm ${showPaid ? 'btn--primary' : 'btn--ghost'}`}
-            aria-pressed={showPaid}
+          <ToggleButton
+            pressed={showPaid}
             onClick={() => summaryView.set(showPaid ? 'share' : 'paid')}
           >
             {t('summary.paidToggle')}
-          </button>
+          </ToggleButton>
         </div>
         {first + second > 0 && (
           <div
